@@ -8,6 +8,7 @@ build/
 # Output and results (not tracked)
 output/
 logs/
+runs/
 *.npz
 *.pkl
 
