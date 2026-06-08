@@ -8,7 +8,8 @@ build/
 # Output and results (not tracked)
 output/
 logs/
-runs/
+runs/*/*/*
+!runs/*/*/config.yaml
 *.npz
 *.pkl
 

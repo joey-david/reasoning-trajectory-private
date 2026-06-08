@@ -1,0 +1,9 @@
+model_name: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+dataset_path: datasets/sheep.jsonl
+device_map: auto
+torch_dtype: bfloat16
+trust_remote_code: false
+max_new_tokens: 160
+seeds: [0, 1, 2]
+temperatures: [0.8]
+layers: [0, 8, 16, 24, 32]

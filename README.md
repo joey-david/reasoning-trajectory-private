@@ -1,63 +1,54 @@
-# Repo Structure
+# Reasoning Trajectory
 
-Currently adding analysis tools.
+Small, YAML-driven experiments for generating reasoning traces and running simple analysis tools.
 
-TODO:
-
-- [ ] Divergence as a tradeoff between originality / stability, slowness of channels/attractions
-- [ ] Compute dispersion per PCA dimension
-	- [ ] Number of significant components?
-	- [ ] Vary the number of components
-- [ ] Variation in the number of reasoning steps
-- [ ] Loss as a CoT metaphor
-- [X] Git for papers, ideas, etc.
-- [?] Making smaller models' CoT work by tweaking attention
-	- [ ] Look into literature on why it doesn't work, shallow world models, possible mitigations, etc.
-- [ ] Going toward solution objects: Lean and programs
-- [ ] Add better tools for dynamic divergence analysis rather than static resemblance.
-
+## Layout
 
 ```text
-literature/   Zotero export, notes, and paper-reading material.
-experiments/  Configs, runs, legacy experiment scripts, and generated artifacts.
-toolkit/      `reasoning_trajectory` Python package, CLI, dashboard, docs, and smoke tests.
+src/       Small Python modules used by scripts.
+runs/      One folder per model, then one folder per run with config.yaml.
+datasets/  Local datasets in json/jsonl formats.
+scripts/   Thin command-line entry points.
+lit/       Papers, notes, and the imported reasoning-trajectory reference repo.
 ```
 
-## Install
+Run folders are named like:
+
+```text
+runs/deepseekR1DistillLlama8b/sheep_08_06_2026/config.yaml
+```
+
+## Run
+
+Install the few core dependencies first:
 
 ```bash
-python3 -m pip install -e ./toolkit
-rt doctor
+python3 -m pip install pyyaml numpy torch transformers
 ```
 
-## Main Example
-
-I wrote an example config to run:
+Generate model outputs and token-level activations:
 
 ```bash
-experiments/configs/r1_distill_sheep30.yaml
+python3 scripts/generate.py runs/deepseekR1DistillLlama8b/sheep_08_06_2026
 ```
 
-If you want to rebuild the analysis without rerunning models
+Run analysis tools:
 
 ```bash
-rt analyze --input experiments/runs/r1_distill_sheep30 --layer 32
+python3 scripts/generation_summary.py runs/deepseekR1DistillLlama8b/sheep_08_06_2026
+python3 scripts/activation_norms.py runs/deepseekR1DistillLlama8b/sheep_08_06_2026
 ```
 
-Open the dashboard:
+Outputs stay inside the selected run folder:
 
-```bash
-rt dashboard --input experiments/runs/r1_distill_sheep30
+```text
+generation/generations.jsonl
+generation/activations/*.npz
+analysis/generation_summary.csv
+analysis/activation_norms.csv
 ```
 
+## Extending
 
-## Validation
-
-```bash
-python3 -m compileall toolkit/reasoning_trajectory toolkit/tests/smoke experiments/scripts/label_trajectory_tails.py literature/import_zotero.py
-bash -n experiments/scripts/run_remote_gpu.sh
-python3 toolkit/tests/smoke/test_answer_labels.py
-python3 toolkit/tests/smoke/test_synthetic_curves.py
-python3 toolkit/tests/smoke/test_toolkit.py
-bash toolkit/tests/smoke/validate_cli.sh
-```
+Add new rollout behavior in `src/generation`, dataset parsing in `src/data`, and analysis tools in `src/analysis`.
+Expose each tool with a short script in `scripts/` that takes a run path and reads its `config.yaml`.
