@@ -258,3 +258,18 @@ th {
   .topbar { align-items: flex-start; flex-direction: column; }
   .job { width: 100%; }
 }
+
+.loadingBox {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(17, 19, 24, 0.12);
+  border-top-color: var(--blue);
+  border-radius: 999px;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

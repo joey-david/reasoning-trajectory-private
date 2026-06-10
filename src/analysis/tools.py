@@ -40,14 +40,14 @@ TOOLS: dict[str, AnalysisTool] = {
         "Trajectory Projection",
         "3D PCA or t-SNE projection of layer activations sampled along each generated trajectory.",
         write_trajectory_projection,
-        {"layer": None, "interval": 4, "method": "pca"},
+        {"layer": None, "interval": 16, "method": "pca", "max_points": 12000, "skip_first": 2, "skip_last": 2},
     ),
     "pca_components": AnalysisTool(
         "pca_components",
         "PCA Components",
         "Amplitude and explained variance of the first principal components.",
         write_pca_components,
-        {"layer": None, "n": 24},
+        {"layer": None, "n": 24, "max_vectors": 20000, "skip_first": 2, "skip_last": 2},
     ),
 }
 

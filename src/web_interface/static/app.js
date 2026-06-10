@@ -7,8 +7,8 @@ const state = {
   run: null,
   activeTool: "generation_summary",
   params: {
-    trajectory_projection: { layer: null, interval: 4, method: "pca" },
-    pca_components: { layer: null, n: 24 },
+    trajectory_projection: { layer: null, interval: 16, method: "pca", max_points: 12000 },
+    pca_components: { layer: null, n: 24, max_vectors: 20000 },
   },
   view3d: { pitch: -0.55, yaw: 0.72, zoom: 1 },
 };
@@ -139,13 +139,25 @@ async function renderActiveTool() {
   }
 
   try {
-    if (state.activeTool === "generation_summary") return renderSummary(await toolData("generation_summary"));
-    if (state.activeTool === "activation_norms") return renderNorms(await toolData("activation_norms"));
-    if (state.activeTool === "trajectory_projection") return renderTrajectory(await toolData("trajectory_projection", state.params.trajectory_projection));
-    if (state.activeTool === "pca_components") return renderComponents(await toolData("pca_components", state.params.pca_components));
+    if (state.activeTool === "generation_summary") return renderToolResult(await toolData("generation_summary"), renderSummary);
+    if (state.activeTool === "activation_norms") return renderToolResult(await toolData("activation_norms"), renderNorms);
+    if (state.activeTool === "trajectory_projection") return renderToolResult(await toolData("trajectory_projection", state.params.trajectory_projection), renderTrajectory);
+    if (state.activeTool === "pca_components") return renderToolResult(await toolData("pca_components", state.params.pca_components), renderComponents);
   } catch (error) {
     renderMissing(error);
   }
+}
+
+async function renderToolResult(data, renderer) {
+  if (data?.status === "queued" || data?.status === "running") {
+    renderPending(data);
+    const job = await watchJob(data.job, setJob);
+    if (job.status === "done") {
+      await loadRun();
+      return;
+    }
+  }
+  return renderer(data);
 }
 
 function renderSummary(data) {
@@ -191,10 +203,20 @@ function renderComponents(data) {
   drawComponents($("componentCanvas"), data);
 }
 
+function renderPending(data) {
+  $("panel").innerHTML = `
+    <div class="empty loadingBox">
+      <div class="spinner"></div>
+      <strong>Computing ${escapeHTML(data.tool || state.activeTool)}…</strong><br>
+      <span>${escapeHTML(data.message || "The backend is producing the missing analysis file.")}</span><br>
+      <small>${escapeHTML(data.path || "")}</small>
+    </div>`;
+}
+
 function renderMissing(error) {
   $("panel").innerHTML = `
     <div class="empty">
-      <strong>Missing or stale analysis output.</strong><br>
+      <strong>Analysis failed or could not be loaded.</strong><br>
       ${escapeHTML(error.message)}
       <br><br>
       <button id="missingRunTool">Run this analysis</button>
@@ -208,6 +230,7 @@ function trajectoryControls() {
     <div class="toolbar">
       <label>Layer<select id="layerControl">${layerOptions(p.layer)}</select></label>
       <label>Interval<input id="intervalControl" type="number" min="1" value="${escapeHTML(p.interval)}"></label>
+      <label>Max points<input id="maxPointsControl" type="number" min="100" value="${escapeHTML(p.max_points)}"></label>
       <label>Projection<select id="methodControl">
         ${option("pca", "PCA", p.method === "pca")}
         ${option("tsne", "t-SNE", p.method === "tsne")}
@@ -223,6 +246,7 @@ function componentControls() {
     <div class="toolbar">
       <label>Layer<select id="layerControl">${layerOptions(p.layer)}</select></label>
       <label>Components<input id="componentCount" type="number" min="1" max="128" value="${escapeHTML(p.n)}"></label>
+      <label>Max vectors<input id="maxVectorsControl" type="number" min="100" value="${escapeHTML(p.max_vectors)}"></label>
     </div>`;
 }
 
@@ -240,8 +264,16 @@ function bindToolControls() {
     state.params.trajectory_projection.method = event.target.value;
     renderActiveTool();
   });
+  $("maxPointsControl")?.addEventListener("change", event => {
+    state.params.trajectory_projection.max_points = Math.max(100, Number(event.target.value || 12000));
+    renderActiveTool();
+  });
   $("componentCount")?.addEventListener("change", event => {
     state.params.pca_components.n = Math.max(1, Number(event.target.value || 24));
+    renderActiveTool();
+  });
+  $("maxVectorsControl")?.addEventListener("change", event => {
+    state.params.pca_components.max_vectors = Math.max(100, Number(event.target.value || 20000));
     renderActiveTool();
   });
   $("zoomControl")?.addEventListener("input", event => {
@@ -289,7 +321,11 @@ function lastLayer() {
 }
 
 async function toolData(tool, params = {}) {
-  const query = new URLSearchParams({ run_path: state.run.run_path, tool, ...params });
+  const clean = { run_path: state.run.run_path, tool };
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value !== null && value !== undefined && value !== "") clean[key] = value;
+  }
+  const query = new URLSearchParams(clean);
   return getJSON(`/api/tool-data?${query}`);
 }
 

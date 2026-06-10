@@ -42,6 +42,7 @@ class Job:
 
 
 JOBS: dict[str, Job] = {}
+JOB_KEYS: dict[str, str] = {}
 
 
 def run(host: str = "127.0.0.1", port: int = 8765) -> None:
@@ -181,21 +182,80 @@ def start_analysis(body: dict[str, Any]) -> dict[str, Any]:
 
 def tool_data(run_path_text: str, tool: str, query: dict[str, list[str]]) -> dict[str, Any]:
     cfg = load_run_config(ROOT / run_path_text)
-    base = run_path(cfg)
+    params = _params_for_tool(cfg, tool, query)
+    target = _tool_output_path(cfg, tool, params)
+
+    if target.exists():
+        data = _load_tool_output(tool, target)
+        if isinstance(data, dict):
+            data.setdefault("status", "done")
+            data.setdefault("path", str(target.relative_to(ROOT)))
+        return data
+
+    job = _start_analysis_once(cfg, tool, params, target)
+    return {
+        "status": job.status,
+        "tool": tool,
+        "job": job.__dict__,
+        "path": str(target.relative_to(ROOT)),
+        "message": f"Missing analysis output; started {tool}.",
+    }
+
+
+def _params_for_tool(config: dict[str, Any], tool: str, query: dict[str, list[str]]) -> dict[str, Any]:
     if tool == "generation_summary":
-        return {"tool": tool, "rows": _read_csv(base / "analysis" / "generation_summary.csv")}
+        return {}
     if tool == "activation_norms":
-        return {"tool": tool, "rows": _read_csv(base / "analysis" / "activation_norms.csv")}
+        return {}
     if tool == "trajectory_projection":
-        layer = _optional(query, "layer") or _last_layer(cfg)
-        interval = int(_optional(query, "interval") or 4)
-        method = _optional(query, "method") or "pca"
-        return _read_json_file(base / "analysis" / f"trajectory_projection_layer{layer}_i{interval}_{method}.json")
+        return {
+            "layer": _optional(query, "layer") or _last_layer(config),
+            "interval": int(_optional(query, "interval") or 16),
+            "method": _optional(query, "method") or "pca",
+            "max_points": int(_optional(query, "max_points") or 12000),
+        }
     if tool == "pca_components":
-        layer = _optional(query, "layer") or _last_layer(cfg)
-        n = int(_optional(query, "n") or 24)
-        return _read_json_file(base / "analysis" / f"pca_components_layer{layer}_n{n}.json")
+        return {
+            "layer": _optional(query, "layer") or _last_layer(config),
+            "n": int(_optional(query, "n") or 24),
+            "max_vectors": int(_optional(query, "max_vectors") or 20000),
+        }
     raise ValueError(f"Unknown tool: {tool}")
+
+
+def _tool_output_path(config: dict[str, Any], tool: str, params: dict[str, Any]) -> Path:
+    base = run_path(config)
+    if tool == "generation_summary":
+        return base / "analysis" / "generation_summary.csv"
+    if tool == "activation_norms":
+        return base / "analysis" / "activation_norms.csv"
+    if tool == "trajectory_projection":
+        return base / "analysis" / f"trajectory_projection_layer{params['layer']}_i{int(params['interval'])}_{params['method']}.json"
+    if tool == "pca_components":
+        return base / "analysis" / f"pca_components_layer{params['layer']}_n{int(params['n'])}.json"
+    raise ValueError(f"Unknown tool: {tool}")
+
+
+def _load_tool_output(tool: str, path: Path) -> dict[str, Any]:
+    if tool == "generation_summary":
+        return {"status": "done", "tool": tool, "rows": _read_csv(path)}
+    if tool == "activation_norms":
+        return {"status": "done", "tool": tool, "rows": _read_csv(path)}
+    return _read_json_file(path)
+
+
+def _start_analysis_once(config: dict[str, Any], tool: str, params: dict[str, Any], target: Path) -> Job:
+    key = f"{run_path(config)}::{tool}::{json.dumps(params, sort_keys=True)}"
+    existing = JOB_KEYS.get(key)
+    if existing and existing in JOBS and JOBS[existing].status in {"queued", "running"}:
+        return JOBS[existing]
+
+    job = _start_job(
+        f"analyze {tool}",
+        lambda: [str(run_tool(config, tool, params).relative_to(ROOT))],
+    )
+    JOB_KEYS[key] = job["id"]
+    return JOBS[job["id"]]
 
 
 def _ensure_config(body: dict[str, Any]) -> Path:

@@ -60,7 +60,7 @@ export function drawComponents(canvas, data) {
     ctx.fillRect(x, pad.top + h - barH, barW, barH);
   });
   label(ctx, `PCA component amplitudes · layer ${data.layer}`, 24, 32, "title");
-  label(ctx, `${data.token_vectors} token vectors`, 24, 56, "small");
+  label(ctx, `${data.token_vectors_used ?? data.token_vectors ?? 0} / ${data.token_vectors_total ?? data.token_vectors ?? 0} token vectors`, 24, 56, "small");
 }
 
 export function drawNorms(canvas, rows) {

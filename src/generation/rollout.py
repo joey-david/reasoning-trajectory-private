@@ -31,7 +31,7 @@ def run_generation(config: dict) -> Path:
                 if result["activations"]:
                     # NPZ is a compressed bundle of NumPy arrays, keyed by layer.
                     np.savez_compressed(activation_file, **result["activations"])
-                rows.append({
+                row = {
                     "sample_id": sample.id,
                     "seed": int(seed),
                     "temperature": float(temperature),
@@ -39,17 +39,16 @@ def run_generation(config: dict) -> Path:
                     "expected_answer": sample.expected_answer,
                     "text": result["text"],
                     "token_ids": result["token_ids"],
-                    "token_texts": result.get("token_texts") or [],
                     "logprobs": result["logprobs"],
-                    "predicted_answer": extract_answer(result["text"]),
-                    "success": _success(result["text"], sample.expected_answer),
-                    # Store a relative path so the whole run folder can move.
+                    "predicted_answer": result.get("predicted_answer", ""),
+                    "success": result.get("success", False),
                     "activation_file": str(activation_file.relative_to(run_path(config))) if result["activations"] else "",
                     "metadata": sample.metadata or {},
-                })
+                }
+                append_jsonl(output_path, [row])
+                print(f"[done] {sample.id} seed={seed} temp={temperature}", flush=True)
 
     # JSONL stores the human-readable metadata; NPZ stores large arrays.
-    append_jsonl(output_path, rows)
     return output_path
 
 
