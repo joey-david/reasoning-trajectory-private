@@ -18,15 +18,19 @@ Run folders are named like:
 runs/deepseekR1DistillLlama8b/sheep_08_06_2026/config.yaml
 ```
 
-## Run
+## Install
 
-Install the few core dependencies first:
+Install dependencies with `uv`:
 
 ```bash
-python3 -m pip install pyyaml numpy torch transformers
+uv venv
+uv pip install -r requirements.txt
+source .venv/bin/activate
 ```
 
-Generate model outputs and token-level activations:
+## Run
+
+Generate model outputs and save token-level activations:
 
 ```bash
 python3 scripts/generate.py runs/deepseekR1DistillLlama8b/sheep_08_06_2026
