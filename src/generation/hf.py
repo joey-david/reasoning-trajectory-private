@@ -57,6 +57,7 @@ class HFGenerator:
             "text": text,
             # Move tensors to CPU and plain lists so JSON can store them.
             "token_ids": generated_ids.detach().cpu().tolist(),
+            "token_texts": self.tokenizer.convert_ids_to_tokens(generated_ids.detach().cpu().tolist()),
             "logprobs": self._chosen_logprobs(output.scores, generated_ids),
             "activations": self._activations(inputs["input_ids"][0], generated_ids, config),
         }

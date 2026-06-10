@@ -4,18 +4,22 @@ from pathlib import Path
 
 from src.config import run_path
 from src.data import load_samples
+from src.env import load_dotenv
+from src.analysis.common import extract_answer, normalize_answer
 from src.generation.artifacts import append_jsonl
 from src.generation.hf import HFGenerator
+from src.generation.mlx import AppleMLXGenerator
 
 
 def run_generation(config: dict) -> Path:
     # NumPy is only needed when activation arrays are actually saved.
     import numpy as np
 
+    load_dotenv(run_path(config))
     out_dir = run_path(config) / "generation"
     output_path = out_dir / "generations.jsonl"
     activation_dir = out_dir / "activations"
-    generator = HFGenerator(config)
+    generator = _generator(config)
     rows = []
 
     # One row is produced for every sample x temperature x seed combination.
@@ -35,7 +39,10 @@ def run_generation(config: dict) -> Path:
                     "expected_answer": sample.expected_answer,
                     "text": result["text"],
                     "token_ids": result["token_ids"],
+                    "token_texts": result.get("token_texts") or [],
                     "logprobs": result["logprobs"],
+                    "predicted_answer": extract_answer(result["text"]),
+                    "success": _success(result["text"], sample.expected_answer),
                     # Store a relative path so the whole run folder can move.
                     "activation_file": str(activation_file.relative_to(run_path(config))) if result["activations"] else "",
                     "metadata": sample.metadata or {},
@@ -44,3 +51,16 @@ def run_generation(config: dict) -> Path:
     # JSONL stores the human-readable metadata; NPZ stores large arrays.
     append_jsonl(output_path, rows)
     return output_path
+
+
+def _generator(config: dict):
+    backend = str(config.get("backend", "hf")).lower()
+    if backend in {"mlx", "apple_mlx", "apple-mlx"}:
+        return AppleMLXGenerator(config)
+    return HFGenerator(config)
+
+
+def _success(text: str, expected_answer: str | None) -> bool:
+    if expected_answer is None or expected_answer == "":
+        return False
+    return extract_answer(text) == normalize_answer(str(expected_answer))
