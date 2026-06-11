@@ -89,5 +89,5 @@ class HFGenerator:
         for layer in layers:
             # Shape: generated_tokens x hidden_size for this layer.
             hidden = output.hidden_states[layer][0, start:, :]
-            activations[str(layer)] = hidden.float().detach().cpu().numpy()
+            activations[str(layer)] = hidden.detach().to(dtype=self.torch.float16).cpu().numpy()
         return activations
