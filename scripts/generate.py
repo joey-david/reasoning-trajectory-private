@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Run one experiment folder.
 
-Your goal is to make this boring:
-
     python scripts/generate.py runs/<model>/<experiment>
 
-Start by implementing one small piece at a time. Do not add remote execution,
-analysis, dashboards, or multiprocessing here.
+Do not add remote execution, analysis, dashboards, or multiprocessing here.
 """
 
 from __future__ import annotations
@@ -30,10 +27,6 @@ def main() -> int:
     run_path = Path(args.run_path)
     config = load_config(run_path)
 
-    # Implement this flow slowly:
-    # 1. load_samples(config["dataset_path"])
-    # 2. select_samples(..., sample_ids/sample_limit/sample_offset)
-    # 3. generate_run(run_path, config, selected_samples)
     samples = load_samples(config["dataset_path"])
     selected = select_samples(samples, config)
     generate_run(run_path, config, selected)

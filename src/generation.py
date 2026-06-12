@@ -4,10 +4,17 @@ from pathlib import Path
 from typing import Any
 
 
-def generate_run(run_path: Path, config: dict[str, Any], samples: list[dict[str, Any]]) -> None:
+# TODO: Set the model of choice that will generate, the precision
+# TODO:
+# TODO:
+# TODO:
+# TODO:
+def generate_run(
+    run_path: Path, config: dict[str, Any], samples: list[dict[str, Any]]
+) -> None:
     """Generate text for selected samples.
 
-    This is intentionally a sketch with comments. Fill it in by hand.
+
 
     Hugging Face functions you will probably use:
     - `AutoTokenizer.from_pretrained(config["model_name"])`

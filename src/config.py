@@ -10,15 +10,17 @@ def load_config(run_path: str | Path) -> dict[str, Any]:
     """Load `config.yaml` from a run folder.
 
     Implementing notes:
-    - Use `Path(run_path)` so strings and Path objects both work.
-    - Use `yaml.safe_load(handle)` instead of `yaml.load`.
     - Add `config["_run_path"] = str(run_path)` so later code knows where to
       write `generation/generations.jsonl`.
     """
     run_path = Path(run_path)
+    # the / is an alias for .joinpath
     config_path = run_path / "config.yaml"
     with config_path.open("r", encoding="utf-8") as handle:
+        # NOTE: yaml.safe_load(handle) in a with is a good pattern
         config = yaml.safe_load(handle) or {}
+    # save this as an extra param: not needeed in the config itself because obvious,
+    # but may be needed here, during execution.
     config["_run_path"] = str(run_path)
     return config
 
