@@ -6,26 +6,30 @@ from typing import Any
 import yaml
 
 
-def load_run_config(run_path: str | Path) -> dict[str, Any]:
-    path = Path(run_path)
-    # Accept either the run folder or the config file itself.
-    config_path = path / "config.yaml" if path.is_dir() else path
-    with config_path.open("r", encoding="utf-8") as handle:
-        # YAML maps naturally to Python dictionaries and lists.
-        config = yaml.safe_load(handle) or {}
+def load_config(run_path: str | Path) -> dict[str, Any]:
+    """Load `config.yaml` from a run folder.
 
-    # Store the run folder so later code can write outputs next to config.yaml.
-    config["_run_path"] = str(config_path.parent)
+    Implementing notes:
+    - Use `Path(run_path)` so strings and Path objects both work.
+    - Use `yaml.safe_load(handle)` instead of `yaml.load`.
+    - Add `config["_run_path"] = str(run_path)` so later code knows where to
+      write `generation/generations.jsonl`.
+    """
+    run_path = Path(run_path)
+    config_path = run_path / "config.yaml"
+    with config_path.open("r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+    config["_run_path"] = str(run_path)
     return config
 
 
-def run_path(config: dict[str, Any]) -> Path:
-    # Convert the stored string back to a Path for clean path joining.
-    return Path(config["_run_path"])
+def resolve_repo_path(path_text: str | Path) -> Path:
+    """Resolve a path relative to the repository root.
 
-
-def require(config: dict[str, Any], key: str) -> Any:
-    # Small helper for values that should fail loudly when absent.
-    if key not in config:
-        raise KeyError(f"Missing required config key: {key}")
-    return config[key]
+    Useful Python tools:
+    - `Path(__file__).resolve().parents[1]` finds this repo root from `src/`.
+    - `Path.is_absolute()` tells you whether a path already starts at `/`.
+    """
+    root = Path(__file__).resolve().parents[1]
+    path = Path(path_text)
+    return path if path.is_absolute() else root / path

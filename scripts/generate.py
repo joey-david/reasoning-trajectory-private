@@ -1,28 +1,44 @@
 #!/usr/bin/env python3
+"""Run one experiment folder.
+
+Your goal is to make this boring:
+
+    python scripts/generate.py runs/<model>/<experiment>
+
+Start by implementing one small piece at a time. Do not add remote execution,
+analysis, dashboards, or multiprocessing here.
+"""
+
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
+import sys
 
-# Let this script import the local `src` package when run from any directory.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.config import load_run_config
-from src.generation import run_generation
+from src.config import load_config
+from src.data import load_samples, select_samples
+from src.generation import generate_run
 
 
-def main() -> None:
-    # argparse turns command-line text into a small object we can read below.
-    parser = argparse.ArgumentParser(description="Run model generation for a run folder.")
-    parser.add_argument("run_path", help="Path to runs/<model>/<run>")
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate outputs for one run folder.")
+    parser.add_argument("run_path", help="Example: runs/Qwen3-14B/gpqa_small")
     args = parser.parse_args()
 
-    # The run folder owns its config; the core generator owns all model work.
-    output = run_generation(load_run_config(args.run_path))
-    print(output)
+    run_path = Path(args.run_path)
+    config = load_config(run_path)
+
+    # Implement this flow slowly:
+    # 1. load_samples(config["dataset_path"])
+    # 2. select_samples(..., sample_ids/sample_limit/sample_offset)
+    # 3. generate_run(run_path, config, selected_samples)
+    samples = load_samples(config["dataset_path"])
+    selected = select_samples(samples, config)
+    generate_run(run_path, config, selected)
+    return 0
 
 
-# Only run the CLI when this file is executed directly, not when imported.
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
