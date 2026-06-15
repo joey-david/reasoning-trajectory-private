@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import load_config
 from src.data import load_samples, select_samples
-from src.generation import generate_run
+from src.generation_pipeline import generate_run
 
 
 def main() -> int:
