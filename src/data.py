@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,7 @@ def load_samples(
 
 
 def select_samples(
-    samples: list[dict[str, Any]], config: dict[str, Any]
+    samples: list[dict[str, Any]], config: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
     """Apply simple selection from config.
 
@@ -66,7 +67,7 @@ def select_samples(
     return samples[offset : offset + int(limit)]
 
 
-def prompt_from_sample(sample: dict[str, Any], config: dict[str, Any]) -> str:
+def prompt_from_sample(sample: dict[str, Any], config: Mapping[str, Any]) -> str:
     """Build the final prompt text sent to the model.
 
     Dataset fields to support first:

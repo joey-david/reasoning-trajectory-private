@@ -1,122 +1,156 @@
-"""Generation output dataclass with activations.
-Used to store the first pass of generation, on which activations are
-computed during the second pass"""
+"""Generation output dataclasses.
+
+These are in-memory / JSON-facing objects.
+Heavy tensors are referenced by artifact paths, not embedded in JSON.
+"""
 
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Union
+from typing import Any
 
-from yaml import tokens
-import numpy as np
 
-@dataclass
+HIDDEN_STATE_CONVENTION = (
+    "decoder_block_output_pre_final_norm; token_pos predicted by "
+    "predict_from_pos=token_pos-1"
+)
+
+
+@dataclass(slots=True)
 class TimestepArtifacts:
-    """Per-token (later, timestep) artifacts, optimized for GPU storage (speedup)."""
-    tokens_ids: List[int]
-    tokens_str: str
+    """Scalar artifacts for one generated token.
 
-    next_token_id: int
+    Convention:
+        token_id is the generated token at token_pos.
+        Its probability/CE/rank are computed from hidden state at predict_from_pos.
 
-    # entropy per selected layer
-    entropy: Optional[List[float]] = None
+    For autoregressive LMs:
+        predict_from_pos = token_pos - 1
+    """
 
-    # cross_entropy for the following targets for selected layers
-    CE_next_tok: Optional[List[float]] = None
-    CE_gold_ans: Optional[List[float]] = None
-    # CE for produced_answer (retroactive)
-    CE_produced_ans: Optional[List[float]] = None
+    token_id: int
+    token_str: str
+    token_pos: int
+    predict_from_pos: int
 
-    # prob and rank of eos token for selected layers
-    prob_eos: Optional[List[float]] = None
-    rank_eos: Optional[List[int]] = None
+    # All per-layer lists follow CompleteGenerationOutput.layer_indices order.
+    entropy: list[float] | None = None
+    ce_next_token: list[float] | None = None
+    rank_next_token: list[int] | None = None
 
-    # and what we came here for: full hidden state arrays per layer
-    # TODO: check quantization for efficient storage
-    hidden_states: Optional[List[Union["torch.Tensor", np.ndarray]]] = None
+    ce_gold_answer: list[float] | None = None
+    rank_gold_answer: list[int] | None = None
+    prob_gold_answer: list[float] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dict, including hidden states if present.
-        This allows the caller to control whether hidden_states are stored by setting them to None"""
+    prob_eos: list[float] | None = None
+    rank_eos: list[int] | None = None
 
-        result= {
-            "tokens_ids": self.tokens_ids,
-            "tokens_str": self.tokens_str,
-            "next_token_id": self.next_token_id,
+    @classmethod
+    def from_token(
+        cls,
+        *,
+        token_id: int,
+        token_str: str,
+        token_pos: int,
+    ) -> "TimestepArtifacts":
+        return cls(
+            token_id=int(token_id),
+            token_str=token_str,
+            token_pos=token_pos,
+            predict_from_pos=token_pos - 1,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "token_id": self.token_id,
+            "token_str": self.token_str,
+            "token_pos": self.token_pos,
+            "predict_from_pos": self.predict_from_pos,
             "entropy": self.entropy,
-            "cross_entropy_next_tok": self.CE_next_tok,
-            "cross_entropy_gold_ans": self.CE_gold_ans,
-            "cross_entropy_produced_ans": self.CE_gold_ans,
+            "ce_next_token": self.ce_next_token,
+            "rank_next_token": self.rank_next_token,
+            "ce_gold_answer": self.ce_gold_answer,
+            "rank_gold_answer": self.rank_gold_answer,
+            "prob_gold_answer": self.prob_gold_answer,
             "prob_eos": self.prob_eos,
             "rank_eos": self.rank_eos,
         }
 
-        if self.hidden_states is not None:
-            if isinstance(self.hidden_states, list):
-                result["hidden_states"] = [
-                    h.tolist() if hasattr(h, 'tolist') else h
-                    for h in self.hidden_states
-                ]
-            else:
-                result["hidden_states"] = self.hidden_states
 
-        return result
-
-@dataclass
+@dataclass(slots=True)
 class CompleteGenerationOutput:
-    """Complete generation output with activations and artifacts"""
-    # the layers we want to analyze
+    """Complete generation output for one sample/seed/temperature."""
+
+    # Identity
+    sample_id: str
+    seed: int
+    temperature: float
+    model_name: str
+
+    # Layer convention
     layer_indices: list[int]
+    hidden_state_convention: str
 
-    input_ids = List[int]
-    full_seq_ids = List[int]
+    # Core sequence data
+    prompt: str
+    input_ids: list[int]
+    generated_token_ids: list[int]
+    full_seq_ids: list[int]
 
-    # Reasoning markers
-    dp1_idx: int  # first reasoning token
-    dp2_idx: Optional[int] = None  # start of final ans (if not cutoff)
-    reasoning_length: Optional[int] = None
+    # Decision-point indices
+    dp1_idx: int
+    dp2_idx: int | None = None
+    reasoning_length: int | None = None
 
-    # Text outputs
+    # Text/eval
     produced_text: str = ""
-    produced_ans: str = ""
-    # correct answer according to the dataset
-    gold_ans: Optional[str] = None
+    produced_answer: str | None = None
+    gold_answer: str | None = None
+    is_correct: bool | None = None
 
-    # artifacts dataclass for each selected generation timestep
-    # will be every token at first, should help identify reasoning
-    # step demarcations
+    # Per-token scalar artifacts
     timestep_artifacts: list[TimestepArtifacts] = field(default_factory=list)
 
-    # TODO: windows, numsteps once clear steps demarcations are identified
-    # group tokens/timesteps by step window, and keep track of the number of steps
+    # Heavy artifacts live in separate binary files
+    hidden_states_file: str | None = None
 
-    metadata: Dict[str, Any] = field(default_factory=list)
+    # Later: step/window aggregations
+    windows: dict[str, dict[str, Any]] = field(default_factory=dict)
+    num_steps: int | None = None
 
-    def to_dict(self, minimal: bool = False) -> Dict[str, Any]
-        """Convert self to dict for storage/serialization
-        Args:
-            minimal: if True, only include core fields:
-        (produced_text, full_seq_ids, dp1_idx, gold_ans"""
-        if minimal:
-            return {
-                "produced_text": self.produced_text,
-                "input_ids": self.input_ids,
-                "full_seq_ids": self.full_seq_ids,
-                "dp1_idx": self.dp1_idx,
-                "dp2_idx": self.dp2_idx,
-                "gold_ans": self.gold_ans,
-                "produced_ans": self.produced_ans,
-                "reasoning_length": self.reasoning_length,
-            }
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-        return {
-            "produced_text": self.produced_text,
+    def to_dict(self, minimal: bool = False) -> dict[str, Any]:
+        base = {
+            "sample_id": self.sample_id,
+            "seed": self.seed,
+            "temperature": self.temperature,
+            "model_name": self.model_name,
+            "layer_indices": self.layer_indices,
+            "hidden_state_convention": self.hidden_state_convention,
+            "prompt": self.prompt,
             "input_ids": self.input_ids,
+            "generated_token_ids": self.generated_token_ids,
             "full_seq_ids": self.full_seq_ids,
             "dp1_idx": self.dp1_idx,
             "dp2_idx": self.dp2_idx,
-            "gold_ans": self.gold_ans,
-            "produced_ans": self.produced_ans,
             "reasoning_length": self.reasoning_length,
-            "timesteps": [t.to_dict() for t in self.timestep_artifacts],
-            "metadata": self.metadata,
+            "produced_text": self.produced_text,
+            "produced_answer": self.produced_answer,
+            "gold_answer": self.gold_answer,
+            "is_correct": self.is_correct,
+            "hidden_states_file": self.hidden_states_file,
         }
+
+        if minimal:
+            return base
+
+        base.update(
+            {
+                "timesteps": [t.to_dict() for t in self.timestep_artifacts],
+                "windows": self.windows,
+                "num_steps": self.num_steps,
+                "metadata": self.metadata,
+            }
+        )
+        return base
