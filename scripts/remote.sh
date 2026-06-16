@@ -23,9 +23,10 @@ remote_root="${REMOTE_REPO_ROOT:-/home/lamsade/jdavid/research/reasoning}"
 case "$action" in
 push)
   # sync code, the run config, and datasets
-  rsync -avz --delete \ # NOTE: avz: archive, verbose, compress.
   # --delete: make the destination mirror the source
-  --exclude .git/ \
+  # NOTE: avz: archive, verbose, compress.
+  rsync -avz --delete \
+    --exclude .git/ \
     --exclude .venv/ \
     --exclude 'runs/*/*/generation/' \
     --exclude 'runs/*/*/analysis/' \

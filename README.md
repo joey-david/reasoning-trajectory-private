@@ -4,38 +4,60 @@ Research sandbox for LLM reasoning analysis.
 
 ## Workflow
 
-1. set up dataset and config.yaml
-2. launch generation on an inference server (or locally)
-3. pull results locally and start desired analysis tools
-4. visualize in website.
-
-### run folder config
-
-The workflow is centered around a modular run architecture.
-The runs folder contains 1 subfolder per model, which contains 1 subfolder per experiment (and 1 experiment often = 1 dataset).
-
-They are structured as such.
+Each experiment is a run folder:
 
 ```text
 runs/<model>/<experiment>/
-  config.yaml # see [[config.yaml]]
-  generation/ # contains generated outputs and activations
-  analysis/ # contains the outputs of the analysis tools on the generations
+  config.yaml
+  dataset.jsonl        # optional prepared snapshot
+  generation/          # generated text, per-run JSON, optional activations
+  analysis/            # later analysis outputs
 ```
 
-Start here:
+### Dataset preparation
+
+1. Select the dataset in `config.yaml`.
+   Use `dataset.source: hf` for Hugging Face datasets or `jsonl` for a local file.
+   Set `dataset.adapter`, `split`, `sample_offset`, `sample_limit`, and optional
+   `shuffle_seed` there.
+
+2. Optionally prepare a pinned dataset snapshot:
 
 ```bash
-source .venv/bin/activate
-python scripts/generate.py runs/Qwen3-14B/gpqa_diamond_x6_last48_int8
+python scripts/prepare_dataset.py runs/<model_name>/<run_name>
 ```
 
-Remote sync is intentionally simple:
+If `dataset.jsonl` exists, generation uses it. If not, generation loads and
+normalizes the dataset directly from the `dataset:` config block.
+
+### Main Generation
+
+1. Parse prompts through `prompt:` config.
+   `prompt.mode: plain` joins system, instruction, and question text. `chat`
+   uses the tokenizer chat template when the model provides one.
+
+2. Run generation and activation capture:
 
 ```bash
-bash scripts/remote.sh push runs/Qwen3-14B/gpqa_diamond_x6_last48_int8
-bash scripts/remote.sh pull runs/Qwen3-14B/gpqa_diamond_x6_last48_int8
+python scripts/generate.py runs/<model_name>/<run_name>
 ```
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md) before implementing anything. The Python
-files are mostly commented placeholders so you can fill in the pieces yourself.
+Outputs are written under `generation/outputs/`
+and appended to `generation/generations.jsonl`. Captured activations are saved
+under `generation/hidden_states/` and referenced by `hidden_states_file`.
+
+### Activations capture
+
+Set `capture.layers: [lt1, lt2, ... ltn]` to capture activations of target layers `lt1`, `lt2`, etc. Set `capture.layers: [-1]` for the final layer only. Set `capture.layers: []`
+to skip activation capture; generation still runs and `hidden_states_file` stays
+`null`.
+
+1. For remote runs, push the run folder, generate remotely, then pull results:
+
+```bash
+bash scripts/remote.sh push runs/<model_name>/<run_name>
+bash scripts/remote.sh pull runs/<model_name>/<run_name>
+```
+
+Post-generation analysis is separate from this generation/capture workflow.
+Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing shared schemas.

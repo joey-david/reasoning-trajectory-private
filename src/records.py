@@ -13,11 +13,7 @@ def generation_record(
     temperature: float,
     activation_file: str | None,
 ) -> dict[str, Any]:
-    """Create one JSON-serializable generation row.
-
-    Keep output rows plain: strings, numbers, lists, dicts, and `None`.
-    Avoid putting tensors or NumPy arrays in JSON.
-    """
+    """Create one JSON-serializable generation row."""
     return {
         "sample_id": sample.get("id") or sample.get("problem_id"),
         "seed": seed,

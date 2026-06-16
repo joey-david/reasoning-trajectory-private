@@ -24,11 +24,11 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from tqdm.auto import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from src.artifact_store import save_generation_output
 from src.config import RunConfig
-from src.data import prompt_from_sample
 from src.features.logit_lens import (
     ce_for_token,
     entropy_from_logits,
@@ -40,6 +40,20 @@ from src.generation_output import (
     CompleteGenerationOutput,
     TimestepArtifacts,
 )
+from src.models.hf_loader import load_hf_model_and_tokenizer
+from src.models.introspection import (
+    assert_unique_layers,
+    get_base_model,
+    get_decoder_layers,
+    get_final_norm,
+    get_hidden_size,
+    get_input_device,
+    get_lm_head,
+    module_device,
+    resolve_layer_indices,
+)
+from src.prompting.templates import build_prompt
+from src.run_io import generation_exists
 
 
 def generate_run(
@@ -48,8 +62,6 @@ def generate_run(
     samples: list[dict[str, Any]],
 ) -> None:
     """Generate and store outputs for a run folder."""
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
     run_path = Path(run_path)
     cfg = (
         config
@@ -57,28 +69,55 @@ def generate_run(
         else RunConfig.from_dict(run_path, dict(config))
     )
 
-    if cfg.backend != "hf":
-        raise ValueError(f"Unsupported generation backend: {cfg.backend!r}")
+    model_cfg = cfg["model"]
+    generation_cfg = cfg["generation"]
+    capture_cfg = cfg.get("capture", {})
+    prompt_cfg = cfg.get("prompt", {})
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        cfg.model_name,
-        trust_remote_code=cfg.trust_remote_code,
-    )
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name,
-        device_map=cfg.device_map,
-        torch_dtype=torch_dtype_from_config(cfg.torch_dtype),
-        trust_remote_code=cfg.trust_remote_code,
-    ).eval()
+    if model_cfg.get("backend", "hf") != "hf":
+        raise ValueError(
+            f"Unsupported generation backend: {model_cfg.get('backend')!r}"
+        )
 
-    for sample in samples:
-        prompt = prompt_from_sample(sample, cfg)
-        sample_id = sample_id_from_sample(sample)
-        gold_answer = gold_answer_from_sample(sample)
-        gold_token_id = single_token_id(tokenizer, gold_answer)
+    model, tokenizer = load_hf_model_and_tokenizer(model_cfg)
 
-        for seed in cfg.seeds:
-            for temperature in cfg.temperatures:
+    base_seed = int(generation_cfg.get("base_seed", 0))
+    num_samples_per_item = int(generation_cfg.get("num_samples_per_item", 1))
+    temperature = float(generation_cfg.get("temperature", 0.0))
+    max_new_tokens = int(generation_cfg.get("max_new_tokens", 1024))
+    top_p = generation_cfg.get("top_p")
+    top_k = generation_cfg.get("top_k")
+
+    layer_indices = list(capture_cfg.get("layers", [-1]))
+    capture_enabled = bool(capture_cfg.get("enabled", True))
+    if not capture_enabled:
+        layer_indices = []
+    capture_diagnostics = bool(capture_cfg.get("diagnostics", False))
+    storage_dtype = str(capture_cfg.get("activation_storage_dtype", "float16"))
+
+    with tqdm(
+        total=len(samples) * num_samples_per_item,
+        desc="generation",
+        unit="iter",
+    ) as progress:
+        for sample_index, sample in enumerate(samples):
+            prompt = build_prompt(sample, prompt_cfg, tokenizer)
+            sample_id = sample_id_from_sample(sample)
+            gold_answer = gold_answer_from_sample(sample)
+            gold_token_id = single_token_id(tokenizer, gold_answer)
+
+            for sample_iter in range(num_samples_per_item):
+                seed = base_seed + sample_index * 10_000 + sample_iter
+                progress_label = (
+                    f"item {sample_index + 1}/{len(samples)} {sample_id} "
+                    f"iter {sample_iter + 1}/{num_samples_per_item}"
+                )
+
+                if generation_exists(run_path, sample_id, seed, temperature):
+                    progress.set_description(f"skipping {progress_label}")
+                    progress.update(1)
+                    continue
+
                 output, hidden_states = generate_one_twopass(
                     model=model,
                     tokenizer=tokenizer,
@@ -86,20 +125,25 @@ def generate_run(
                     sample_id=sample_id,
                     seed=seed,
                     temperature=temperature,
-                    max_new_tokens=cfg.max_new_tokens,
-                    layer_indices=cfg.layers,
-                    model_name=cfg.model_name,
+                    max_new_tokens=max_new_tokens,
+                    layer_indices=layer_indices,
+                    model_name=model_cfg["name"],
                     gold_answer=gold_answer,
                     gold_token_id=gold_token_id,
-                    capture_diagnostics=cfg.capture_diagnostics,
-                    top_p=cfg.top_p,
+                    capture_diagnostics=capture_diagnostics,
+                    top_p=top_p,
+                    top_k=top_k,
+                    progress=progress,
+                    progress_label=progress_label,
                 )
+
                 save_generation_output(
                     run_path=run_path,
                     output=output,
-                    hidden_states=hidden_states,
-                    storage_dtype=cfg.activation_storage_dtype,
+                    hidden_states=hidden_states if capture_enabled else None,
+                    storage_dtype=storage_dtype,
                 )
+                progress.update(1)
 
 
 @torch.inference_mode()
@@ -118,7 +162,10 @@ def generate_one_twopass(
     gold_token_id: int | None = None,
     capture_diagnostics: bool = True,
     top_p: float | None = None,
-) -> tuple[CompleteGenerationOutput, torch.Tensor]:
+    top_k: int | None = None,
+    progress: Any | None = None,
+    progress_label: str = "",
+) -> tuple[CompleteGenerationOutput, torch.Tensor | None]:
     """Generate one sample and capture selected-layer hidden states.
 
     Convention:
@@ -129,12 +176,10 @@ def generate_one_twopass(
         output:
             JSON-facing generation output with scalar timestep artifacts.
         hidden_states:
-            Tensor [T, L, H], CPU, float32.
+            Tensor [T, L, H], CPU, float32, or None when no layers are requested.
     """
-    if not layer_indices:
-        raise ValueError("layer_indices must contain at least one layer index")
-
-    assert_unique_layers(layer_indices)
+    if layer_indices:
+        assert_unique_layers(layer_indices)
     set_seed(seed)
 
     input_device = get_input_device(model)
@@ -166,7 +211,11 @@ def generate_one_twopass(
         generate_kwargs["temperature"] = float(temperature)
         if top_p is not None:
             generate_kwargs["top_p"] = float(top_p)
+        if top_k is not None:
+            generate_kwargs["top_k"] = int(top_k)
 
+    if progress is not None:
+        progress.set_description(f"generation {progress_label}".strip())
     generated = model.generate(**generate_kwargs)
 
     full_seq_ids = generated[0].detach().cpu().tolist()
@@ -181,17 +230,23 @@ def generate_one_twopass(
     # -------------------------------------------------------------------------
     # Pass 2: teacher-forced selected-layer capture
     # -------------------------------------------------------------------------
-    hidden_states = capture_selected_hidden_states(
-        model=model,
-        full_seq_ids=full_seq_ids,
-        prompt_len=prompt_len,
-        num_generated=len(generated_token_ids),
-        layer_indices=layer_indices,
-    )
+    hidden_states = None
+    if layer_indices:
+        if progress is not None:
+            progress.set_description(f"activation capture {progress_label}".strip())
+        hidden_states = capture_selected_hidden_states(
+            model=model,
+            full_seq_ids=full_seq_ids,
+            prompt_len=prompt_len,
+            num_generated=len(generated_token_ids),
+            layer_indices=layer_indices,
+        )
+    elif progress is not None:
+        progress.set_description(f"activation capture skipped {progress_label}".strip())
 
     timestep_artifacts: list[TimestepArtifacts] = []
 
-    if capture_diagnostics and len(generated_token_ids) > 0:
+    if capture_diagnostics and hidden_states is not None and len(generated_token_ids) > 0:
         timestep_artifacts = compute_timestep_artifacts(
             model=model,
             tokenizer=tokenizer,
@@ -489,99 +544,6 @@ class SelectedLayerCapture:
     def __exit__(self, exc_type, exc, tb) -> None:
         for handle in self.handles:
             handle.remove()
-
-
-def get_base_model(model: PreTrainedModel) -> torch.nn.Module:
-    """Return the decoder/base model, avoiding full-vocab logits in pass 2."""
-    if hasattr(model, "model") and hasattr(model.model, "layers"):
-        return model.model
-
-    if hasattr(model, "transformer") and hasattr(model.transformer, "h"):
-        return model.transformer
-
-    if hasattr(model, "gpt_neox") and hasattr(model.gpt_neox, "layers"):
-        return model.gpt_neox
-
-    raise TypeError(f"Could not find base decoder model for {type(model).__name__}")
-
-
-def get_decoder_layers(model: PreTrainedModel) -> torch.nn.ModuleList:
-    if hasattr(model, "model") and hasattr(model.model, "layers"):
-        return model.model.layers
-
-    if hasattr(model, "transformer") and hasattr(model.transformer, "h"):
-        return model.transformer.h
-
-    if hasattr(model, "gpt_neox") and hasattr(model.gpt_neox, "layers"):
-        return model.gpt_neox.layers
-
-    raise TypeError(f"Could not find decoder layers for {type(model).__name__}")
-
-
-def get_lm_head(model: PreTrainedModel) -> torch.nn.Module:
-    if hasattr(model, "lm_head"):
-        return model.lm_head
-
-    if hasattr(model, "embed_out"):
-        return model.embed_out
-
-    raise TypeError(f"Could not find lm_head for {type(model).__name__}")
-
-
-def get_final_norm(model: PreTrainedModel) -> torch.nn.Module | None:
-    if hasattr(model, "model") and hasattr(model.model, "norm"):
-        return model.model.norm
-
-    if hasattr(model, "transformer") and hasattr(model.transformer, "ln_f"):
-        return model.transformer.ln_f
-
-    if hasattr(model, "gpt_neox") and hasattr(model.gpt_neox, "final_layer_norm"):
-        return model.gpt_neox.final_layer_norm
-
-    return None
-
-
-def get_input_device(model: PreTrainedModel) -> torch.device:
-    return model.get_input_embeddings().weight.device
-
-
-def module_device(module: torch.nn.Module) -> torch.device:
-    try:
-        return next(module.parameters()).device
-    except StopIteration:
-        return get_input_device(module)  # type: ignore[arg-type]
-
-
-def get_hidden_size(model: PreTrainedModel) -> int:
-    if hasattr(model.config, "hidden_size"):
-        return int(model.config.hidden_size)
-
-    if hasattr(model.config, "n_embd"):
-        return int(model.config.n_embd)
-
-    return int(model.get_input_embeddings().weight.shape[1])
-
-
-def resolve_layer_indices(layer_indices: list[int], num_layers: int) -> list[int]:
-    resolved = []
-
-    for layer in layer_indices:
-        idx = layer if layer >= 0 else num_layers + layer
-
-        if idx < 0 or idx >= num_layers:
-            raise IndexError(
-                f"Layer index {layer} resolves to {idx}, "
-                f"but model has {num_layers} decoder layers"
-            )
-
-        resolved.append(idx)
-
-    return resolved
-
-
-def assert_unique_layers(layer_indices: list[int]) -> None:
-    if len(set(layer_indices)) != len(layer_indices):
-        raise ValueError(f"Duplicate layer indices are not allowed: {layer_indices}")
 
 
 def set_seed(seed: int) -> None:

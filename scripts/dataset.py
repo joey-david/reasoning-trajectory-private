@@ -52,8 +52,8 @@ def main() -> int:
         for row in selected:
             repeated.extend([row] * args.repeat)
 
-        write_jsonl(Path(args.dest), selected)
-        print(f"wrote {len(selected)} rows to {args.dest}")
+        write_jsonl(Path(args.dest), repeated)
+        print(f"wrote {len(repeated)} rows to {args.dest}")
         return 0
 
     raise ValueError(f"unknown command: {args.command}")
