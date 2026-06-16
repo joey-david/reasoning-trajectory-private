@@ -36,12 +36,25 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_cfg["name"],
-        device_map=model_cfg.get("device_map", "auto"),
-        torch_dtype=torch_dtype_from_config(model_cfg.get("dtype")),
-        trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
-        **model_kwargs,
-    ).eval()
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_cfg["name"],
+            device_map=model_cfg.get("device_map", "auto"),
+            torch_dtype=torch_dtype_from_config(model_cfg.get("dtype")),
+            trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
+            **model_kwargs,
+        ).eval()
+    except ImportError:
+        if model_kwargs.get("attn_implementation") != "flash_attention_2":
+            raise
+        print("flash_attention_2 unavailable; retrying with attn_implementation=sdpa")
+        model_kwargs["attn_implementation"] = "sdpa"
+        model = AutoModelForCausalLM.from_pretrained(
+            model_cfg["name"],
+            device_map=model_cfg.get("device_map", "auto"),
+            torch_dtype=torch_dtype_from_config(model_cfg.get("dtype")),
+            trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
+            **model_kwargs,
+        ).eval()
 
     return model, tokenizer

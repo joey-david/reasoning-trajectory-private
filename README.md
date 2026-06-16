@@ -42,9 +42,11 @@ normalizes the dataset directly from the `dataset:` config block.
 python scripts/generate.py runs/<model_name>/<run_name>
 ```
 
-Outputs are written under `generation/outputs/`
-and appended to `generation/generations.jsonl`. Captured activations are saved
-under `generation/hidden_states/` and referenced by `hidden_states_file`.
+Outputs use a compact normalized schema: `metadata.json` stores run-level
+metadata, `samples/<sample>.json` stores prompt/input/gold fields once, and
+`generations.jsonl` stores per-generation fields and drives resume checks.
+Reconstruct full tokens with `input_ids + generated_token_ids`. Captured activations
+live under `generation/hidden_states/` and are referenced by `hidden_states_file`.
 
 ### Activations capture
 

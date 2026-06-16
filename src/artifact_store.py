@@ -26,23 +26,23 @@ def save_generation_output(
     output: CompleteGenerationOutput,
     hidden_states: torch.Tensor | np.ndarray | None,
     storage_dtype: str,
-    write_full_json: bool = True,
+    write_full_json: bool = False,
 ) -> CompleteGenerationOutput:
     """Save one generation output and return the updated object.
 
     Directory layout:
         generation/
           generations.jsonl
-          outputs/<sample>__seed...json
+          samples/<sample>.json
           hidden_states/<sample>__seed....npz
     """
     generation_dir = run_path / "generation"
-    outputs_dir = generation_dir / "outputs"
     hidden_dir = generation_dir / "hidden_states"
+    samples_dir = generation_dir / "samples"
 
     generation_dir.mkdir(parents=True, exist_ok=True)
-    outputs_dir.mkdir(parents=True, exist_ok=True)
     hidden_dir.mkdir(parents=True, exist_ok=True)
+    samples_dir.mkdir(parents=True, exist_ok=True)
 
     stem = artifact_stem(output.sample_id, output.seed, output.temperature)
 
@@ -56,16 +56,59 @@ def save_generation_output(
         )
         output.hidden_states_file = hidden_path.relative_to(run_path).as_posix()
 
-    if write_full_json:
-        json_path = outputs_dir / f"{stem}.json"
-        write_json(json_path, output.to_dict(minimal=False))
+    write_json(generation_dir / "metadata.json", generation_metadata(output, storage_dtype))
 
+    sample_path = samples_dir / f"{sanitize_filename(output.sample_id)}.json"
+    if not sample_path.exists():
+        write_json(sample_path, sample_record(output))
+
+    row = compact_generation_record(output)
+    if write_full_json:
+        write_json(generation_dir / f"{stem}.json", output.to_dict(minimal=False))
     append_jsonl(
         generation_dir / "generations.jsonl",
-        output.to_dict(minimal=True),
+        row,
     )
 
     return output
+
+
+def generation_metadata(output: CompleteGenerationOutput, storage_dtype: str) -> dict[str, Any]:
+    return {
+        "schema_version": 2,
+        "model_name": output.model_name,
+        "layer_indices": output.layer_indices,
+        "hidden_state_convention": output.hidden_state_convention,
+        "activation_storage_dtype": storage_dtype,
+    }
+
+
+def sample_record(output: CompleteGenerationOutput) -> dict[str, Any]:
+    return {
+        "sample_id": output.sample_id,
+        "prompt": output.prompt,
+        "input_ids": output.input_ids,
+        "gold_answer": output.gold_answer,
+        "dp1_idx": output.dp1_idx,
+    }
+
+
+def compact_generation_record(output: CompleteGenerationOutput) -> dict[str, Any]:
+    row = {
+        "sample_id": output.sample_id,
+        "seed": output.seed,
+        "temperature": output.temperature,
+        "generated_token_ids": output.generated_token_ids,
+        "produced_text": output.produced_text,
+        "produced_answer": output.produced_answer,
+        "is_correct": output.is_correct,
+        "dp2_idx": output.dp2_idx,
+        "reasoning_length": output.reasoning_length,
+        "hidden_states_file": output.hidden_states_file,
+    }
+    if any(t.entropy is not None for t in output.timestep_artifacts):
+        row["timesteps"] = [t.to_dict() for t in output.timestep_artifacts]
+    return row
 
 
 def save_hidden_states_npz(

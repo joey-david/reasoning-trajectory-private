@@ -59,7 +59,7 @@ from src.models.introspection import (
     resolve_layer_indices,
 )
 from src.prompting.templates import build_prompt
-from src.run_io import generation_exists
+from src.run_io import load_generation_index
 
 
 def generate_run(
@@ -100,6 +100,7 @@ def generate_run(
         layer_indices = []
     capture_diagnostics = bool(capture_cfg.get("diagnostics", False))
     storage_dtype = str(capture_cfg.get("activation_storage_dtype", "float16"))
+    existing_generations = load_generation_index(run_path)
 
     with tqdm(
         total=len(samples) * num_samples_per_item,
@@ -119,7 +120,8 @@ def generate_run(
                     f"iter {sample_iter + 1}/{num_samples_per_item}"
                 )
 
-                if generation_exists(run_path, sample_id, seed, temperature):
+                generation_key = (sample_id, seed, temperature)
+                if generation_key in existing_generations:
                     progress.set_description(f"skipping {progress_label}")
                     progress.update(1)
                     continue
@@ -150,6 +152,7 @@ def generate_run(
                     storage_dtype=storage_dtype,
                 )
                 progress.update(1)
+                existing_generations.add(generation_key)
 
 
 @torch.inference_mode()
