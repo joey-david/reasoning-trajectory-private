@@ -5,8 +5,8 @@
 
 Example target:
 
-    python scripts/dataset.py subset datasets/gpqa/gpqa_diamond.jsonl \
-      datasets/gpqa/gpqa_diamond_repeat.jsonl --limit 3 --offset 2 --repeat 50
+    python scripts/dataset.py subset data/gpqa/gpqa_diamond.jsonl \
+      data/gpqa/gpqa_diamond_repeat.jsonl --limit 3 --offset 2 --repeat 50
     # Takes the 3rd, 4th and 5th instances of the dataset and repeat them 50x each,
     # outputting the result in .../gpqa_diamond_repeat.jsonl
 The first argument determines the kind of sampling to do.

@@ -12,7 +12,7 @@ runs/*/*/*
 !runs/*/*/config.yaml
 *.npz
 *.pkl
-datasets/**/*.json*
+data/**/*.json*
 
 # Environment
 .env

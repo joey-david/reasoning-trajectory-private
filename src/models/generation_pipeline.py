@@ -21,11 +21,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
+import time
 from typing import Any
 
 import torch
 from tqdm.auto import tqdm
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+    StoppingCriteria,
+    StoppingCriteriaList,
+)
 
 from src.artifact_store import save_generation_output
 from src.config import RunConfig
@@ -216,7 +222,12 @@ def generate_one_twopass(
 
     if progress is not None:
         progress.set_description(f"generation {progress_label}".strip())
+        tracker = LiveGenerationProgress(progress, prompt_len, progress_label)
+        tracker.update(prompt_len, force=True)
+        generate_kwargs["stopping_criteria"] = StoppingCriteriaList([tracker])
     generated = model.generate(**generate_kwargs)
+    if progress is not None:
+        tracker.update(int(generated.shape[-1]), force=True)
 
     full_seq_ids = generated[0].detach().cpu().tolist()
     generated_token_ids = full_seq_ids[prompt_len:]
@@ -233,6 +244,7 @@ def generate_one_twopass(
     hidden_states = None
     if layer_indices:
         if progress is not None:
+            progress.set_postfix({}, refresh=True)
             progress.set_description(f"activation capture {progress_label}".strip())
         hidden_states = capture_selected_hidden_states(
             model=model,
@@ -242,6 +254,7 @@ def generate_one_twopass(
             layer_indices=layer_indices,
         )
     elif progress is not None:
+        progress.set_postfix({}, refresh=True)
         progress.set_description(f"activation capture skipped {progress_label}".strip())
 
     timestep_artifacts: list[TimestepArtifacts] = []
@@ -551,6 +564,30 @@ def set_seed(seed: int) -> None:
 
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+class LiveGenerationProgress(StoppingCriteria):
+    def __init__(self, progress: Any, prompt_len: int, label: str) -> None:
+        self.progress = progress
+        self.prompt_len = prompt_len
+        self.label = label
+        self.started_at = time.monotonic()
+        self.last_update = 0.0
+
+    def __call__(self, input_ids: torch.LongTensor, scores: Any, **kwargs) -> bool:
+        self.update(int(input_ids.shape[-1]))
+        return False
+
+    def update(self, seq_len: int, *, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and now - self.last_update < 1.0:
+            return
+        generated_tokens = max(seq_len - self.prompt_len, 0)
+        tok_s = generated_tokens / max(now - self.started_at, 1e-9)
+        self.progress.set_description(
+            f"generation {generated_tokens} tok {tok_s:.1f} tok/s {self.label}"
+        )
+        self.last_update = now
 
 
 def artifact_with_diagnostics(

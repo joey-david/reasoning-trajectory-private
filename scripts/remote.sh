@@ -28,6 +28,7 @@ push)
   rsync -avz --delete \
     --exclude .git/ \
     --exclude .venv/ \
+    --exclude .tmp/ \
     --exclude 'runs/*/*/generation/' \
     --exclude 'runs/*/*/analysis/' \
     --exclude '__pycache__' \

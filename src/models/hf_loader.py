@@ -24,6 +24,10 @@ def torch_dtype_from_config(dtype: str | None):
 
 
 def load_hf_model_and_tokenizer(model_cfg: dict):
+    model_kwargs = {}
+    if model_cfg.get("attn_implementation"):
+        model_kwargs["attn_implementation"] = model_cfg["attn_implementation"]
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_cfg["name"],
         trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
@@ -37,6 +41,7 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
         device_map=model_cfg.get("device_map", "auto"),
         torch_dtype=torch_dtype_from_config(model_cfg.get("dtype")),
         trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
+        **model_kwargs,
     ).eval()
 
     return model, tokenizer
