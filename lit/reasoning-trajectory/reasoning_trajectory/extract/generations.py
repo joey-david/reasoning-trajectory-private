@@ -11,7 +11,10 @@ from reasoning_trajectory.core.registry import tool
 from reasoning_trajectory.core.schema import Trajectory
 from reasoning_trajectory.core.utils import set_seed
 from reasoning_trajectory.extract.answers import answer_correct
-from reasoning_trajectory.extract.activations import hf_token_hidden_states, mock_token_hidden_states
+from reasoning_trajectory.extract.activations import (
+    hf_token_hidden_states,
+    mock_token_hidden_states,
+)
 from reasoning_trajectory.extract.token_steps import steps_from_text
 
 
@@ -26,7 +29,7 @@ class HFLoadConfig:
     cache_dir: str | None = None
     device: str | None = None
     device_map: str | dict[str, Any] | None = None
-    torch_dtype: str | None = None
+    dtype: str | None = None
     trust_remote_code: bool = False
     local_files_only: bool = False
     use_safetensors: bool | None = None
@@ -40,7 +43,9 @@ def load_hf_causal_lm(cfg: HFLoadConfig):
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as exc:
-        raise ImportError("HuggingFace extraction requires torch and transformers") from exc
+        raise ImportError(
+            "HuggingFace extraction requires torch and transformers"
+        ) from exc
     token = os.environ.get(cfg.token_env)
     kwargs = {
         "token": token,
@@ -53,8 +58,8 @@ def load_hf_causal_lm(cfg: HFLoadConfig):
     model_kwargs = dict(kwargs)
     if cfg.use_safetensors is not None:
         model_kwargs["use_safetensors"] = cfg.use_safetensors
-    if cfg.torch_dtype:
-        model_kwargs["torch_dtype"] = getattr(torch, cfg.torch_dtype)
+    if cfg.dtype:
+        model_kwargs["dtype"] = getattr(torch, cfg.dtype)
     if cfg.device_map is not None:
         model_kwargs["device_map"] = cfg.device_map
     if cfg.attn_implementation:
@@ -88,7 +93,7 @@ def _hf_generate(
                 cache_dir=cfg.get("cache_dir"),
                 device=cfg.get("device"),
                 device_map=cfg.get("device_map"),
-                torch_dtype=cfg.get("torch_dtype"),
+                dtype=cfg.get("dtype"),
                 trust_remote_code=cfg.get("trust_remote_code", False),
                 local_files_only=cfg.get("local_files_only", False),
                 use_safetensors=cfg.get("use_safetensors"),
@@ -100,14 +105,20 @@ def _hf_generate(
     inputs = {k: v.to(device) for k, v in inputs.items()}
     do_sample = temperature > 0
     with torch.no_grad():
-        gen_kwargs = {"max_new_tokens": max_new_tokens, "do_sample": do_sample, "pad_token_id": tokenizer.eos_token_id}
+        gen_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": do_sample,
+            "pad_token_id": tokenizer.eos_token_id,
+        }
         if do_sample:
             gen_kwargs["temperature"] = temperature
             for name in ["top_p", "top_k", "min_p", "repetition_penalty"]:
                 if name in cfg:
                     gen_kwargs[name] = cfg[name]
         out = model.generate(**inputs, **gen_kwargs)
-    text = tokenizer.decode(out[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
+    text = tokenizer.decode(
+        out[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
+    )
     return text, model, tokenizer
 
 
@@ -120,9 +131,13 @@ def _hf_generate(
     "toolkit/docs/tools/extract.md",
     dashboard=True,
 )
-def extract_from_config(config_path: str | Path | None, out: str | Path | None = None) -> list[Trajectory]:
+def extract_from_config(
+    config_path: str | Path | None, out: str | Path | None = None
+) -> list[Trajectory]:
     cfg = load_config(config_path)
-    prompts = cfg.get("prompts") or [{"problem_id": "example", "prompt": cfg.get("prompt", "What is 2 squared?")}]
+    prompts = cfg.get("prompts") or [
+        {"problem_id": "example", "prompt": cfg.get("prompt", "What is 2 squared?")}
+    ]
     model_name = cfg.get("model_name", "mock")
     seeds = cfg.get("seeds", [0])
     temperatures = cfg.get("temperatures", [0.0])
@@ -139,7 +154,7 @@ def extract_from_config(config_path: str | Path | None, out: str | Path | None =
                 cache_dir=cfg.get("cache_dir"),
                 device=cfg.get("device"),
                 device_map=cfg.get("device_map"),
-                torch_dtype=cfg.get("torch_dtype"),
+                dtype=cfg.get("dtype"),
                 trust_remote_code=cfg.get("trust_remote_code", False),
                 local_files_only=cfg.get("local_files_only", False),
                 use_safetensors=cfg.get("use_safetensors"),
@@ -151,7 +166,12 @@ def extract_from_config(config_path: str | Path | None, out: str | Path | None =
             for temperature in temperatures:
                 if model_name == "mock":
                     final_text = _mock_generate(item["prompt"])
-                    token_hidden = mock_token_hidden_states(max(1, len(final_text.split())), cfg.get("mock_layers", 4), cfg.get("mock_hidden", 8), seed)
+                    token_hidden = mock_token_hidden_states(
+                        max(1, len(final_text.split())),
+                        cfg.get("mock_layers", 4),
+                        cfg.get("mock_hidden", 8),
+                        seed,
+                    )
                 else:
                     final_text, model, tokenizer = _hf_generate(
                         model_name,
@@ -163,12 +183,28 @@ def extract_from_config(config_path: str | Path | None, out: str | Path | None =
                         hf_model,
                         hf_tokenizer,
                     )
-                    token_hidden = hf_token_hidden_states(model, tokenizer, "", final_text)
-                steps = steps_from_text(final_text, token_hidden, layers=layers, pooling=pooling)
-                expected_answer = item.get("expected_answer", item.get("final_answer", cfg.get("expected_answer", cfg.get("final_answer"))))
-                predicted_answer, inferred_correct = answer_correct(final_text, expected_answer)
-                final_answer = item.get("final_answer", predicted_answer or cfg.get("final_answer"))
-                final_correct = item.get("final_correct", cfg.get("final_correct", inferred_correct))
+                    token_hidden = hf_token_hidden_states(
+                        model, tokenizer, "", final_text
+                    )
+                steps = steps_from_text(
+                    final_text, token_hidden, layers=layers, pooling=pooling
+                )
+                expected_answer = item.get(
+                    "expected_answer",
+                    item.get(
+                        "final_answer",
+                        cfg.get("expected_answer", cfg.get("final_answer")),
+                    ),
+                )
+                predicted_answer, inferred_correct = answer_correct(
+                    final_text, expected_answer
+                )
+                final_answer = item.get(
+                    "final_answer", predicted_answer or cfg.get("final_answer")
+                )
+                final_correct = item.get(
+                    "final_correct", cfg.get("final_correct", inferred_correct)
+                )
                 trajectories.append(
                     Trajectory(
                         trajectory_id=f"{item.get('problem_id', 'problem')}-{seed}-{temperature}",
@@ -187,7 +223,9 @@ def extract_from_config(config_path: str | Path | None, out: str | Path | None =
                             "created_at": cfg.get("created_at", "config"),
                             "repo_commit": git_commit(),
                             "config_hash": config_hash(cfg),
-                            "expected_answer": str(expected_answer) if expected_answer is not None else None,
+                            "expected_answer": str(expected_answer)
+                            if expected_answer is not None
+                            else None,
                             "predicted_answer": predicted_answer,
                         },
                     )

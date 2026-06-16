@@ -35,7 +35,7 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
     model = AutoModelForCausalLM.from_pretrained(
         model_cfg["name"],
         device_map=model_cfg.get("device_map", "auto"),
-        torch_dtype=torch_dtype_from_config(model_cfg.get("torch_dtype")),
+        torch_dtype=torch_dtype_from_config(model_cfg.get("dtype")),
         trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
     ).eval()
 

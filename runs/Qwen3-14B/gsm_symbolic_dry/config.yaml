@@ -2,7 +2,7 @@ model:
   name: Qwen/Qwen3-14B
   backend: hf
   device_map: auto
-  torch_dtype: float16
+  dtype: float16
   trust_remote_code: true
 
 dataset:

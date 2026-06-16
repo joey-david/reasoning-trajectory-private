@@ -18,6 +18,7 @@ datasets/**/*.json*
 .env
 .venv/
 venv/
+todo.md
 
 # IDE
 .vscode/
