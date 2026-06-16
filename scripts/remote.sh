@@ -30,6 +30,7 @@ push)
     --exclude .venv/ \
     --exclude 'runs/*/*/generation/' \
     --exclude 'runs/*/*/analysis/' \
+    --exclude '__pycache__' \
     ./ "$host:$remote_root/"
   ;;
 pull)
