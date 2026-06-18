@@ -62,4 +62,15 @@ bash scripts/remote.sh pull runs/<model_name>/<run_name>
 ```
 
 Post-generation analysis is separate from this generation/capture workflow.
+Run it on a completed run folder:
+
+```bash
+python scripts/analyze.py runs/<model_name>/<run_name>
+```
+
+This writes answer annotations, step marker JSON, solution objects, hard-question
+rankings, and PCA/t-SNE plots under `analysis/`. The static browser at
+`web/index.html` reads `web/data/runs.json` and can inspect generated text,
+step-marker options, and generated plots.
+
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing shared schemas.
