@@ -221,6 +221,8 @@
       }
       return [...byTrajectory.entries()].map(([name, pts]) => {
         pts.sort((a, b) => a.token_idx - b.token_idx);
+        const ok = pts.every(p => p.is_correct === true);
+        const color = ok ? "#1f7a3f" : "#b42318";
         return {
           type: "scatter3d",
           mode: "lines+markers",
@@ -230,11 +232,10 @@
           z: pts.map(p => p.z),
           marker: {
             size: 3,
-            color: pts.map(p => p.token_fraction),
-            colorscale: "Viridis",
+            color,
             showscale: false,
           },
-          line: { width: 3 },
+          line: { width: 3, color },
           text: pts.map(p => `${p.sample_id}<br>seed ${p.seed}<br>${p.selector}<br>token ${p.token_idx}<br>answer ${p.produced_answer ?? ""}<br>correct ${p.is_correct}`),
           hoverinfo: "text",
         };
