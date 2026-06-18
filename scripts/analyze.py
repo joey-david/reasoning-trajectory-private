@@ -11,6 +11,7 @@ from src.analysis.answers import update_answers
 from src.analysis.hard_questions import write_hard_questions
 from src.analysis.interactive_trajectories import write_interactive_trajectories
 from src.analysis.solution_objects import write_solution_objects
+from src.analysis.step_classification import write_step_classification
 from src.analysis.step_markers import write_step_markers
 from src.analysis.trajectories import plot_trajectories
 from src.analysis.web_manifest import write_manifest
@@ -29,6 +30,7 @@ def main() -> int:
     write_hard_questions(run_path, cfg)
     plot_trajectories(run_path, cfg)
     write_interactive_trajectories(run_path, cfg)
+    write_step_classification(run_path, cfg)
     write_manifest(Path("runs"), Path("web/data/runs.json"))
     return 0
 

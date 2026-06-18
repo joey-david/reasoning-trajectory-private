@@ -52,6 +52,8 @@
         <label>Question <select id="plot-question" data-testid="plot-question-select"></select></label>
         <label>Sub-run <select id="plot-seed" data-testid="plot-seed-select"></select></label>
         <label>Step selector <select id="plot-selector" data-testid="plot-selector-select"></select></label>
+        <label>Cluster <select id="plot-cluster" data-testid="plot-cluster-select"></select></label>
+        <label>Color by <select id="plot-color-mode" data-testid="plot-color-mode-select"><option value="correctness">correctness</option><option value="cluster">cluster</option></select></label>
         <label>Max trajectories <input id="plot-max-trajectories" data-testid="plot-max-trajectories" type="number" min="1" value="20"></label>
         <label>Token start <input id="plot-token-start" data-testid="plot-token-start" type="range" min="0" max="100" value="0"></label>
         <label>Token end <input id="plot-token-end" data-testid="plot-token-end" type="range" min="0" max="100" value="100"></label>
@@ -77,7 +79,7 @@
       $("tab-generation").onclick = () => tab("generation");
       $("tab-analysis").onclick = () => tab("analysis");
       $("iteration").onchange = renderGenerations; $("marker").onchange = renderGenerations; $("entropy").onchange = renderGenerations;
-      for (const id of ["plot-source", "plot-question", "plot-seed", "plot-selector", "plot-max-trajectories", "plot-token-start", "plot-token-end"]) {
+      for (const id of ["plot-source", "plot-question", "plot-seed", "plot-selector", "plot-cluster", "plot-color-mode", "plot-max-trajectories", "plot-token-start", "plot-token-end"]) {
         $(id).onchange = renderInteractivePlot;
         $(id).oninput = renderInteractivePlot;
       }
@@ -156,8 +158,8 @@
       $("plots").innerHTML = (state.run.plots || []).map(p => `<figure><img src="${p.path}" alt="${p.method} layer ${p.layer}"><figcaption>${p.method.toUpperCase()} layer ${p.layer} · ${p.trajectories ?? "?"} trajectories</figcaption></figure>`).join("") || "<p>No plots yet.</p>";
     }
     function fillPlotControls() {
-      const plots = state.run.interactive_plots || [];
-      $("plot-source").innerHTML = plots.map((p, i) => `<option value="${i}">${p.method.toUpperCase()} layer ${p.layer}</option>`).join("");
+      const plots = allInteractivePlots();
+      $("plot-source").innerHTML = plots.map((p, i) => `<option value="${i}">${plotLabel(p)}</option>`).join("");
       const sampleIds = [...new Set(state.rows.map(r => r.sample_id))];
       const seeds = [...new Set(state.rows.map(r => r.seed))];
       $("plot-question").innerHTML = [`<option value="">all</option>`, ...sampleIds.map(id => `<option>${id}</option>`)].join("");
@@ -165,8 +167,18 @@
       $("plot-source").onchange = loadSelectedPlot;
       if (!plots.length) $("plot-status").textContent = "No interactive plot data. Run scripts/analyze.py for this run.";
     }
+    function allInteractivePlots() {
+      return [
+        ...(state.run.interactive_plots || []).map(p => ({ ...p, plot_type: "token" })),
+        ...(state.run.step_classification_plots || []).map(p => ({ ...p, plot_type: "step_classification" })),
+      ];
+    }
+    function plotLabel(plot) {
+      const prefix = plot.plot_type === "step_classification" ? "STEP" : "TOKEN";
+      return `${prefix} ${plot.method.toUpperCase()} layer ${plot.layer}`;
+    }
     async function loadSelectedPlot() {
-      const plot = (state.run.interactive_plots || [])[Number($("plot-source").value || 0)];
+      const plot = allInteractivePlots()[Number($("plot-source").value || 0)];
       if (!plot) {
         state.plotPayload = null;
         renderInteractivePlot();
@@ -174,8 +186,10 @@
       }
       $("plot-status").textContent = "Loading interactive plot data...";
       state.plotPayload = await fetch(plot.path).then(r => r.json()).catch(() => null);
-      const selectors = state.plotPayload ? Object.keys(state.plotPayload.selectors || {}) : [];
+      const selectors = state.plotPayload ? [...new Set((state.plotPayload.points || []).map(p => p.selector).filter(Boolean))] : [];
+      const clusters = state.plotPayload ? [...new Set((state.plotPayload.points || []).map(p => p.cluster_id).filter(v => v !== undefined && v !== null))].sort((a, b) => Number(a) - Number(b)) : [];
       $("plot-selector").innerHTML = [`<option value="">all</option>`, ...selectors.map(s => `<option>${s}</option>`)].join("");
+      $("plot-cluster").innerHTML = [`<option value="">all</option>`, ...clusters.map(c => `<option>${c}</option>`)].join("");
       renderInteractivePlot();
     }
     function renderInteractivePlot() {
@@ -186,6 +200,7 @@
       const sampleId = $("plot-question").value;
       const seed = $("plot-seed").value;
       const selector = $("plot-selector").value;
+      const cluster = $("plot-cluster").value;
       const start = Math.min(Number($("plot-token-start").value), Number($("plot-token-end").value)) / 100;
       const end = Math.max(Number($("plot-token-start").value), Number($("plot-token-end").value)) / 100;
       const maxTraj = Math.max(Number($("plot-max-trajectories").value || 20), 1);
@@ -195,6 +210,7 @@
         if (sampleId && point.sample_id !== sampleId) continue;
         if (seed && String(point.seed) !== seed) continue;
         if (selector && point.selector !== selector) continue;
+        if (cluster && String(point.cluster_id) !== cluster) continue;
         if (point.token_fraction < start || point.token_fraction > end) continue;
         const trajKey = `${point.sample_id}::${point.seed}`;
         if (!chosenTrajectories.has(trajKey)) {
@@ -215,14 +231,15 @@
     function tracesForPoints(points) {
       const byTrajectory = new Map();
       for (const point of points) {
-        const key = `${point.sample_id} seed ${point.seed}`;
+        const key = `${point.sample_id} seed ${point.seed} ${point.selector || ""}`;
         if (!byTrajectory.has(key)) byTrajectory.set(key, []);
         byTrajectory.get(key).push(point);
       }
       return [...byTrajectory.entries()].flatMap(([name, pts]) => {
         pts.sort((a, b) => a.token_idx - b.token_idx);
         const ok = pts.every(p => p.is_correct === true);
-        const pointColor = ok ? "#16803c" : "#c7352a";
+        const colorMode = $("plot-color-mode").value;
+        const pointColor = colorMode === "cluster" && pts[0].cluster_id !== undefined ? clusterColor(pts[0].cluster_id) : ok ? "#16803c" : "#c7352a";
         const lineColor = ok ? "rgba(31,122,63,0.32)" : "rgba(180,35,24,0.32)";
         const start = pts[0];
         const end = pts[pts.length - 1];
@@ -240,10 +257,31 @@
             showscale: false,
           },
           line: { width: 4, color: lineColor },
-          text: pts.map(p => `${p.sample_id}<br>seed ${p.seed}<br>${p.selector}<br>token ${p.token_idx}<br>answer ${p.produced_answer ?? ""}<br>correct ${p.is_correct}`),
+          text: pts.map(hoverText),
           hoverinfo: "text",
         }, markerTrace(`${name} start`, start, "diamond", pointColor, 7), markerTrace(`${name} end`, end, "square", pointColor, 7)];
       });
+    }
+    function clusterColor(clusterId) {
+      const palette = ["#2563eb", "#9333ea", "#db2777", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#4f46e5", "#64748b", "#be123c"];
+      return palette[Math.abs(Number(clusterId)) % palette.length];
+    }
+    function hoverText(point) {
+      const parts = [
+        point.sample_id,
+        `seed ${point.seed}`,
+        point.selector,
+        point.step_idx !== undefined ? `step ${point.step_idx}` : null,
+        point.cluster_id !== undefined ? `cluster ${point.cluster_id}` : null,
+        `token ${point.token_idx}`,
+        point.variance !== undefined ? `variance ${point.variance}` : null,
+        point.direction_norm !== undefined ? `direction ${point.direction_norm}` : null,
+        point.nudge_norm !== undefined ? `nudge ${point.nudge_norm}` : null,
+        `answer ${point.produced_answer ?? ""}`,
+        `correct ${point.is_correct}`,
+        point.step_text ? escapeHtml(point.step_text).slice(0, 220) : null,
+      ].filter(Boolean);
+      return parts.join("<br>");
     }
     function markerTrace(name, point, symbol, color, size) {
       return {
@@ -260,7 +298,7 @@
           color,
           line: { color: "#111827", width: 1.5 },
         },
-        text: [`${name}<br>${point.sample_id}<br>seed ${point.seed}<br>${point.selector}<br>token ${point.token_idx}<br>answer ${point.produced_answer ?? ""}<br>correct ${point.is_correct}`],
+        text: [`${name}<br>${hoverText(point)}`],
         hoverinfo: "text",
       };
     }

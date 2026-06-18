@@ -80,6 +80,19 @@ def adapt_row(row: dict[str, Any], adapter: str, idx: int) -> dict[str, Any]:
             "metadata": row,
         }
 
+    if adapter == "bigcodebench":
+        prompt = row.get("instruct_prompt") or row.get("complete_prompt") or row.get("question")
+        code_prompt = row.get("code_prompt")
+        if code_prompt:
+            prompt = f"{prompt}\n\nStarter code:\n```python\n{code_prompt}\n```"
+        return {
+            "id": str(row.get("task_id") or row.get("_id") or f"bigcodebench_{idx:06d}"),
+            "question": str(prompt),
+            "gold_answer": None,
+            "source": "bigcode/bigcodebench-hard",
+            "metadata": row,
+        }
+
     raise ValueError(f"Unknown dataset adapter: {adapter!r}")
 
 

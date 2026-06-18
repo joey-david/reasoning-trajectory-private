@@ -9,18 +9,18 @@ model:
 
 dataset:
   source: hf
-  path: apple/GSM-Symbolic
+  path: bigcode/bigcodebench-hard
   name: null
-  split: test
-  adapter: gsm_symbolic
-  sample_limit: 10
+  split: v0.1.4
+  adapter: bigcodebench
+  sample_limit: 40
   sample_offset: 0
-  shuffle_seed: 42
+  shuffle_seed: 1776
 
 generation:
-  max_new_tokens: 8192
-  num_samples_per_item: 10
-  base_seed: 0
+  max_new_tokens: 4096
+  num_samples_per_item: 3
+  base_seed: 600000
   temperature: 0.7
   top_p: 0.95
   top_k: 20
@@ -33,14 +33,13 @@ capture:
 
 prompt:
   mode: chat
-  system: "You are a careful mathematical reasoner."
+  system: "You are a careful Python programmer."
   instruction: |
-    Solve the problem. Reason carefully.
-    Put the final answer at the end.
+    Solve the programming task. Reason about edge cases briefly.
+    Put the final Python implementation in a fenced python code block.
 
 analysis:
-  produced_answer_regex: "\\\\boxed\\{([^}]+)\\}"
-  gold_answer_regex: "####\\s*(-?\\d+(?:\\.\\d+)?)"
+  produced_answer_regex: "(?s)```python\\s*(.*?)```"
   think_end_token_id: 151668
   hard_question_limit: 50
   max_plot_points: 5000
@@ -58,7 +57,6 @@ analysis:
         group_size: 2
       paragraph:
         mode: paragraph
-  trajectory_selector: {}
   token_selector:
     every_n: 8
   token_selectors:
