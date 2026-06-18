@@ -19,6 +19,10 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
         index = run / "analysis" / "plots" / "index.json"
         if index.exists():
             plots = json.loads(index.read_text())
+        interactive_plots = []
+        interactive_index = run / "analysis" / "plots" / "interactive_index.json"
+        if interactive_index.exists():
+            interactive_plots = json.loads(interactive_index.read_text())
         step_markers = run / "analysis" / "step_markers.json"
         solution_objects = run / "analysis" / "solution_objects.jsonl"
         hard_questions = run / "analysis" / "hard_questions.jsonl"
@@ -28,6 +32,10 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
             "generations": "../" + gen.as_posix(),
             "samples": samples,
             "plots": [{**p, "path": "../" + (run / p["path"]).as_posix()} for p in plots],
+            "interactive_plots": [
+                {**p, "path": "../" + (run / p["path"]).as_posix()}
+                for p in interactive_plots
+            ],
             "step_markers": "../" + step_markers.as_posix() if step_markers.exists() else None,
             "solution_objects": "../" + solution_objects.as_posix() if solution_objects.exists() else None,
             "hard_questions": "../" + hard_questions.as_posix() if hard_questions.exists() else None,

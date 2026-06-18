@@ -4,12 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reasoning Runs</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     :root { color-scheme: light; --line:#d8dee4; --muted:#59636e; --ok:#1f7a3f; --bad:#b42318; }
     body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; color: #111827; background: #fafafa; }
     header { display: flex; gap: 12px; align-items: end; padding: 14px 18px; border-bottom: 1px solid var(--line); background: white; position: sticky; top: 0; z-index: 1; }
     label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-    select, button { font: inherit; border: 1px solid var(--line); background: white; padding: 7px 9px; border-radius: 6px; }
+    select, button, input { font: inherit; border: 1px solid var(--line); background: white; padding: 7px 9px; border-radius: 6px; }
+    input[type="checkbox"], input[type="range"] { padding: 0; }
     button[aria-selected="true"] { background: #111827; color: white; }
     main { padding: 18px; display: grid; gap: 14px; }
     .tabs, .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -18,6 +20,9 @@
     .ok { color: var(--ok); font-weight: 650; } .bad { color: var(--bad); font-weight: 650; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; background: #f6f8fa; padding: 10px; border-radius: 6px; }
     img { max-width: min(920px, 100%); border: 1px solid var(--line); border-radius: 8px; background: white; }
+    #plot3d { width: 100%; min-height: 620px; border: 1px solid var(--line); border-radius: 8px; background: white; }
+    .status { color: var(--muted); font-size: 13px; }
+    .token-entropy { border-radius: 3px; }
     [hidden] { display: none; }
     :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
   </style>
@@ -37,13 +42,30 @@
         <label>Iteration <select id="iteration" data-testid="iteration-select"></select></label>
         <label>Step markers <select id="marker" data-testid="marker-select"></select></label>
         <label><input id="entropy" type="checkbox"> Show token entropy</label>
+        <span id="entropy-status" class="status" role="status"></span>
       </div>
       <div id="generations"></div>
     </section>
-    <section id="analysis-panel" hidden><div id="plots"></div></section>
+    <section id="analysis-panel" hidden>
+      <div class="toolbar" aria-label="3D plot controls">
+        <label>Plot <select id="plot-source" data-testid="plot-source-select"></select></label>
+        <label>Question <select id="plot-question" data-testid="plot-question-select"></select></label>
+        <label>Sub-run <select id="plot-seed" data-testid="plot-seed-select"></select></label>
+        <label>Step selector <select id="plot-selector" data-testid="plot-selector-select"></select></label>
+        <label>Max trajectories <input id="plot-max-trajectories" data-testid="plot-max-trajectories" type="number" min="1" value="20"></label>
+        <label>Token start <input id="plot-token-start" data-testid="plot-token-start" type="range" min="0" max="100" value="0"></label>
+        <label>Token end <input id="plot-token-end" data-testid="plot-token-end" type="range" min="0" max="100" value="100"></label>
+      </div>
+      <div class="status" id="plot-status" role="status"></div>
+      <div id="plot3d" data-testid="interactive-plot"></div>
+      <details>
+        <summary>Static plot fallbacks</summary>
+        <div id="plots"></div>
+      </details>
+    </section>
   </main>
   <script>
-    const state = { manifest: null, run: null, rows: [], markers: null };
+    const state = { manifest: null, run: null, rows: [], markers: null, plotPayload: null };
     const $ = id => document.getElementById(id);
     const jsonl = text => text.trim().split(/\n+/).filter(Boolean).map(JSON.parse);
 
@@ -55,6 +77,10 @@
       $("tab-generation").onclick = () => tab("generation");
       $("tab-analysis").onclick = () => tab("analysis");
       $("iteration").onchange = renderGenerations; $("marker").onchange = renderGenerations; $("entropy").onchange = renderGenerations;
+      for (const id of ["plot-source", "plot-question", "plot-seed", "plot-selector", "plot-max-trajectories", "plot-token-start", "plot-token-end"]) {
+        $(id).onchange = renderInteractivePlot;
+        $(id).oninput = renderInteractivePlot;
+      }
       fillRuns();
     }
     function fillRuns() {
@@ -67,11 +93,13 @@
       if (!state.run) return;
       state.rows = await fetch(state.run.generations).then(r => r.text()).then(jsonl);
       state.markers = state.run.step_markers ? await fetch(state.run.step_markers).then(r => r.json()).catch(() => null) : null;
+      state.plotPayload = null;
       const seeds = [...new Set(state.rows.map(r => r.seed))];
       $("iteration").innerHTML = [`<option value="">all</option>`, ...seeds.map(s => `<option>${s}</option>`)].join("");
       const markerNames = state.markers ? Object.keys(state.markers.selectors) : [];
       $("marker").innerHTML = [`<option value="">none</option>`, ...markerNames.map(s => `<option>${s}</option>`)].join("");
-      renderGenerations(); renderPlots();
+      fillPlotControls();
+      renderGenerations(); renderPlots(); loadSelectedPlot();
     }
     function tab(name) {
       for (const key of ["generation", "analysis"]) {
@@ -82,6 +110,9 @@
     function renderGenerations() {
       const seed = $("iteration").value;
       const rows = seed ? state.rows.filter(r => String(r.seed) === seed) : state.rows;
+      const hasEntropy = rows.some(row => hasEntropyTimesteps(row));
+      $("entropy").disabled = !hasEntropy;
+      $("entropy-status").textContent = hasEntropy ? "" : "No entropy timesteps stored for this run.";
       $("generations").innerHTML = rows.map(rowHtml).join("");
     }
     function rowHtml(row) {
@@ -104,14 +135,110 @@
       return values.join(", ");
     }
     function formatText(row) {
-      if (!$("entropy").checked || !row.timesteps) return escapeHtml(row.produced_text || "");
+      if (!$("entropy").checked || !hasEntropyTimesteps(row)) return escapeHtml(row.produced_text || "");
       return row.timesteps.map(t => {
-        const e = Array.isArray(t.entropy) ? Math.max(...t.entropy) : 0;
-        return `<span style="background:hsl(${210 - Math.min(e * 20, 160)} 90% 85%)">${escapeHtml(t.token_str || "")}</span>`;
+        const e = entropyValue(t);
+        const light = Math.max(45, 92 - Math.min(e * 6, 45));
+        return `<span class="token-entropy" title="entropy ${e.toFixed(2)}" style="background:hsl(${210 - Math.min(e * 12, 170)} 90% ${light}%)">${escapeHtml(t.token_str || "")}</span>`;
       }).join("");
+    }
+    function hasEntropyTimesteps(row) {
+      return Array.isArray(row.timesteps) && row.timesteps.some(t => Number.isFinite(entropyValue(t)));
+    }
+    function entropyValue(t) {
+      if (Array.isArray(t.entropy)) {
+        const values = t.entropy.filter(Number.isFinite);
+        return values.length ? Math.max(...values) : NaN;
+      }
+      return Number.isFinite(t.entropy) ? t.entropy : NaN;
     }
     function renderPlots() {
       $("plots").innerHTML = (state.run.plots || []).map(p => `<figure><img src="${p.path}" alt="${p.method} layer ${p.layer}"><figcaption>${p.method.toUpperCase()} layer ${p.layer} · ${p.trajectories ?? "?"} trajectories</figcaption></figure>`).join("") || "<p>No plots yet.</p>";
+    }
+    function fillPlotControls() {
+      const plots = state.run.interactive_plots || [];
+      $("plot-source").innerHTML = plots.map((p, i) => `<option value="${i}">${p.method.toUpperCase()} layer ${p.layer}</option>`).join("");
+      const sampleIds = [...new Set(state.rows.map(r => r.sample_id))];
+      const seeds = [...new Set(state.rows.map(r => r.seed))];
+      $("plot-question").innerHTML = [`<option value="">all</option>`, ...sampleIds.map(id => `<option>${id}</option>`)].join("");
+      $("plot-seed").innerHTML = [`<option value="">all</option>`, ...seeds.map(seed => `<option>${seed}</option>`)].join("");
+      $("plot-source").onchange = loadSelectedPlot;
+      if (!plots.length) $("plot-status").textContent = "No interactive plot data. Run scripts/analyze.py for this run.";
+    }
+    async function loadSelectedPlot() {
+      const plot = (state.run.interactive_plots || [])[Number($("plot-source").value || 0)];
+      if (!plot) {
+        state.plotPayload = null;
+        renderInteractivePlot();
+        return;
+      }
+      $("plot-status").textContent = "Loading interactive plot data...";
+      state.plotPayload = await fetch(plot.path).then(r => r.json()).catch(() => null);
+      const selectors = state.plotPayload ? Object.keys(state.plotPayload.selectors || {}) : [];
+      $("plot-selector").innerHTML = [`<option value="">all</option>`, ...selectors.map(s => `<option>${s}</option>`)].join("");
+      renderInteractivePlot();
+    }
+    function renderInteractivePlot() {
+      if (!state.plotPayload || !window.Plotly) {
+        $("plot3d").innerHTML = "<p class=\"status\">Interactive plotting requires generated plot JSON and Plotly.</p>";
+        return;
+      }
+      const sampleId = $("plot-question").value;
+      const seed = $("plot-seed").value;
+      const selector = $("plot-selector").value;
+      const start = Math.min(Number($("plot-token-start").value), Number($("plot-token-end").value)) / 100;
+      const end = Math.max(Number($("plot-token-start").value), Number($("plot-token-end").value)) / 100;
+      const maxTraj = Math.max(Number($("plot-max-trajectories").value || 20), 1);
+      const chosenTrajectories = new Set();
+      const points = [];
+      for (const point of state.plotPayload.points || []) {
+        if (sampleId && point.sample_id !== sampleId) continue;
+        if (seed && String(point.seed) !== seed) continue;
+        if (selector && point.selector !== selector) continue;
+        if (point.token_fraction < start || point.token_fraction > end) continue;
+        const trajKey = `${point.sample_id}::${point.seed}`;
+        if (!chosenTrajectories.has(trajKey)) {
+          if (chosenTrajectories.size >= maxTraj) continue;
+          chosenTrajectories.add(trajKey);
+        }
+        points.push(point);
+      }
+      const traces = tracesForPoints(points);
+      $("plot-status").textContent = `${points.length} points across ${chosenTrajectories.size} trajectories. Drag to rotate, scroll or pinch to zoom.`;
+      Plotly.react("plot3d", traces, {
+        margin: { l: 0, r: 0, t: 28, b: 0 },
+        scene: { xaxis: { title: "x" }, yaxis: { title: "y" }, zaxis: { title: "z" } },
+        showlegend: true,
+        title: `${state.plotPayload.method.toUpperCase()} layer ${state.plotPayload.layer}`,
+      }, { responsive: true, scrollZoom: true, displaylogo: false });
+    }
+    function tracesForPoints(points) {
+      const byTrajectory = new Map();
+      for (const point of points) {
+        const key = `${point.sample_id} seed ${point.seed}`;
+        if (!byTrajectory.has(key)) byTrajectory.set(key, []);
+        byTrajectory.get(key).push(point);
+      }
+      return [...byTrajectory.entries()].map(([name, pts]) => {
+        pts.sort((a, b) => a.token_idx - b.token_idx);
+        return {
+          type: "scatter3d",
+          mode: "lines+markers",
+          name,
+          x: pts.map(p => p.x),
+          y: pts.map(p => p.y),
+          z: pts.map(p => p.z),
+          marker: {
+            size: 3,
+            color: pts.map(p => p.token_fraction),
+            colorscale: "Viridis",
+            showscale: false,
+          },
+          line: { width: 3 },
+          text: pts.map(p => `${p.sample_id}<br>seed ${p.seed}<br>${p.selector}<br>token ${p.token_idx}<br>answer ${p.produced_answer ?? ""}<br>correct ${p.is_correct}`),
+          hoverinfo: "text",
+        };
+      });
     }
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
     init();

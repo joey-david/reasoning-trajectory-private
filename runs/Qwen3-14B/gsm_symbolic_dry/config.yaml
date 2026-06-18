@@ -44,6 +44,7 @@ analysis:
   think_end_token_id: 151668
   hard_question_limit: 50
   max_plot_points: 5000
+  max_interactive_points: 6000
   trajectory_selector: {}
   token_selector:
     every_n: 8
