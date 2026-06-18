@@ -12,15 +12,23 @@ from src.config import load_config
 from src.data import load_samples
 from src.datasets.adapters import normalize_dataset
 from src.datasets.loaders import load_raw_dataset
-from src.models.generation_pipeline import generate_run
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate outputs for one run folder.")
-    parser.add_argument("run_path")
+    parser = argparse.ArgumentParser(description="Generate outputs for one or more run folders.")
+    parser.add_argument("run_paths", nargs="+", help="Run folder(s), executed sequentially.")
     args = parser.parse_args()
 
-    run_path = Path(args.run_path)
+    for i, run_path_arg in enumerate(args.run_paths, start=1):
+        run_path = Path(run_path_arg)
+        print(f"[{i}/{len(args.run_paths)}] generating {run_path}", flush=True)
+        generate_one_run(run_path)
+    return 0
+
+
+def generate_one_run(run_path: Path) -> None:
+    from src.models.generation_pipeline import generate_run
+
     config = load_config(run_path)
 
     dataset_path = run_path / "dataset.jsonl"
@@ -36,7 +44,6 @@ def main() -> int:
         samples = samples[offset:] if limit is None else samples[offset : offset + int(limit)]
 
     generate_run(run_path, config, samples)
-    return 0
 
 
 if __name__ == "__main__":
