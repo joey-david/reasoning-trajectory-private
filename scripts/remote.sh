@@ -18,7 +18,7 @@ action="${1:?usage: scripts/remote.sh push|pull runs/<model>/<experiment>}"
 run_path="${2:?usage: scripts/remote.sh push|pull runs/<model>/<experiment>}"
 # ENV_VAR:-default
 host="${SSH_SERVER:-lamgate}"
-remote_root="${REMOTE_REPO_ROOT:-/home/lamsade/jdavid/research/reasoning}"
+remote_root="${REMOTE_REPO_ROOT:-/home/lamsade/jdavid/reasoning}"
 
 case "$action" in
 push)

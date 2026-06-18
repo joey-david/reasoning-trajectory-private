@@ -16,6 +16,11 @@ venv_python=".venv/bin/python"
 
 uv pip install --python "$venv_python" -r requirements.txt
 uv pip install --python "$venv_python" packaging ninja wheel setuptools
+"$venv_python" - <<'PY'
+import datasets
+import torch
+print(f"base deps ok: datasets={datasets.__version__} torch={torch.__version__}")
+PY
 
 uv pip uninstall --python "$venv_python" -y flash-attn || true
 uv pip install --python "$venv_python" -r requirements.txt
