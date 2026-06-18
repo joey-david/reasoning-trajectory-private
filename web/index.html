@@ -219,11 +219,14 @@
         if (!byTrajectory.has(key)) byTrajectory.set(key, []);
         byTrajectory.get(key).push(point);
       }
-      return [...byTrajectory.entries()].map(([name, pts]) => {
+      return [...byTrajectory.entries()].flatMap(([name, pts]) => {
         pts.sort((a, b) => a.token_idx - b.token_idx);
         const ok = pts.every(p => p.is_correct === true);
-        const color = ok ? "#1f7a3f" : "#b42318";
-        return {
+        const pointColor = ok ? "#16803c" : "#c7352a";
+        const lineColor = ok ? "rgba(31,122,63,0.32)" : "rgba(180,35,24,0.32)";
+        const start = pts[0];
+        const end = pts[pts.length - 1];
+        return [{
           type: "scatter3d",
           mode: "lines+markers",
           name,
@@ -231,15 +234,35 @@
           y: pts.map(p => p.y),
           z: pts.map(p => p.z),
           marker: {
-            size: 3,
-            color,
+            size: 3.5,
+            color: pointColor,
+            opacity: 0.82,
             showscale: false,
           },
-          line: { width: 3, color },
+          line: { width: 4, color: lineColor },
           text: pts.map(p => `${p.sample_id}<br>seed ${p.seed}<br>${p.selector}<br>token ${p.token_idx}<br>answer ${p.produced_answer ?? ""}<br>correct ${p.is_correct}`),
           hoverinfo: "text",
-        };
+        }, markerTrace(`${name} start`, start, "diamond", pointColor, 7), markerTrace(`${name} end`, end, "square", pointColor, 7)];
       });
+    }
+    function markerTrace(name, point, symbol, color, size) {
+      return {
+        type: "scatter3d",
+        mode: "markers",
+        name,
+        showlegend: false,
+        x: [point.x],
+        y: [point.y],
+        z: [point.z],
+        marker: {
+          symbol,
+          size,
+          color,
+          line: { color: "#111827", width: 1.5 },
+        },
+        text: [`${name}<br>${point.sample_id}<br>seed ${point.seed}<br>${point.selector}<br>token ${point.token_idx}<br>answer ${point.produced_answer ?? ""}<br>correct ${point.is_correct}`],
+        hoverinfo: "text",
+      };
     }
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
     init();
