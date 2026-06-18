@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from datasets import load_dataset
-
 from src.config import resolve_repo_path
 
 
@@ -18,6 +16,13 @@ def load_raw_dataset(dataset_cfg: dict[str, Any]) -> list[dict[str, Any]]:
             return [json.loads(line) for line in f if line.strip()]
 
     if source == "hf":
+        try:
+            from datasets import load_dataset
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "Missing Hugging Face dependency `datasets`. Install/update the "
+                "venv with: uv pip install --python .venv/bin/python -r requirements.txt"
+            ) from exc
         ds = load_dataset(
             dataset_cfg["path"],
             dataset_cfg.get("name"),

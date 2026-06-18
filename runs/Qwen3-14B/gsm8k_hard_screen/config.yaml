@@ -1,0 +1,59 @@
+model:
+  name: Qwen/Qwen3-14B
+  backend: hf
+  device_map:
+    "": 0
+  dtype: float16
+  attn_implementation: flash_attention_2
+  trust_remote_code: true
+
+dataset:
+  source: hf
+  path: openai/gsm8k
+  name: main
+  split: test
+  adapter: gsm8k
+  sample_limit: 200
+  sample_offset: 0
+  shuffle_seed: 2718
+
+generation:
+  max_new_tokens: 4096
+  num_samples_per_item: 1
+  base_seed: 100000
+  temperature: 0.7
+  top_p: 0.95
+  top_k: 20
+
+capture:
+  enabled: false
+  layers: []
+  activation_storage_dtype: int8_scaled
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: "You are a careful mathematical reasoner."
+  instruction: |
+    Solve the problem. Reason carefully.
+    Put the final answer at the end.
+
+analysis:
+  produced_answer_regex: "\\\\boxed\\{([^}]+)\\}"
+  gold_answer_regex: "####\\s*(-?\\d+(?:\\.\\d+)?)"
+  think_end_token_id: 151668
+  hard_question_limit: 50
+  token_selector:
+    every_n: 8
+  token_selectors:
+    every_8:
+      every_n: 8
+    sentence_end:
+      mode: sentence_end
+    deciles:
+      mode: percentiles
+      count: 10
+    reasoning_boundaries:
+      mode: reasoning_boundaries
+    first_last:
+      mode: first_last
