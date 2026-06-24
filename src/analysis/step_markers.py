@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from src.analysis.common import read_generation_rows
 from src.analysis.token_selectors import build_token_selector
 
 
@@ -17,7 +17,7 @@ DEFAULT_MARKER_SELECTORS: dict[str, dict[str, Any]] = {
 
 
 def write_step_markers(run_path: Path, cfg: dict[str, Any]) -> None:
-    rows = read_generations(run_path)
+    rows = read_generation_rows(run_path)
     selectors = configured_selectors(cfg)
     out_dir = run_path / "analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -54,10 +54,7 @@ def configured_selectors(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return dict(DEFAULT_MARKER_SELECTORS)
 
 
-def read_generations(run_path: Path) -> list[dict[str, Any]]:
-    path = run_path / "generation" / "generations.jsonl"
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-
-
 def write_json(path: Path, obj: dict[str, Any]) -> None:
+    import json
+
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

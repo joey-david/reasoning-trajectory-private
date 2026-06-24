@@ -8,15 +8,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 
+from src.analysis.common import evenly_capped, project_3d, read_generation_rows
 from src.artifact_store import load_hidden_states_npz
 from src.analysis.token_selectors import Selector, build_token_selector
 
 
 def plot_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
-    rows = [json.loads(line) for line in (run_path / "generation" / "generations.jsonl").read_text().splitlines() if line.strip()]
+    rows = read_generation_rows(run_path)
     rows = [r for r in rows if r.get("hidden_states_file")]
     rows = filter_trajectories(rows, cfg.get("trajectory_selector", {}))
     if not rows:
@@ -34,11 +33,11 @@ def plot_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
                     points.setdefault(layer, []).append((states[t, col], row, t, traj_id))
     manifest = []
     for layer, items in points.items():
-        items = capped_items(items, max_points)
+        items = evenly_capped(items, max_points)
         if len(items) < 3:
             continue
         x = np.stack([it[0] for it in items])
-        for name, coords in projections(x).items():
+        for name, coords in project_3d(x).items():
             path = out_dir / f"{name}_layer{layer}.png"
             draw_plot(coords, items, path, f"{name.upper()} layer {layer}")
             manifest.append({"method": name, "layer": layer, "trajectories": len(rows), "path": path.relative_to(run_path).as_posix()})
@@ -57,12 +56,6 @@ def filter_trajectories(rows: list[dict[str, Any]], spec: dict[str, Any]) -> lis
 
 def token_selector(spec: dict[str, Any]) -> Selector:
     return build_token_selector(spec)
-
-
-def projections(x: np.ndarray) -> dict[str, np.ndarray]:
-    out = {"pca": PCA(n_components=3).fit_transform(x)}
-    out["tsne"] = TSNE(n_components=3, perplexity=min(30, len(x) - 1), init="random", learning_rate="auto").fit_transform(x)
-    return out
 
 
 def draw_plot(coords: np.ndarray, items: list[tuple[np.ndarray, dict[str, Any], int, int]], path: Path, title: str) -> None:
@@ -95,13 +88,3 @@ def draw_plot(coords: np.ndarray, items: list[tuple[np.ndarray, dict[str, Any], 
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
-
-
-def capped_items(
-    items: list[tuple[np.ndarray, dict[str, Any], int, int]],
-    max_points: int,
-) -> list[tuple[np.ndarray, dict[str, Any], int, int]]:
-    if max_points <= 0 or len(items) <= max_points:
-        return items
-    keep = np.linspace(0, len(items) - 1, max_points, dtype=int)
-    return [items[int(i)] for i in keep]

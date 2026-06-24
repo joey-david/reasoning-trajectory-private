@@ -11,7 +11,6 @@ For each generated trajectory with hidden states, the step classifier writes:
 - `analysis/step_classification/layer<L>_vectors.npz`
   - `mean_vectors`: average hidden state across tokens in each step.
   - `direction_vectors`: last token state minus first token state inside the step.
-  - `nudge_vectors`: current step mean minus previous step mean in the same trajectory.
   - `variance`: mean per-dimension latent variance across tokens in the step.
   - `cluster_id`: unsupervised cluster assignment.
 - `analysis/step_classification/layer<L>_steps.jsonl`
@@ -20,12 +19,14 @@ For each generated trajectory with hidden states, the step classifier writes:
   - Cluster summaries and nearest text exemplars.
 - `analysis/step_classification/*_steps.json`
   - Interactive PCA/t-SNE payloads for `web/index.html`.
-- `analysis/step_classification/layer<L>_probe_examples.jsonl`
-  - A probe-ready index from text examples to vector rows.
-
 The current segmenters are sentence, pairs of sentences, and paragraphs. Sentence
 groups are important because a single sentence can be too small: a reasoning
 move often has a setup sentence and an operation sentence.
+
+`layer<L>_steps.jsonl` contains `feature_row`, which indexes the corresponding
+row in `layer<L>_vectors.npz`. The full previous-step nudge vector is intentionally
+not persisted because it is recovered exactly by subtracting consecutive mean
+vectors for the same trajectory and segmenter.
 
 ## How To Read The Website
 
@@ -134,5 +135,5 @@ analysis/step_classification/layer<L>_probe_examples.jsonl
 ```
 
 as the feature matrix and label index. A first useful probe is a linear classifier
-from `mean_vectors`, `direction_vectors`, `nudge_vectors`, and scalar variance
-features to manually labeled step types.
+from `mean_vectors`, `direction_vectors`, derived previous-step nudge vectors,
+and scalar variance features to manually labeled step types.

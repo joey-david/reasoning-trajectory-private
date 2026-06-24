@@ -5,9 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 
+from src.analysis.common import evenly_capped, project_3d, read_generation_rows
 from src.analysis.step_markers import configured_selectors
 from src.analysis.token_selectors import build_token_selector
 from src.artifact_store import load_hidden_states_npz
@@ -41,11 +40,11 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
 
     manifest: list[dict[str, Any]] = []
     for layer, items in points_by_layer.items():
-        items = capped_items(items, max_points)
+        items = evenly_capped(items, max_points)
         if len(items) < 3:
             continue
         x = np.stack([item[0] for item in items])
-        for method, coords in projections(x).items():
+        for method, coords in project_3d(x).items():
             path = out_dir / f"{method}_layer{layer}_interactive.json"
             payload = build_payload(method, layer, coords, items, selectors)
             path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -95,26 +94,3 @@ def build_payload(
         "selectors": selectors,
         "points": points,
     }
-
-
-def projections(x: np.ndarray) -> dict[str, np.ndarray]:
-    out = {"pca": PCA(n_components=3).fit_transform(x)}
-    out["tsne"] = TSNE(
-        n_components=3,
-        perplexity=min(30, len(x) - 1),
-        init="random",
-        learning_rate="auto",
-    ).fit_transform(x)
-    return out
-
-
-def capped_items(items: list[PointItem], max_points: int) -> list[PointItem]:
-    if max_points <= 0 or len(items) <= max_points:
-        return items
-    keep = np.linspace(0, len(items) - 1, max_points, dtype=int)
-    return [items[int(i)] for i in keep]
-
-
-def read_generation_rows(run_path: Path) -> list[dict[str, Any]]:
-    path = run_path / "generation" / "generations.jsonl"
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]

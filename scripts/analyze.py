@@ -13,7 +13,6 @@ from src.analysis.interactive_trajectories import write_interactive_trajectories
 from src.analysis.solution_objects import write_solution_objects
 from src.analysis.step_classification import write_step_classification
 from src.analysis.step_markers import write_step_markers
-from src.analysis.trajectories import plot_trajectories
 from src.analysis.web_manifest import write_manifest
 from src.config import load_config
 
@@ -28,7 +27,14 @@ def main() -> int:
     write_step_markers(run_path, cfg)
     write_solution_objects(run_path, cfg)
     write_hard_questions(run_path, cfg)
-    plot_trajectories(run_path, cfg)
+    if cfg.get("static_plots", False):
+        from src.analysis.trajectories import plot_trajectories
+
+        plot_trajectories(run_path, cfg)
+    else:
+        static_index = run_path / "analysis" / "plots" / "index.json"
+        if static_index.exists():
+            static_index.unlink()
     write_interactive_trajectories(run_path, cfg)
     write_step_classification(run_path, cfg)
     write_manifest(Path("runs"), Path("web/data/runs.json"))

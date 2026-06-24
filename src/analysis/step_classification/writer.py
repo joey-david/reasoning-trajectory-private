@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 
+from src.analysis.common import evenly_capped, read_generation_rows
 from src.analysis.step_classification.clustering import assign_clusters
 from src.analysis.step_classification.features import build_step_features, stack_features
 from src.analysis.step_classification.projection import projection_payloads
@@ -43,13 +44,13 @@ def write_step_classification(run_path: Path, cfg: dict[str, Any]) -> None:
 
     manifest: list[dict[str, Any]] = []
     for layer, features in by_layer.items():
-        features = capped_features(features, max_steps)
+        features = evenly_capped(features, max_steps)
         if not features:
             continue
         records = [dict(item.record) for item in features]
         means, directions, nudges = stack_features(features)
         cluster_info = assign_clusters(records, means, directions, nudges, cfg)
-        save_layer_artifacts(out_dir, layer, records, means, directions, nudges, cluster_info)
+        save_layer_artifacts(out_dir, layer, records, means, directions, cluster_info)
         for method, payload in projection_payloads(records, means, layer, cfg).items():
             path = out_dir / f"{method}_layer{layer}_steps.json"
             path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -75,7 +76,6 @@ def save_layer_artifacts(
     records: list[dict[str, Any]],
     means: np.ndarray,
     directions: np.ndarray,
-    nudges: np.ndarray,
     cluster_info: dict[str, Any],
 ) -> None:
     for feature_row, record in enumerate(records):
@@ -93,36 +93,9 @@ def save_layer_artifacts(
         out_dir / f"layer{layer}_vectors.npz",
         mean_vectors=means.astype(np.float16),
         direction_vectors=directions.astype(np.float16),
-        nudge_vectors=nudges.astype(np.float16),
         variance=np.asarray([record["variance"] for record in records], dtype=np.float32),
         cluster_id=np.asarray([record.get("cluster_id", -1) for record in records], dtype=np.int32),
     )
-    (out_dir / f"layer{layer}_probe_examples.jsonl").write_text(
-        "".join(json.dumps(probe_record(record), ensure_ascii=False) + "\n" for record in records),
-        encoding="utf-8",
-    )
-
-
-def probe_record(record: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "sample_id": record["sample_id"],
-        "seed": record["seed"],
-        "segmenter": record["segmenter"],
-        "step_idx": record["step_idx"],
-        "cluster_id": record.get("cluster_id"),
-        "text": record["step_text"],
-        "features_npz": f"layer{record['layer']}_vectors.npz",
-        "feature_row": record["feature_row"],
-    }
-
-
-def capped_features(features: list[Any], max_steps: int) -> list[Any]:
-    if max_steps <= 0 or len(features) <= max_steps:
-        return features
-    keep = np.linspace(0, len(features) - 1, max_steps, dtype=int)
-    return [features[int(i)] for i in keep]
-
-
-def read_generation_rows(run_path: Path) -> list[dict[str, Any]]:
-    path = run_path / "generation" / "generations.jsonl"
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    legacy_probe_path = out_dir / f"layer{layer}_probe_examples.jsonl"
+    if legacy_probe_path.exists():
+        legacy_probe_path.unlink()

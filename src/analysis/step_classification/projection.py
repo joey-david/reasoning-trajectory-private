@@ -3,9 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 
+from src.analysis.common import evenly_capped, project_3d
 
 def projection_payloads(
     records: list[dict[str, Any]],
@@ -17,23 +16,21 @@ def projection_payloads(
         return {}
     step_cfg = cfg.get("step_classification", {})
     random_state = int(step_cfg.get("random_state", 42))
-    perplexity = min(int(step_cfg.get("tsne_perplexity", 30)), len(records) - 1)
-    projections = {
-        "pca": PCA(n_components=3, random_state=random_state).fit_transform(means),
-        "tsne": TSNE(
-            n_components=3,
-            perplexity=perplexity,
-            init="random",
-            learning_rate="auto",
-            random_state=random_state,
-        ).fit_transform(means),
-    }
+    max_plot_steps = int(step_cfg.get("max_plot_steps", 4000))
+    indices = evenly_capped(list(range(len(records))), max_plot_steps)
+    plot_records = [records[i] for i in indices]
+    plot_means = means[np.asarray(indices)]
+    projections = project_3d(
+        plot_means,
+        random_state=random_state,
+        tsne_perplexity=int(step_cfg.get("tsne_perplexity", 30)),
+    )
     return {
         name: {
             "plot_type": "step_classification",
             "method": name,
             "layer": layer,
-            "points": [point_record(record, coords) for record, coords in zip(records, values)],
+            "points": [point_record(record, coords) for record, coords in zip(plot_records, values)],
         }
         for name, values in projections.items()
     }
@@ -49,4 +46,3 @@ def point_record(record: dict[str, Any], coords: np.ndarray) -> dict[str, Any]:
         }
     )
     return out
-

@@ -1,76 +1,195 @@
 # Reasoning Trajectory
 
-Research sandbox for LLM reasoning analysis.
+Research tooling for generating, storing, and analyzing language-model reasoning
+trajectories.
 
-## Workflow
+## Research Hypothesis
 
-Each experiment is a run folder:
+We model chain-of-thought not only as textual explanation, but as a sequence of
+latent transition operators over an explicit or latent solution object. Step
+direction features may predict edits to that solution object, while correct
+reasoning traces may show more coherent alignment between latent trajectory
+updates and solution-object construction.
+
+## Run Layout
+
+Each experiment is self-contained:
 
 ```text
 runs/<model>/<experiment>/
   config.yaml
-  dataset.jsonl        # optional prepared snapshot
-  generation/          # generated text, per-run JSON, optional activations
-  analysis/            # later analysis outputs
+  dataset.jsonl        # optional pinned normalized dataset
+  generation/
+    metadata.json
+    generations.jsonl
+    samples/
+    hidden_states/     # present when activation capture is enabled
+  analysis/
 ```
 
-### Dataset preparation
+Generation outputs stay compact: sample-level prompt and gold fields are stored
+once under `generation/samples/`, while `generations.jsonl` stores one row per
+sample/seed/temperature and references hidden-state NPZ files.
 
-1. Select the dataset in `config.yaml`.
-   Use `dataset.source: hf` for Hugging Face datasets or `jsonl` for a local file.
-   Set `dataset.adapter`, `split`, `sample_offset`, `sample_limit`, and optional
-   `shuffle_seed` there.
+## Local Setup
 
-2. Optionally prepare a pinned dataset snapshot:
+The checked-in requirements target the CUDA server environment. For local
+analysis on macOS, install only the analysis dependencies into the existing
+venv:
 
 ```bash
-python scripts/prepare_dataset.py runs/<model_name>/<run_name>
+uv pip install --python .venv/bin/python \
+  "pyyaml>=6" "numpy>=1.24" "datasets>=2.19" \
+  "matplotlib>=3.8" "scikit-learn>=1.4"
 ```
 
-If `dataset.jsonl` exists, generation uses it. If not, generation loads and
-normalizes the dataset directly from the `dataset:` config block.
+## Prepare Datasets
 
-### Main Generation
-
-1. Parse prompts through `prompt:` config.
-   `prompt.mode: plain` joins system, instruction, and question text. `chat`
-   uses the tokenizer chat template when the model provides one.
-
-2. Run generation and activation capture:
+Run configs can load Hugging Face or JSONL datasets directly. To pin the exact
+normalized rows before generation:
 
 ```bash
-python scripts/generate.py runs/<model_name>/<run_name>
+python scripts/prepare_dataset.py runs/<model>/<experiment>
 ```
 
-Outputs use a compact normalized schema: `metadata.json` stores run-level
-metadata, `samples/<sample>.json` stores prompt/input/gold fields once, and
-`generations.jsonl` stores per-generation fields and drives resume checks.
-Reconstruct full tokens with `input_ids + generated_token_ids`. Captured activations
-live under `generation/hidden_states/` and are referenced by `hidden_states_file`.
+Dataset loading, normalization, deterministic shuffling, offset, and limit are
+shared between preparation and generation, so both paths select identical rows.
 
-### Activations capture
+## Generate
 
-Set `capture.layers: [lt1, lt2, ... ltn]` to capture activations of target layers `lt1`, `lt2`, etc. Set `capture.layers: [-1]` for the final layer only. Set `capture.layers: []`
-to skip activation capture; generation still runs and `hidden_states_file` stays
-`null`.
-
-1. For remote runs, push the run folder, generate remotely, then pull results:
+Run one experiment:
 
 ```bash
-bash scripts/remote.sh push runs/<model_name>/<run_name>
-bash scripts/remote.sh pull runs/<model_name>/<run_name>
+python scripts/generate.py runs/<model>/<experiment>
 ```
 
-Post-generation analysis is separate from this generation/capture workflow.
-Run it on a completed run folder:
+Run multiple experiments sequentially:
 
 ```bash
-python scripts/analyze.py runs/<model_name>/<run_name>
+python scripts/generate.py \
+  runs/Qwen3-14B/bigcodebench_hard_screen \
+  runs/Qwen3-14B/bigcodebench_hard_latent
 ```
 
-This writes answer annotations, step marker JSON, solution objects, hard-question
-rankings, and PCA/t-SNE plots under `analysis/`. The static browser at
-`web/index.html` reads `web/data/runs.json` and can inspect generated text,
-step-marker options, and generated plots.
+Existing generation rows are skipped, so restarting a partially completed run
+resumes from its normalized generation index.
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing shared schemas.
+Activation capture is controlled in `config.yaml`:
+
+```yaml
+capture:
+  enabled: true
+  layers: [-1]
+  activation_storage_dtype: int8_scaled
+```
+
+Use `layers: [-1]` for final-layer states and `enabled: false` for a cheap
+screening run.
+
+## Analyze
+
+Analyze a completed run without loading the model:
+
+```bash
+python scripts/analyze.py runs/<model>/<experiment>
+```
+
+The analyzer operates only on the run's generation artifacts and produces:
+
+- parsed answers and correctness labels;
+- token step-marker alternatives;
+- solution-object records;
+- hard-question rankings;
+- interactive token-level PCA/t-SNE data;
+- step-level averaged latent vectors, directions, variance, clusters, and plots.
+
+Static Matplotlib PNGs duplicate the interactive projection work and are
+disabled by default. Enable them only when needed:
+
+```yaml
+analysis:
+  static_plots: true
+```
+
+### Step Classification
+
+`src/analysis/step_classification/` aggregates hidden states over sentence,
+sentence-pair, and paragraph spans. For each step it keeps:
+
+- the mean hidden state;
+- within-step direction (`last_state - first_state`);
+- latent variance and direction magnitude;
+- the previous-step nudge magnitude;
+- an unsupervised cluster and representative step text.
+
+The full nudge vector is not stored because it is exactly recoverable by
+subtracting consecutive mean vectors with the same `trajectory_id` and
+`segmenter`. Browser projections default to 4,000 evenly sampled steps while
+clustering can use up to 12,000.
+
+See [the step-classification guide](src/analysis/step_classification/README.md)
+for artifact details, interpretation, and server commands.
+
+## Website
+
+After analysis, serve the repository root:
+
+```bash
+python3 -m http.server 8765
+```
+
+Open:
+
+```text
+http://localhost:8765/web/index.html
+```
+
+The Analysis tab supports rotatable/zoomable token and step plots, question and
+seed filtering, step granularity, cluster filtering, correctness/cluster color
+modes, trajectory limits, and token-position ranges.
+
+Entropy highlighting is available only when generation rows contain timestep
+entropy diagnostics. The UI disables the control and reports when a run did not
+store them.
+
+## Recommended Next Runs
+
+GSM-Symbolic is saturated in the current Qwen3-14B run (`100/100` correct), so
+the prepared coding runs are more useful for heterogeneous step discovery:
+
+```text
+runs/Qwen3-14B/bigcodebench_hard_screen
+runs/Qwen3-14B/bigcodebench_hard_latent
+```
+
+The screen config runs all 148 BigCodeBench-Hard tasks without activation
+capture. The latent config runs 40 tasks with three samples each and final-layer
+capture for step classification.
+
+## Remote Workflow
+
+Push code and run configs:
+
+```bash
+bash scripts/remote.sh push runs/Qwen3-14B/bigcodebench_hard_latent
+```
+
+On the server:
+
+```bash
+cd /home/lamsade/jdavid/reasoning
+source .venv/bin/activate
+
+python scripts/prepare_dataset.py runs/Qwen3-14B/bigcodebench_hard_latent
+python scripts/generate.py runs/Qwen3-14B/bigcodebench_hard_latent
+python scripts/analyze.py runs/Qwen3-14B/bigcodebench_hard_latent
+```
+
+Pull the completed run:
+
+```bash
+bash scripts/remote.sh pull runs/Qwen3-14B/bigcodebench_hard_latent
+```
+
+No inference is required locally after pulling; rerun `scripts/analyze.py` only
+when analysis code or configuration changes.

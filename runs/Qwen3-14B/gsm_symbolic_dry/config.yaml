@@ -48,6 +48,7 @@ analysis:
   step_classification:
     cluster_k: 8
     max_steps: 12000
+    max_plot_steps: 4000
     random_state: 42
     segmenters:
       sentence:
