@@ -99,7 +99,9 @@ def paragraph_spans(text: str) -> list[tuple[int, int]]:
     return trim_spans(text, spans)
 
 
-def grouped_spans(spans: list[tuple[int, int]], group_size: int) -> list[tuple[int, int]]:
+def grouped_spans(
+    spans: list[tuple[int, int]], group_size: int
+) -> list[tuple[int, int]]:
     grouped: list[tuple[int, int]] = []
     for i in range(0, len(spans), group_size):
         chunk = spans[i : i + group_size]
@@ -118,4 +120,3 @@ def trim_spans(text: str, spans: list[tuple[int, int]]) -> list[tuple[int, int]]
         if start < end:
             out.append((start, end))
     return out
-

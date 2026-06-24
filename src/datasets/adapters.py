@@ -60,7 +60,9 @@ def adapt_row(row: dict[str, Any], adapter: str, idx: int) -> dict[str, Any]:
 
     if adapter == "gpqa":
         question = row.get("Question") or row.get("question") or row.get("prompt")
-        correct = row.get("Correct Answer") or row.get("correct_answer") or row.get("answer")
+        correct = (
+            row.get("Correct Answer") or row.get("correct_answer") or row.get("answer")
+        )
         incorrect = [
             row.get("Incorrect Answer 1") or row.get("incorrect_answer_1"),
             row.get("Incorrect Answer 2") or row.get("incorrect_answer_2"),
@@ -68,9 +70,15 @@ def adapt_row(row: dict[str, Any], adapter: str, idx: int) -> dict[str, Any]:
         ]
         choices = [(str(correct), True), *[(str(x), False) for x in incorrect if x]]
         stable_shuffle(choices, str(row.get("Record ID") or row.get("id") or idx))
-        gold = next(chr(65 + i) for i, (_, is_correct) in enumerate(choices) if is_correct)
+        gold = next(
+            chr(65 + i) for i, (_, is_correct) in enumerate(choices) if is_correct
+        )
         prompt = "\n".join(
-            [str(question), "", *[f"{chr(65 + i)}. {choice}" for i, (choice, _) in enumerate(choices)]]
+            [
+                str(question),
+                "",
+                *[f"{chr(65 + i)}. {choice}" for i, (choice, _) in enumerate(choices)],
+            ]
         )
         return {
             "id": str(row.get("Record ID") or row.get("id") or f"gpqa_{idx:06d}"),
@@ -81,12 +89,18 @@ def adapt_row(row: dict[str, Any], adapter: str, idx: int) -> dict[str, Any]:
         }
 
     if adapter == "bigcodebench":
-        prompt = row.get("instruct_prompt") or row.get("complete_prompt") or row.get("question")
+        prompt = (
+            row.get("instruct_prompt")
+            or row.get("complete_prompt")
+            or row.get("question")
+        )
         code_prompt = row.get("code_prompt")
         if code_prompt:
             prompt = f"{prompt}\n\nStarter code:\n```python\n{code_prompt}\n```"
         return {
-            "id": str(row.get("task_id") or row.get("_id") or f"bigcodebench_{idx:06d}"),
+            "id": str(
+                row.get("task_id") or row.get("_id") or f"bigcodebench_{idx:06d}"
+            ),
             "question": str(prompt),
             "gold_answer": None,
             "source": "bigcode/bigcodebench-hard",

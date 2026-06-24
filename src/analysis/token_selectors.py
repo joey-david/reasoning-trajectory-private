@@ -45,7 +45,9 @@ def sentence_end_tokens(row: dict[str, Any]) -> list[int]:
     if not text:
         return []
     candidates = [match.end() for match in re.finditer(r"[.!?](?:\s|$)", text)]
-    return unique_existing_tokens(row, [char_to_token_index(row, pos) for pos in candidates])
+    return unique_existing_tokens(
+        row, [char_to_token_index(row, pos) for pos in candidates]
+    )
 
 
 def percentile_tokens(row: dict[str, Any], percentiles: list[int | float]) -> list[int]:
@@ -64,7 +66,9 @@ def reasoning_boundary_tokens(row: dict[str, Any]) -> list[int]:
     if reasoning_length is None:
         return first_last_tokens(row)
     boundary = min(max(int(reasoning_length) - 1, 0), total - 1)
-    return unique_existing_tokens(row, [0, boundary, min(boundary + 1, total - 1), total - 1])
+    return unique_existing_tokens(
+        row, [0, boundary, min(boundary + 1, total - 1), total - 1]
+    )
 
 
 def first_last_tokens(row: dict[str, Any]) -> list[int]:

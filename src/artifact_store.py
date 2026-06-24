@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 
 from src.generation_output import CompleteGenerationOutput
 
@@ -24,9 +23,8 @@ def save_generation_output(
     *,
     run_path: Path,
     output: CompleteGenerationOutput,
-    hidden_states: torch.Tensor | np.ndarray | None,
+    hidden_states: Any | None,
     storage_dtype: str,
-    write_full_json: bool = False,
 ) -> CompleteGenerationOutput:
     """Save one generation output and return the updated object.
 
@@ -56,15 +54,15 @@ def save_generation_output(
         )
         output.hidden_states_file = hidden_path.relative_to(run_path).as_posix()
 
-    write_json(generation_dir / "metadata.json", generation_metadata(output, storage_dtype))
+    write_json(
+        generation_dir / "metadata.json", generation_metadata(output, storage_dtype)
+    )
 
     sample_path = samples_dir / f"{sanitize_filename(output.sample_id)}.json"
     if not sample_path.exists():
         write_json(sample_path, sample_record(output))
 
     row = compact_generation_record(output)
-    if write_full_json:
-        write_json(generation_dir / f"{stem}.json", output.to_dict(minimal=False))
     append_jsonl(
         generation_dir / "generations.jsonl",
         row,
@@ -73,7 +71,9 @@ def save_generation_output(
     return output
 
 
-def generation_metadata(output: CompleteGenerationOutput, storage_dtype: str) -> dict[str, Any]:
+def generation_metadata(
+    output: CompleteGenerationOutput, storage_dtype: str
+) -> dict[str, Any]:
     return {
         "schema_version": 2,
         "model_name": output.model_name,
@@ -114,7 +114,7 @@ def compact_generation_record(output: CompleteGenerationOutput) -> dict[str, Any
 def save_hidden_states_npz(
     *,
     path: Path,
-    hidden_states: torch.Tensor | np.ndarray,
+    hidden_states: Any,
     layer_indices: list[int],
     storage_dtype: str,
 ) -> None:
@@ -150,17 +150,16 @@ def save_hidden_states_npz(
 
 
 def load_hidden_states_npz(path: str | Path) -> tuple[np.ndarray, list[int]]:
-    data = np.load(path)
+    with np.load(path) as data:
+        layer_indices = data["layer_indices"].astype(int).tolist()
 
-    layer_indices = data["layer_indices"].astype(int).tolist()
+        if "hidden_states" in data:
+            return data["hidden_states"].copy(), layer_indices
 
-    if "hidden_states" in data:
-        return data["hidden_states"], layer_indices
-
-    if "hidden_states_q" in data and "hidden_states_scale" in data:
-        x = data["hidden_states_q"].astype(np.float32)
-        scale = data["hidden_states_scale"].astype(np.float32)
-        return x * scale[..., None], layer_indices
+        if "hidden_states_q" in data and "hidden_states_scale" in data:
+            x = data["hidden_states_q"].astype(np.float32)
+            scale = data["hidden_states_scale"].astype(np.float32)
+            return x * scale[..., None], layer_indices
 
     raise KeyError(f"No hidden states found in {path}")
 
@@ -177,7 +176,7 @@ def write_json(path: Path, obj: dict[str, Any]) -> None:
         json.dump(obj, handle, ensure_ascii=False, indent=2)
 
 
-def to_numpy(x: torch.Tensor | np.ndarray) -> np.ndarray:
+def to_numpy(x: Any) -> np.ndarray:
     if isinstance(x, np.ndarray):
         return x
     return x.detach().cpu().numpy()

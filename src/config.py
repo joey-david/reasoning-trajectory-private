@@ -34,9 +34,6 @@ class RunConfig(Mapping[str, Any]):
     def get(self, key: str, default: Any = None) -> Any:
         return self.raw.get(key, default)
 
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
-
 
 def load_config(run_path: str | Path) -> RunConfig:
     run_path = Path(run_path)
@@ -44,9 +41,3 @@ def load_config(run_path: str | Path) -> RunConfig:
     with config_path.open("r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}
     return RunConfig.from_dict(run_path, config)
-
-
-def resolve_repo_path(path_text: str | Path) -> Path:
-    root = Path(__file__).resolve().parents[1]
-    path = Path(path_text)
-    return path if path.is_absolute() else root / path

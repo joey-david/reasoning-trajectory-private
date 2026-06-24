@@ -23,7 +23,6 @@ print(f"base deps ok: datasets={datasets.__version__} torch={torch.__version__}"
 PY
 
 uv pip uninstall --python "$venv_python" -y flash-attn || true
-uv pip install --python "$venv_python" -r requirements.txt
 flash_abi="$("$venv_python" - <<'PY'
 import torch
 assert torch.__version__ == "2.6.0+cu124", torch.__version__

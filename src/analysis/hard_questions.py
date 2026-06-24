@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from src.analysis.common import read_generation_rows, read_sample_records, write_jsonl
+
 
 def write_hard_questions(run_path: Path, cfg: dict[str, Any]) -> None:
-    rows = read_generations(run_path)
-    samples = read_samples(run_path)
+    rows = read_generation_rows(run_path)
+    samples = read_sample_records(run_path)
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         grouped.setdefault(row["sample_id"], []).append(row)
@@ -21,10 +22,7 @@ def write_hard_questions(run_path: Path, cfg: dict[str, Any]) -> None:
     limit = int(cfg.get("hard_question_limit", 50))
     out_dir = run_path / "analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "hard_questions.jsonl").write_text(
-        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in candidates[:limit]),
-        encoding="utf-8",
-    )
+    write_jsonl(out_dir / "hard_questions.jsonl", candidates[:limit])
 
 
 def score_sample(
@@ -39,7 +37,9 @@ def score_sample(
     lengths = [len(row.get("generated_token_ids", [])) for row in rows]
     avg_tokens = sum(lengths) / max(len(lengths), 1)
     disagreement = len({row.get("produced_answer") for row in rows}) / max(len(rows), 1)
-    hardness_score = (2.0 * wrong_rate) + unknown_rate + min(avg_tokens / 4096.0, 1.0) + disagreement
+    hardness_score = (
+        (2.0 * wrong_rate) + unknown_rate + min(avg_tokens / 4096.0, 1.0) + disagreement
+    )
 
     return {
         "sample_id": sample_id,
@@ -51,13 +51,3 @@ def score_sample(
         "question": sample.get("question") or sample.get("prompt"),
         "gold_answer": sample.get("gold_answer"),
     }
-
-
-def read_generations(run_path: Path) -> list[dict[str, Any]]:
-    path = run_path / "generation" / "generations.jsonl"
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-
-
-def read_samples(run_path: Path) -> dict[str, dict[str, Any]]:
-    sample_dir = run_path / "generation" / "samples"
-    return {p.stem: json.loads(p.read_text()) for p in sample_dir.glob("*.json")}

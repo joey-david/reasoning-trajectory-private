@@ -22,7 +22,9 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
         return
 
     selectors = configured_selectors(cfg)
-    max_points = int(cfg.get("max_interactive_points", cfg.get("max_plot_points", 5000)))
+    max_points = int(
+        cfg.get("max_interactive_points", cfg.get("max_plot_points", 5000))
+    )
     out_dir = run_path / "analysis" / "plots"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -35,7 +37,13 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
                 if 0 <= token_idx < states.shape[0]:
                     for col, layer in enumerate(layers):
                         points_by_layer.setdefault(layer, []).append(
-                            (states[token_idx, col], row, int(token_idx), traj_id, selector_name)
+                            (
+                                states[token_idx, col],
+                                row,
+                                int(token_idx),
+                                traj_id,
+                                selector_name,
+                            )
                         )
 
     manifest: list[dict[str, Any]] = []
@@ -82,7 +90,8 @@ def build_payload(
                 "trajectory_id": traj_id,
                 "selector": selector_name,
                 "token_idx": token_idx,
-                "token_fraction": token_idx / max(len(row.get("generated_token_ids", [])) - 1, 1),
+                "token_fraction": token_idx
+                / max(len(row.get("generated_token_ids", [])) - 1, 1),
                 "is_correct": row.get("is_correct"),
                 "produced_answer": row.get("produced_answer"),
                 "reasoning_length": row.get("reasoning_length"),

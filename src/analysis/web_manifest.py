@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from src.analysis.common import read_sample_records
+
 
 def write_manifest(runs_root: Path, out_path: Path) -> None:
     runs = []
@@ -11,42 +13,51 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
         gen = run / "generation" / "generations.jsonl"
         if not gen.exists():
             continue
-        samples = {
-            p.stem: json.loads(p.read_text())
-            for p in (run / "generation" / "samples").glob("*.json")
-        }
-        plots = []
-        index = run / "analysis" / "plots" / "index.json"
-        if index.exists():
-            plots = json.loads(index.read_text())
-        interactive_plots = []
-        interactive_index = run / "analysis" / "plots" / "interactive_index.json"
-        if interactive_index.exists():
-            interactive_plots = json.loads(interactive_index.read_text())
-        step_classification_plots = []
-        step_classification_index = run / "analysis" / "step_classification" / "interactive_index.json"
-        if step_classification_index.exists():
-            step_classification_plots = json.loads(step_classification_index.read_text())
+        plots = load_json(run / "analysis" / "plots" / "index.json", [])
+        interactive_plots = load_json(
+            run / "analysis" / "plots" / "interactive_index.json", []
+        )
+        step_classification_plots = load_json(
+            run / "analysis" / "step_classification" / "interactive_index.json", []
+        )
         step_markers = run / "analysis" / "step_markers.json"
         solution_objects = run / "analysis" / "solution_objects.jsonl"
         hard_questions = run / "analysis" / "hard_questions.jsonl"
-        runs.append({
-            "model": run.parent.name,
-            "run": run.name,
-            "generations": "../" + gen.as_posix(),
-            "samples": samples,
-            "plots": [{**p, "path": "../" + (run / p["path"]).as_posix()} for p in plots],
-            "interactive_plots": [
-                {**p, "path": "../" + (run / p["path"]).as_posix()}
-                for p in interactive_plots
-            ],
-            "step_classification_plots": [
-                {**p, "path": "../" + (run / p["path"]).as_posix()}
-                for p in step_classification_plots
-            ],
-            "step_markers": "../" + step_markers.as_posix() if step_markers.exists() else None,
-            "solution_objects": "../" + solution_objects.as_posix() if solution_objects.exists() else None,
-            "hard_questions": "../" + hard_questions.as_posix() if hard_questions.exists() else None,
-        })
+        runs.append(
+            {
+                "model": run.parent.name,
+                "run": run.name,
+                "generations": web_path(gen),
+                "samples": read_sample_records(run),
+                "plots": add_web_paths(run, plots),
+                "interactive_plots": add_web_paths(run, interactive_plots),
+                "step_classification_plots": add_web_paths(
+                    run, step_classification_plots
+                ),
+                "step_markers": web_path(step_markers)
+                if step_markers.exists()
+                else None,
+                "solution_objects": web_path(solution_objects)
+                if solution_objects.exists()
+                else None,
+                "hard_questions": web_path(hard_questions)
+                if hard_questions.exists()
+                else None,
+            }
+        )
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps({"runs": runs}, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(
+        json.dumps({"runs": runs}, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def load_json(path: Path, default):
+    return json.loads(path.read_text()) if path.exists() else default
+
+
+def web_path(path: Path) -> str:
+    return "../" + path.as_posix()
+
+
+def add_web_paths(run: Path, plots: list[dict]) -> list[dict]:
+    return [{**plot, "path": web_path(run / plot["path"])} for plot in plots]

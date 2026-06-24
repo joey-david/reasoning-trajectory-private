@@ -5,9 +5,9 @@ from pathlib import Path
 import random
 from typing import Any
 
-from src.config import resolve_repo_path
 from src.data import load_samples, select_samples
 from src.datasets.adapters import normalize_dataset
+from src.paths import resolve_repo_path
 
 
 def load_raw_dataset(dataset_cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -51,7 +51,9 @@ def load_normalized_dataset(dataset_cfg: dict[str, Any]) -> list[dict[str, Any]]
     return select_dataset_rows(rows, dataset_cfg)
 
 
-def load_run_samples(run_path: Path, dataset_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+def load_run_samples(
+    run_path: Path, dataset_cfg: dict[str, Any]
+) -> list[dict[str, Any]]:
     dataset_path = run_path / "dataset.jsonl"
     if dataset_path.exists():
         return load_samples(dataset_path)

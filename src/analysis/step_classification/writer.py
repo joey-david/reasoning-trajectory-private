@@ -6,11 +6,18 @@ from typing import Any
 
 import numpy as np
 
-from src.analysis.common import evenly_capped, read_generation_rows
+from src.analysis.common import evenly_capped, read_generation_rows, write_jsonl
 from src.analysis.step_classification.clustering import assign_clusters
-from src.analysis.step_classification.features import build_step_features, stack_features
+from src.analysis.step_classification.features import (
+    StepMatrices,
+    build_step_features,
+    stack_features,
+)
 from src.analysis.step_classification.projection import projection_payloads
-from src.analysis.step_classification.segmentation import build_segments, configured_segmenters
+from src.analysis.step_classification.segmentation import (
+    build_segments,
+    configured_segmenters,
+)
 from src.artifact_store import load_hidden_states_npz
 
 
@@ -48,10 +55,12 @@ def write_step_classification(run_path: Path, cfg: dict[str, Any]) -> None:
         if not features:
             continue
         records = [dict(item.record) for item in features]
-        means, directions, nudges = stack_features(features)
-        cluster_info = assign_clusters(records, means, directions, nudges, cfg)
-        save_layer_artifacts(out_dir, layer, records, means, directions, cluster_info)
-        for method, payload in projection_payloads(records, means, layer, cfg).items():
+        vectors = stack_features(features)
+        cluster_info = assign_clusters(records, vectors, cfg)
+        save_layer_artifacts(out_dir, layer, records, vectors, cluster_info)
+        for method, payload in projection_payloads(
+            records, vectors, layer, cfg
+        ).items():
             path = out_dir / f"{method}_layer{layer}_steps.json"
             path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             manifest.append(
@@ -74,27 +83,27 @@ def save_layer_artifacts(
     out_dir: Path,
     layer: int,
     records: list[dict[str, Any]],
-    means: np.ndarray,
-    directions: np.ndarray,
+    vectors: StepMatrices,
     cluster_info: dict[str, Any],
 ) -> None:
     for feature_row, record in enumerate(records):
         record["feature_row"] = feature_row
 
-    (out_dir / f"layer{layer}_steps.jsonl").write_text(
-        "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),
-        encoding="utf-8",
-    )
+    write_jsonl(out_dir / f"layer{layer}_steps.jsonl", records)
     (out_dir / f"layer{layer}_clusters.json").write_text(
         json.dumps(cluster_info, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     np.savez_compressed(
         out_dir / f"layer{layer}_vectors.npz",
-        mean_vectors=means.astype(np.float16),
-        direction_vectors=directions.astype(np.float16),
-        variance=np.asarray([record["variance"] for record in records], dtype=np.float32),
-        cluster_id=np.asarray([record.get("cluster_id", -1) for record in records], dtype=np.int32),
+        mean_vectors=vectors.means.astype(np.float16),
+        direction_vectors=vectors.directions.astype(np.float16),
+        variance=np.asarray(
+            [record["variance"] for record in records], dtype=np.float32
+        ),
+        cluster_id=np.asarray(
+            [record.get("cluster_id", -1) for record in records], dtype=np.int32
+        ),
     )
     legacy_probe_path = out_dir / f"layer{layer}_probe_examples.jsonl"
     if legacy_probe_path.exists():

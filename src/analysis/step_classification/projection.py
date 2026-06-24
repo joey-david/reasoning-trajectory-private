@@ -5,10 +5,12 @@ from typing import Any
 import numpy as np
 
 from src.analysis.common import evenly_capped, project_3d
+from src.analysis.step_classification.features import StepMatrices
+
 
 def projection_payloads(
     records: list[dict[str, Any]],
-    means: np.ndarray,
+    vectors: StepMatrices,
     layer: int,
     cfg: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
@@ -19,7 +21,7 @@ def projection_payloads(
     max_plot_steps = int(step_cfg.get("max_plot_steps", 4000))
     indices = evenly_capped(list(range(len(records))), max_plot_steps)
     plot_records = [records[i] for i in indices]
-    plot_means = means[np.asarray(indices)]
+    plot_means = vectors.means[np.asarray(indices)]
     projections = project_3d(
         plot_means,
         random_state=random_state,
@@ -30,7 +32,10 @@ def projection_payloads(
             "plot_type": "step_classification",
             "method": name,
             "layer": layer,
-            "points": [point_record(record, coords) for record, coords in zip(plot_records, values)],
+            "points": [
+                point_record(record, coords)
+                for record, coords in zip(plot_records, values)
+            ],
         }
         for name, values in projections.items()
     }

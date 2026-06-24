@@ -95,7 +95,6 @@ class CompleteGenerationOutput:
     prompt: str
     input_ids: list[int]
     generated_token_ids: list[int]
-    full_seq_ids: list[int]
 
     # Decision-point indices
     dp1_idx: int
@@ -113,44 +112,3 @@ class CompleteGenerationOutput:
 
     # Heavy artifacts live in separate binary files
     hidden_states_file: str | None = None
-
-    # Later: step/window aggregations
-    windows: dict[str, dict[str, Any]] = field(default_factory=dict)
-    num_steps: int | None = None
-
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self, minimal: bool = False) -> dict[str, Any]:
-        base = {
-            "sample_id": self.sample_id,
-            "seed": self.seed,
-            "temperature": self.temperature,
-            "model_name": self.model_name,
-            "layer_indices": self.layer_indices,
-            "hidden_state_convention": self.hidden_state_convention,
-            "prompt": self.prompt,
-            "input_ids": self.input_ids,
-            "generated_token_ids": self.generated_token_ids,
-            "full_seq_ids": self.full_seq_ids,
-            "dp1_idx": self.dp1_idx,
-            "dp2_idx": self.dp2_idx,
-            "reasoning_length": self.reasoning_length,
-            "produced_text": self.produced_text,
-            "produced_answer": self.produced_answer,
-            "gold_answer": self.gold_answer,
-            "is_correct": self.is_correct,
-            "hidden_states_file": self.hidden_states_file,
-        }
-
-        if minimal:
-            return base
-
-        base.update(
-            {
-                "timesteps": [t.to_dict() for t in self.timestep_artifacts],
-                "windows": self.windows,
-                "num_steps": self.num_steps,
-                "metadata": self.metadata,
-            }
-        )
-        return base

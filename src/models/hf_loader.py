@@ -24,37 +24,34 @@ def torch_dtype_from_config(dtype: str | None):
 
 
 def load_hf_model_and_tokenizer(model_cfg: dict):
-    model_kwargs = {}
+    model_kwargs = {
+        "device_map": model_cfg.get("device_map", "auto"),
+        "torch_dtype": torch_dtype_from_config(model_cfg.get("dtype")),
+        "trust_remote_code": bool(model_cfg.get("trust_remote_code", False)),
+    }
     if model_cfg.get("attn_implementation"):
         model_kwargs["attn_implementation"] = model_cfg["attn_implementation"]
 
+    trust_remote_code = model_kwargs["trust_remote_code"]
     tokenizer = AutoTokenizer.from_pretrained(
         model_cfg["name"],
-        trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
+        trust_remote_code=trust_remote_code,
     )
 
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
         tokenizer.pad_token = tokenizer.eos_token
 
     try:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_cfg["name"],
-            device_map=model_cfg.get("device_map", "auto"),
-            torch_dtype=torch_dtype_from_config(model_cfg.get("dtype")),
-            trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
-            **model_kwargs,
-        ).eval()
+        model = load_model(model_cfg["name"], model_kwargs)
     except ImportError:
         if model_kwargs.get("attn_implementation") != "flash_attention_2":
             raise
         print("flash_attention_2 unavailable; retrying with attn_implementation=sdpa")
         model_kwargs["attn_implementation"] = "sdpa"
-        model = AutoModelForCausalLM.from_pretrained(
-            model_cfg["name"],
-            device_map=model_cfg.get("device_map", "auto"),
-            torch_dtype=torch_dtype_from_config(model_cfg.get("dtype")),
-            trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
-            **model_kwargs,
-        ).eval()
+        model = load_model(model_cfg["name"], model_kwargs)
 
     return model, tokenizer
+
+
+def load_model(name: str, kwargs: dict):
+    return AutoModelForCausalLM.from_pretrained(name, **kwargs).eval()

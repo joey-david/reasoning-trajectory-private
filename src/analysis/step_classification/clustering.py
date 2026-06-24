@@ -7,12 +7,12 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+from src.analysis.step_classification.features import StepMatrices
+
 
 def assign_clusters(
     records: list[dict[str, Any]],
-    means: np.ndarray,
-    directions: np.ndarray,
-    nudges: np.ndarray,
+    vectors: StepMatrices,
     cfg: dict[str, Any],
 ) -> dict[str, Any]:
     if len(records) < 3:
@@ -20,10 +20,16 @@ def assign_clusters(
 
     step_cfg = cfg.get("step_classification", {})
     k = min(int(step_cfg.get("cluster_k", 8)), len(records) - 1)
-    pca_dim = min(int(step_cfg.get("cluster_pca_dim", 32)), len(records) - 1, means.shape[1])
+    pca_dim = min(
+        int(step_cfg.get("cluster_pca_dim", 32)),
+        len(records) - 1,
+        vectors.means.shape[1],
+    )
     random_state = int(step_cfg.get("random_state", 42))
 
-    mean_components = PCA(n_components=pca_dim, random_state=random_state).fit_transform(means)
+    mean_components = PCA(
+        n_components=pca_dim, random_state=random_state
+    ).fit_transform(vectors.means)
     scalars = np.asarray(
         [
             [
@@ -37,9 +43,15 @@ def assign_clusters(
         ],
         dtype=np.float32,
     )
-    direction_normed = normalized_pca(directions, min(8, pca_dim, len(records) - 1), random_state)
-    nudge_normed = normalized_pca(nudges, min(8, pca_dim, len(records) - 1), random_state)
-    features = np.concatenate([mean_components, direction_normed, nudge_normed, scalars], axis=1)
+    direction_normed = normalized_pca(
+        vectors.directions, min(8, pca_dim, len(records) - 1), random_state
+    )
+    nudge_normed = normalized_pca(
+        vectors.nudges, min(8, pca_dim, len(records) - 1), random_state
+    )
+    features = np.concatenate(
+        [mean_components, direction_normed, nudge_normed, scalars], axis=1
+    )
     features = StandardScaler().fit_transform(features)
 
     model = KMeans(n_clusters=k, n_init=10, random_state=random_state)
@@ -56,7 +68,13 @@ def assign_clusters(
             "mean_pca": pca_dim,
             "direction_pca": direction_normed.shape[1],
             "nudge_pca": nudge_normed.shape[1],
-            "scalars": ["variance", "direction_norm", "nudge_norm", "token_fraction", "token_count"],
+            "scalars": [
+                "variance",
+                "direction_norm",
+                "nudge_norm",
+                "token_fraction",
+                "token_count",
+            ],
         },
         "clusters": cluster_summaries(records),
     }
@@ -67,7 +85,9 @@ def normalized_pca(x: np.ndarray, n_components: int, random_state: int) -> np.nd
         return np.zeros((x.shape[0], 0), dtype=np.float32)
     norms = np.linalg.norm(x, axis=1, keepdims=True)
     x_normed = np.divide(x, np.where(norms == 0.0, 1.0, norms))
-    return PCA(n_components=n_components, random_state=random_state).fit_transform(x_normed)
+    return PCA(n_components=n_components, random_state=random_state).fit_transform(
+        x_normed
+    )
 
 
 def cluster_summaries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -85,9 +105,15 @@ def cluster_summaries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "correct": sum(item.get("is_correct") is True for item in items),
                 "incorrect": sum(item.get("is_correct") is False for item in items),
                 "unknown": sum(item.get("is_correct") is None for item in items),
-                "avg_variance": round(sum(item["variance"] for item in items) / len(items), 6),
-                "avg_direction_norm": round(sum(item["direction_norm"] for item in items) / len(items), 6),
-                "avg_nudge_norm": round(sum(item["nudge_norm"] for item in items) / len(items), 6),
+                "avg_variance": round(
+                    sum(item["variance"] for item in items) / len(items), 6
+                ),
+                "avg_direction_norm": round(
+                    sum(item["direction_norm"] for item in items) / len(items), 6
+                ),
+                "avg_nudge_norm": round(
+                    sum(item["nudge_norm"] for item in items) / len(items), 6
+                ),
                 "exemplars": [
                     {
                         "sample_id": item["sample_id"],
@@ -101,4 +127,3 @@ def cluster_summaries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return summaries
-

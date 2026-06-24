@@ -20,6 +20,7 @@ where:
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 import time
 from typing import Any
@@ -60,6 +61,31 @@ from src.models.introspection import (
 )
 from src.prompting.templates import build_prompt
 from src.run_io import load_generation_index
+
+
+@dataclass(slots=True)
+class GenerationRequest:
+    prompt: str
+    sample_id: str
+    seed: int
+    temperature: float
+    max_new_tokens: int
+    layer_indices: list[int]
+    model_name: str
+    gold_answer: str | None
+    gold_token_id: int | None
+    capture_diagnostics: bool
+    top_p: float | None
+    top_k: int | None
+    progress: Any | None
+    progress_label: str
+
+
+@dataclass(slots=True)
+class GeneratedSequence:
+    full_ids: list[int]
+    token_ids: list[int]
+    text: str
 
 
 def generate_run(
@@ -129,20 +155,22 @@ def generate_run(
                 output, hidden_states = generate_one_twopass(
                     model=model,
                     tokenizer=tokenizer,
-                    prompt=prompt,
-                    sample_id=sample_id,
-                    seed=seed,
-                    temperature=temperature,
-                    max_new_tokens=max_new_tokens,
-                    layer_indices=layer_indices,
-                    model_name=model_cfg["name"],
-                    gold_answer=gold_answer,
-                    gold_token_id=gold_token_id,
-                    capture_diagnostics=capture_diagnostics,
-                    top_p=top_p,
-                    top_k=top_k,
-                    progress=progress,
-                    progress_label=progress_label,
+                    request=GenerationRequest(
+                        prompt=prompt,
+                        sample_id=sample_id,
+                        seed=seed,
+                        temperature=temperature,
+                        max_new_tokens=max_new_tokens,
+                        layer_indices=layer_indices,
+                        model_name=model_cfg["name"],
+                        gold_answer=gold_answer,
+                        gold_token_id=gold_token_id,
+                        capture_diagnostics=capture_diagnostics,
+                        top_p=top_p,
+                        top_k=top_k,
+                        progress=progress,
+                        progress_label=progress_label,
+                    ),
                 )
 
                 save_generation_output(
@@ -160,20 +188,7 @@ def generate_one_twopass(
     *,
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
-    prompt: str,
-    sample_id: str,
-    seed: int,
-    temperature: float,
-    max_new_tokens: int,
-    layer_indices: list[int],
-    model_name: str,
-    gold_answer: str | None = None,
-    gold_token_id: int | None = None,
-    capture_diagnostics: bool = True,
-    top_p: float | None = None,
-    top_k: int | None = None,
-    progress: Any | None = None,
-    progress_label: str = "",
+    request: GenerationRequest,
 ) -> tuple[CompleteGenerationOutput, torch.Tensor | None]:
     """Generate one sample and capture selected-layer hidden states.
 
@@ -187,126 +202,136 @@ def generate_one_twopass(
         hidden_states:
             Tensor [T, L, H], CPU, float32, or None when no layers are requested.
     """
-    if layer_indices:
-        assert_unique_layers(layer_indices)
-    set_seed(seed)
+    if request.layer_indices:
+        assert_unique_layers(request.layer_indices)
+    set_seed(request.seed)
 
     input_device = get_input_device(model)
 
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    encoded = tokenizer(prompt, return_tensors="pt")
+    encoded = tokenizer(request.prompt, return_tensors="pt")
     encoded = {key: value.to(input_device) for key, value in encoded.items()}
 
     prompt_token_ids = encoded["input_ids"][0].detach().cpu().tolist()
     prompt_len = len(prompt_token_ids)
 
-    # -------------------------------------------------------------------------
-    # Pass 1: generation
-    # -------------------------------------------------------------------------
-    do_sample = temperature > 0.0
-
-    generate_kwargs: dict[str, Any] = {
-        **encoded,
-        "max_new_tokens": int(max_new_tokens),
-        "do_sample": do_sample,
-        "use_cache": True,
-        "pad_token_id": tokenizer.pad_token_id or tokenizer.eos_token_id,
-        "eos_token_id": tokenizer.eos_token_id,
-    }
-
-    if do_sample:
-        generate_kwargs["temperature"] = float(temperature)
-        if top_p is not None:
-            generate_kwargs["top_p"] = float(top_p)
-        if top_k is not None:
-            generate_kwargs["top_k"] = int(top_k)
-
-    if progress is not None:
-        progress.set_description(f"generation {progress_label}".strip())
-        tracker = LiveGenerationProgress(progress, prompt_len, progress_label)
-        tracker.update(prompt_len, force=True)
-        generate_kwargs["stopping_criteria"] = StoppingCriteriaList([tracker])
-    generated = model.generate(**generate_kwargs)
-    if progress is not None:
-        tracker.update(int(generated.shape[-1]), force=True)
-
-    full_seq_ids = generated[0].detach().cpu().tolist()
-    generated_token_ids = full_seq_ids[prompt_len:]
-
-    produced_text = tokenizer.decode(
-        generated_token_ids,
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False,
+    sequence = generate_sequence(
+        model=model,
+        tokenizer=tokenizer,
+        encoded=encoded,
+        prompt_len=prompt_len,
+        request=request,
     )
 
     # -------------------------------------------------------------------------
     # Pass 2: teacher-forced selected-layer capture
     # -------------------------------------------------------------------------
     hidden_states = None
-    if layer_indices:
-        if progress is not None:
-            progress.set_postfix({}, refresh=True)
-            progress.set_description(f"activation capture {progress_label}".strip())
+    if request.layer_indices:
+        if request.progress is not None:
+            request.progress.set_postfix({}, refresh=True)
+            request.progress.set_description(
+                f"activation capture {request.progress_label}".strip()
+            )
         hidden_states = capture_selected_hidden_states(
             model=model,
-            full_seq_ids=full_seq_ids,
+            full_seq_ids=sequence.full_ids,
             prompt_len=prompt_len,
-            num_generated=len(generated_token_ids),
-            layer_indices=layer_indices,
+            num_generated=len(sequence.token_ids),
+            layer_indices=request.layer_indices,
         )
-    elif progress is not None:
-        progress.set_postfix({}, refresh=True)
-        progress.set_description(f"activation capture skipped {progress_label}".strip())
+    elif request.progress is not None:
+        request.progress.set_postfix({}, refresh=True)
+        request.progress.set_description(
+            f"activation capture skipped {request.progress_label}".strip()
+        )
 
-    timestep_artifacts: list[TimestepArtifacts] = []
-
-    if capture_diagnostics and hidden_states is not None and len(generated_token_ids) > 0:
+    if request.capture_diagnostics and hidden_states is not None and sequence.token_ids:
         timestep_artifacts = compute_timestep_artifacts(
             model=model,
             tokenizer=tokenizer,
             hidden_states=hidden_states,
-            generated_token_ids=generated_token_ids,
+            generated_token_ids=sequence.token_ids,
             prompt_len=prompt_len,
-            gold_token_id=gold_token_id,
+            gold_token_id=request.gold_token_id,
         )
     else:
-        timestep_artifacts = minimal_timestep_artifacts(
-            tokenizer=tokenizer,
-            generated_token_ids=generated_token_ids,
-            prompt_len=prompt_len,
-        )
+        timestep_artifacts = []
 
     output = CompleteGenerationOutput(
-        sample_id=sample_id,
-        seed=seed,
-        temperature=temperature,
-        model_name=model_name,
-        layer_indices=layer_indices,
+        sample_id=request.sample_id,
+        seed=request.seed,
+        temperature=request.temperature,
+        model_name=request.model_name,
+        layer_indices=request.layer_indices,
         hidden_state_convention=HIDDEN_STATE_CONVENTION,
-        prompt=prompt,
+        prompt=request.prompt,
         input_ids=prompt_token_ids,
-        generated_token_ids=generated_token_ids,
-        full_seq_ids=full_seq_ids,
+        generated_token_ids=sequence.token_ids,
         dp1_idx=prompt_len,
         dp2_idx=None,
         reasoning_length=None,
-        produced_text=produced_text,
+        produced_text=sequence.text,
         produced_answer=None,
-        gold_answer=gold_answer,
+        gold_answer=request.gold_answer,
         is_correct=None,
         timestep_artifacts=timestep_artifacts,
         hidden_states_file=None,
-        metadata={
-            "prompt_length": prompt_len,
-            "generated_length": len(generated_token_ids),
-            "do_sample": do_sample,
-            "top_p": top_p,
-        },
     )
 
     return output, hidden_states
+
+
+def generate_sequence(
+    *,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    encoded: dict[str, torch.Tensor],
+    prompt_len: int,
+    request: GenerationRequest,
+) -> GeneratedSequence:
+    do_sample = request.temperature > 0.0
+    kwargs: dict[str, Any] = {
+        **encoded,
+        "max_new_tokens": int(request.max_new_tokens),
+        "do_sample": do_sample,
+        "use_cache": True,
+        "pad_token_id": tokenizer.pad_token_id,
+        "eos_token_id": tokenizer.eos_token_id,
+    }
+    if do_sample:
+        kwargs["temperature"] = float(request.temperature)
+        if request.top_p is not None:
+            kwargs["top_p"] = float(request.top_p)
+        if request.top_k is not None:
+            kwargs["top_k"] = int(request.top_k)
+
+    tracker = None
+    if request.progress is not None:
+        request.progress.set_description(f"generation {request.progress_label}".strip())
+        tracker = LiveGenerationProgress(
+            request.progress, prompt_len, request.progress_label
+        )
+        tracker.update(prompt_len, force=True)
+        kwargs["stopping_criteria"] = StoppingCriteriaList([tracker])
+
+    generated = model.generate(**kwargs)
+    if tracker is not None:
+        tracker.update(int(generated.shape[-1]), force=True)
+
+    full_ids = generated[0].detach().cpu().tolist()
+    token_ids = full_ids[prompt_len:]
+    return GeneratedSequence(
+        full_ids=full_ids,
+        token_ids=token_ids,
+        text=tokenizer.decode(
+            token_ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        ),
+    )
 
 
 @torch.inference_mode()
@@ -352,21 +377,13 @@ def capture_selected_hidden_states(
             device="cpu",
         )
 
-    rows: list[torch.Tensor] = []
-
-    for step in range(num_generated):
-        token_pos = prompt_len + step
-        predict_from_pos = token_pos - 1
-
-        selected_layers = []
-
-        for layer in layer_indices:
-            h = capture.outputs[layer]  # [1, seq_len, hidden_dim]
-            selected_layers.append(h[0, predict_from_pos, :].detach().float().cpu())
-
-        rows.append(torch.stack(selected_layers, dim=0))  # [L, H]
-
-    return torch.stack(rows, dim=0)  # [T, L, H]
+    start = prompt_len - 1
+    stop = start + num_generated
+    selected = [
+        capture.outputs[layer][0, start:stop, :].float().cpu()
+        for layer in layer_indices
+    ]
+    return torch.stack(selected, dim=1)  # [T, L, H]
 
 
 @torch.inference_mode()
@@ -454,44 +471,15 @@ def compute_timestep_artifacts(
                     int(rank_for_token(logits, eos_token_id)[0].detach().cpu())
                 )
 
-        artifacts.append(
-            artifact_with_diagnostics(
-                artifact,
-                entropy=entropy,
-                ce_next_token=ce_next_token,
-                rank_next_token=rank_next_token,
-                ce_gold_answer=ce_gold_answer,
-                rank_gold_answer=rank_gold_answer,
-                prob_gold_answer=prob_gold_answer,
-                prob_eos=prob_eos,
-                rank_eos=rank_eos,
-            )
-        )
-
-    return artifacts
-
-
-def minimal_timestep_artifacts(
-    *,
-    tokenizer: PreTrainedTokenizerBase,
-    generated_token_ids: list[int],
-    prompt_len: int,
-) -> list[TimestepArtifacts]:
-    artifacts = []
-
-    for t, token_id in enumerate(generated_token_ids):
-        token_pos = prompt_len + t
-        artifacts.append(
-            TimestepArtifacts.from_token(
-                token_id=int(token_id),
-                token_str=tokenizer.decode(
-                    [int(token_id)],
-                    skip_special_tokens=False,
-                    clean_up_tokenization_spaces=False,
-                ),
-                token_pos=token_pos,
-            )
-        )
+        artifact.entropy = entropy
+        artifact.ce_next_token = ce_next_token
+        artifact.rank_next_token = rank_next_token
+        artifact.ce_gold_answer = ce_gold_answer
+        artifact.rank_gold_answer = rank_gold_answer
+        artifact.prob_gold_answer = prob_gold_answer
+        artifact.prob_eos = prob_eos
+        artifact.rank_eos = rank_eos
+        artifacts.append(artifact)
 
     return artifacts
 
@@ -547,7 +535,7 @@ class SelectedLayerCapture:
             layer = self.decoder_layers[resolved]
 
             def make_hook(key: int):
-                def hook(module, inputs, output):
+                def hook(_module, _inputs, output):
                     hidden = output[0] if isinstance(output, tuple) else output
                     self.outputs[key] = hidden.detach()
 
@@ -591,48 +579,6 @@ class LiveGenerationProgress(StoppingCriteria):
             f"generation {generated_tokens} tok {tok_s:.1f} tok/s {self.label}"
         )
         self.last_update = now
-
-
-def artifact_with_diagnostics(
-    artifact: TimestepArtifacts,
-    *,
-    entropy: list[float],
-    ce_next_token: list[float],
-    rank_next_token: list[int],
-    ce_gold_answer: list[float] | None,
-    rank_gold_answer: list[int] | None,
-    prob_gold_answer: list[float] | None,
-    prob_eos: list[float] | None,
-    rank_eos: list[int] | None,
-) -> TimestepArtifacts:
-    artifact.entropy = entropy
-    artifact.ce_next_token = ce_next_token
-    artifact.rank_next_token = rank_next_token
-    artifact.ce_gold_answer = ce_gold_answer
-    artifact.rank_gold_answer = rank_gold_answer
-    artifact.prob_gold_answer = prob_gold_answer
-    artifact.prob_eos = prob_eos
-    artifact.rank_eos = rank_eos
-    return artifact
-
-
-def torch_dtype_from_config(dtype: str | None) -> torch.dtype | str | None:
-    if dtype in (None, "auto"):
-        return dtype
-
-    aliases = {
-        "float16": torch.float16,
-        "fp16": torch.float16,
-        "bfloat16": torch.bfloat16,
-        "bf16": torch.bfloat16,
-        "float32": torch.float32,
-        "fp32": torch.float32,
-    }
-
-    try:
-        return aliases[dtype]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported torch_dtype config value: {dtype!r}") from exc
 
 
 def sample_id_from_sample(sample: dict[str, Any]) -> str:

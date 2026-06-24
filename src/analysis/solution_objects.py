@@ -1,27 +1,27 @@
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
 
 from src.analysis.answers import extract_answer
+from src.analysis.common import read_generation_rows, read_sample_records, write_jsonl
 
 
 NUMBER_RE = r"-?\d+(?:\.\d+)?"
 
 
 def write_solution_objects(run_path: Path, cfg: dict[str, Any]) -> None:
-    rows = read_generations(run_path)
-    samples = read_samples(run_path)
+    rows = read_generation_rows(run_path)
+    samples = read_sample_records(run_path)
     out_dir = run_path / "analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    objects = [build_solution_object(row, samples.get(row["sample_id"], {}), cfg) for row in rows]
-    (out_dir / "solution_objects.jsonl").write_text(
-        "".join(json.dumps(obj, ensure_ascii=False) + "\n" for obj in objects),
-        encoding="utf-8",
-    )
+    objects = [
+        build_solution_object(row, samples.get(row["sample_id"], {}), cfg)
+        for row in rows
+    ]
+    write_jsonl(out_dir / "solution_objects.jsonl", objects)
 
 
 def build_solution_object(
@@ -43,7 +43,8 @@ def build_solution_object(
     return {
         "sample_id": row.get("sample_id"),
         "seed": row.get("seed"),
-        "dataset_source": sample.get("source") or sample.get("metadata", {}).get("source"),
+        "dataset_source": sample.get("source")
+        or sample.get("metadata", {}).get("source"),
         "question": sample.get("question") or sample.get("prompt"),
         "reasoning_text": reasoning_text,
         "final_text": final_text,
@@ -65,13 +66,3 @@ def split_reasoning_and_final(text: str) -> tuple[str | None, str]:
     if match:
         return match.group(1).strip(), match.group(2).strip()
     return None, text.strip()
-
-
-def read_generations(run_path: Path) -> list[dict[str, Any]]:
-    path = run_path / "generation" / "generations.jsonl"
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-
-
-def read_samples(run_path: Path) -> dict[str, dict[str, Any]]:
-    sample_dir = run_path / "generation" / "samples"
-    return {p.stem: json.loads(p.read_text()) for p in sample_dir.glob("*.json")}

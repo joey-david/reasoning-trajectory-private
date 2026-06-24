@@ -74,12 +74,13 @@
     async function init() {
       state.manifest = await fetch("data/runs.json").then(r => r.json()).catch(() => ({ runs: [] }));
       const models = [...new Set(state.manifest.runs.map(r => r.model))];
-      $("model").innerHTML = models.map(m => `<option>${m}</option>`).join("");
+      setOptions("model", models);
       $("model").onchange = fillRuns; $("run").onchange = loadRun;
       $("tab-generation").onclick = () => tab("generation");
       $("tab-analysis").onclick = () => tab("analysis");
       $("iteration").onchange = renderGenerations; $("marker").onchange = renderGenerations; $("entropy").onchange = renderGenerations;
-      for (const id of ["plot-source", "plot-question", "plot-seed", "plot-selector", "plot-cluster", "plot-color-mode", "plot-max-trajectories", "plot-token-start", "plot-token-end"]) {
+      $("plot-source").onchange = loadSelectedPlot;
+      for (const id of ["plot-question", "plot-seed", "plot-selector", "plot-cluster", "plot-color-mode", "plot-max-trajectories", "plot-token-start", "plot-token-end"]) {
         $(id).onchange = renderInteractivePlot;
         $(id).oninput = renderInteractivePlot;
       }
@@ -87,7 +88,7 @@
     }
     function fillRuns() {
       const runs = state.manifest.runs.filter(r => r.model === $("model").value);
-      $("run").innerHTML = runs.map(r => `<option>${r.run}</option>`).join("");
+      setOptions("run", runs.map(r => r.run));
       loadRun();
     }
     async function loadRun() {
@@ -97,9 +98,9 @@
       state.markers = state.run.step_markers ? await fetch(state.run.step_markers).then(r => r.json()).catch(() => null) : null;
       state.plotPayload = null;
       const seeds = [...new Set(state.rows.map(r => r.seed))];
-      $("iteration").innerHTML = [`<option value="">all</option>`, ...seeds.map(s => `<option>${s}</option>`)].join("");
+      setOptions("iteration", seeds, "all");
       const markerNames = state.markers ? Object.keys(state.markers.selectors) : [];
-      $("marker").innerHTML = [`<option value="">none</option>`, ...markerNames.map(s => `<option>${s}</option>`)].join("");
+      setOptions("marker", markerNames, "none");
       fillPlotControls();
       renderGenerations(); renderPlots(); loadSelectedPlot();
     }
@@ -159,12 +160,11 @@
     }
     function fillPlotControls() {
       const plots = allInteractivePlots();
-      $("plot-source").innerHTML = plots.map((p, i) => `<option value="${i}">${plotLabel(p)}</option>`).join("");
+      setOptions("plot-source", plots.map((p, i) => [i, plotLabel(p)]));
       const sampleIds = [...new Set(state.rows.map(r => r.sample_id))];
       const seeds = [...new Set(state.rows.map(r => r.seed))];
-      $("plot-question").innerHTML = [`<option value="">all</option>`, ...sampleIds.map(id => `<option>${id}</option>`)].join("");
-      $("plot-seed").innerHTML = [`<option value="">all</option>`, ...seeds.map(seed => `<option>${seed}</option>`)].join("");
-      $("plot-source").onchange = loadSelectedPlot;
+      setOptions("plot-question", sampleIds, "all");
+      setOptions("plot-seed", seeds, "all");
       if (!plots.length) $("plot-status").textContent = "No interactive plot data. Run scripts/analyze.py for this run.";
     }
     function allInteractivePlots() {
@@ -188,8 +188,8 @@
       state.plotPayload = await fetch(plot.path).then(r => r.json()).catch(() => null);
       const selectors = state.plotPayload ? [...new Set((state.plotPayload.points || []).map(p => p.selector).filter(Boolean))] : [];
       const clusters = state.plotPayload ? [...new Set((state.plotPayload.points || []).map(p => p.cluster_id).filter(v => v !== undefined && v !== null))].sort((a, b) => Number(a) - Number(b)) : [];
-      $("plot-selector").innerHTML = [`<option value="">all</option>`, ...selectors.map(s => `<option>${s}</option>`)].join("");
-      $("plot-cluster").innerHTML = [`<option value="">all</option>`, ...clusters.map(c => `<option>${c}</option>`)].join("");
+      setOptions("plot-selector", selectors, "all");
+      setOptions("plot-cluster", clusters, "all");
       renderInteractivePlot();
     }
     function renderInteractivePlot() {
@@ -301,6 +301,15 @@
         text: [`${name}<br>${hoverText(point)}`],
         hoverinfo: "text",
       };
+    }
+    function setOptions(id, values, firstLabel = null) {
+      const select = $(id);
+      select.replaceChildren();
+      if (firstLabel !== null) select.add(new Option(firstLabel, ""));
+      for (const item of values) {
+        const [value, label] = Array.isArray(item) ? item : [item, item];
+        select.add(new Option(String(label), String(value)));
+      }
     }
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
     init();

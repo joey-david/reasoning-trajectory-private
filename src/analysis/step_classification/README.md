@@ -131,9 +131,10 @@ clusters, and assign human-readable labels to repeated clusters. Then use:
 
 ```text
 analysis/step_classification/layer<L>_vectors.npz
-analysis/step_classification/layer<L>_probe_examples.jsonl
+analysis/step_classification/layer<L>_steps.jsonl
 ```
 
-as the feature matrix and label index. A first useful probe is a linear classifier
+Use `feature_row` from `layer<L>_steps.jsonl` to index the NPZ matrices. A first
+useful probe is a linear classifier
 from `mean_vectors`, `direction_vectors`, derived previous-step nudge vectors,
 and scalar variance features to manually labeled step types.

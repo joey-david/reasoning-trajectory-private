@@ -37,7 +37,9 @@ def write_step_markers(run_path: Path, cfg: dict[str, Any]) -> None:
             sample_record["selectors"][name] = selector(row)
         records.append(sample_record)
 
-    write_json(out_dir / "step_markers.json", {"selectors": selectors, "records": records})
+    write_json(
+        out_dir / "step_markers.json", {"selectors": selectors, "records": records}
+    )
 
 
 def configured_selectors(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -57,4 +59,6 @@ def configured_selectors(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def write_json(path: Path, obj: dict[str, Any]) -> None:
     import json
 
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )

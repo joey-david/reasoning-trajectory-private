@@ -16,6 +16,13 @@ class StepFeature:
     nudge: np.ndarray
 
 
+@dataclass(slots=True)
+class StepMatrices:
+    means: np.ndarray
+    directions: np.ndarray
+    nudges: np.ndarray
+
+
 def build_step_features(
     *,
     states: np.ndarray,
@@ -31,7 +38,9 @@ def build_step_features(
     for segment in segments:
         token_start = min(max(segment.token_start, 0), states.shape[0] - 1)
         token_end = min(max(segment.token_end, token_start), states.shape[0] - 1)
-        segment_states = states[token_start : token_end + 1, layer_col].astype(np.float32)
+        segment_states = states[token_start : token_end + 1, layer_col].astype(
+            np.float32
+        )
         if segment_states.size == 0:
             continue
 
@@ -52,7 +61,8 @@ def build_step_features(
             "token_start": token_start,
             "token_end": token_end,
             "token_idx": round((token_start + token_end) / 2),
-            "token_fraction": ((token_start + token_end) / 2) / max(total_tokens - 1, 1),
+            "token_fraction": ((token_start + token_end) / 2)
+            / max(total_tokens - 1, 1),
             "token_count": token_end - token_start + 1,
             "char_start": segment.char_start,
             "char_end": segment.char_end,
@@ -64,15 +74,16 @@ def build_step_features(
             "produced_answer": row.get("produced_answer"),
             "reasoning_length": row.get("reasoning_length"),
         }
-        out.append(StepFeature(record=record, mean=mean, direction=direction, nudge=nudge))
+        out.append(
+            StepFeature(record=record, mean=mean, direction=direction, nudge=nudge)
+        )
 
     return out
 
 
-def stack_features(features: list[StepFeature]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    return (
-        np.stack([item.mean for item in features]).astype(np.float32),
-        np.stack([item.direction for item in features]).astype(np.float32),
-        np.stack([item.nudge for item in features]).astype(np.float32),
+def stack_features(features: list[StepFeature]) -> StepMatrices:
+    return StepMatrices(
+        means=np.stack([item.mean for item in features]).astype(np.float32),
+        directions=np.stack([item.direction for item in features]).astype(np.float32),
+        nudges=np.stack([item.nudge for item in features]).astype(np.float32),
     )
-

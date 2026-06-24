@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
+
+from src.analysis.common import read_generation_rows, read_sample_records, write_jsonl
 
 
 NUMBER_RE = r"-?\d+(?:\.\d+)?"
@@ -11,28 +12,24 @@ NUMBER_RE = r"-?\d+(?:\.\d+)?"
 
 def update_answers(run_path: Path, cfg: dict[str, Any]) -> None:
     gen_path = run_path / "generation" / "generations.jsonl"
-    rows = [json.loads(line) for line in gen_path.read_text().splitlines() if line.strip()]
-    samples = {
-        p.stem: json.loads(p.read_text())
-        for p in (run_path / "generation" / "samples").glob("*.json")
-    }
+    rows = read_generation_rows(run_path)
+    samples = read_sample_records(run_path)
     produced_re = cfg.get("produced_answer_regex")
     gold_re = cfg.get("gold_answer_regex")
     think_end_id = cfg.get("think_end_token_id", 151668)
 
     for row in rows:
         sample = samples[row["sample_id"]]
-        row["produced_answer"] = extract_answer(row.get("produced_text", ""), produced_re)
+        row["produced_answer"] = extract_answer(
+            row.get("produced_text", ""), produced_re
+        )
         gold = extract_answer(sample.get("gold_answer", ""), gold_re)
         row["is_correct"] = answers_match(row["produced_answer"], gold)
         if think_end_id in row.get("generated_token_ids", []):
             row["reasoning_length"] = row["generated_token_ids"].index(think_end_id) + 1
             row["dp2_idx"] = sample.get("dp1_idx", 0) + row["reasoning_length"]
 
-    gen_path.write_text(
-        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
-        encoding="utf-8",
-    )
+    write_jsonl(gen_path, rows)
 
 
 def extract_answer(text: str, pattern: str | None) -> str | None:

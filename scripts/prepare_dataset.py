@@ -19,8 +19,7 @@ def main() -> int:
     args = parser.parse_args()
 
     run_path = Path(args.run_path)
-    cfg = load_config(run_path).to_dict()
-    dataset_cfg = cfg["dataset"]
+    dataset_cfg = load_config(run_path)["dataset"]
 
     rows = load_normalized_dataset(dataset_cfg)
 

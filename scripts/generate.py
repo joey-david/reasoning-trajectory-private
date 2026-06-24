@@ -9,8 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate outputs for one or more run folders.")
-    parser.add_argument("run_paths", nargs="+", help="Run folder(s), executed sequentially.")
+    parser = argparse.ArgumentParser(
+        description="Generate outputs for one or more run folders."
+    )
+    parser.add_argument(
+        "run_paths", nargs="+", help="Run folder(s), executed sequentially."
+    )
     args = parser.parse_args()
 
     for i, run_path_arg in enumerate(args.run_paths, start=1):
