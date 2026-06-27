@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 from src.analysis.common import read_generation_rows, read_sample_records, write_jsonl
 
 
-NUMBER_RE = r"-?\d+(?:\.\d+)?"
+NUMBER_RE = r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?"
 
 
 def update_answers(run_path: Path, cfg: dict[str, Any]) -> None:
@@ -24,7 +25,10 @@ def update_answers(run_path: Path, cfg: dict[str, Any]) -> None:
             row.get("produced_text", ""), produced_re
         )
         gold = extract_answer(sample.get("gold_answer", ""), gold_re)
-        row["is_correct"] = answers_match(row["produced_answer"], gold)
+        row["is_correct"] = answers_match(
+            row["produced_answer"],
+            gold,
+        )
         if think_end_id in row.get("generated_token_ids", []):
             row["reasoning_length"] = row["generated_token_ids"].index(think_end_id) + 1
             row["dp2_idx"] = sample.get("dp1_idx", 0) + row["reasoning_length"]
@@ -42,10 +46,13 @@ def extract_answer(text: str, pattern: str | None) -> str | None:
     return nums[-1] if nums else None
 
 
-def answers_match(a: str | None, b: str | None) -> bool | None:
+def answers_match(
+    a: str | None,
+    b: str | None,
+) -> bool | None:
     if a is None or b is None:
         return None
     try:
-        return float(a) == float(b)
-    except ValueError:
+        return Decimal(a.replace(",", "")) == Decimal(b.replace(",", ""))
+    except InvalidOperation:
         return a.strip().lower() == b.strip().lower()

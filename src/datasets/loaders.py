@@ -30,6 +30,7 @@ def load_raw_dataset(dataset_cfg: dict[str, Any]) -> list[dict[str, Any]]:
             dataset_cfg["path"],
             dataset_cfg.get("name"),
             split=dataset_cfg.get("split", "train"),
+            revision=dataset_cfg.get("revision"),
         )
         return [dict(row) for row in ds]
 
@@ -47,7 +48,10 @@ def select_dataset_rows(
 
 
 def load_normalized_dataset(dataset_cfg: dict[str, Any]) -> list[dict[str, Any]]:
-    rows = normalize_dataset(load_raw_dataset(dataset_cfg), dataset_cfg["adapter"])
+    rows = filter_dataset_rows(load_raw_dataset(dataset_cfg), dataset_cfg)
+    rows = normalize_dataset(rows, dataset_cfg["adapter"])
+    if dataset_cfg.get("require_gold_answer", False):
+        rows = [row for row in rows if row.get("gold_answer") is not None]
     return select_dataset_rows(rows, dataset_cfg)
 
 
@@ -58,3 +62,13 @@ def load_run_samples(
     if dataset_path.exists():
         return load_samples(dataset_path)
     return load_normalized_dataset(dataset_cfg)
+
+
+def filter_dataset_rows(
+    rows: list[dict[str, Any]],
+    dataset_cfg: dict[str, Any],
+) -> list[dict[str, Any]]:
+    for key, expected in dataset_cfg.get("filters", {}).items():
+        accepted = expected if isinstance(expected, list) else [expected]
+        rows = [row for row in rows if row.get(key) in accepted]
+    return rows

@@ -32,6 +32,7 @@ def build_prompt(
             messages,
             tokenize=False,
             add_generation_prompt=True,
+            **prompt_cfg.get("chat_template_kwargs", {}),
         )
 
     raise ValueError(f"Unknown prompt mode: {mode!r}")

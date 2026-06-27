@@ -107,12 +107,65 @@ def adapt_row(row: dict[str, Any], adapter: str, idx: int) -> dict[str, Any]:
             "metadata": row,
         }
 
+    if adapter == "mbppplus":
+        public_tests = "\n".join(str(test) for test in row.get("test_list", []))
+        return {
+            "id": f"mbppplus_{row['task_id']}",
+            "question": (
+                f"{row['prompt']}\n\n"
+                "The implementation must satisfy these examples:\n"
+                f"```python\n{public_tests}\n```"
+            ),
+            "gold_answer": None,
+            "source": "evalplus/mbppplus",
+            "metadata": row,
+        }
+
+    if adapter == "aime":
+        return {
+            "id": f"aime_{row.get('year', 2025)}_{row.get('problem_idx', row.get('id', idx))}",
+            "question": str(row["problem"]),
+            "gold_answer": str(row["answer"]),
+            "source": "AIME",
+            "metadata": row,
+        }
+
+    if adapter == "olympiadbench_numeric":
+        answer = simple_numeric_answer(row.get("final_answer"))
+        return {
+            "id": f"olympiadbench_{row.get('id', idx)}",
+            "question": str(row["question"]),
+            "gold_answer": answer,
+            "source": "Hothan/OlympiadBench",
+            "metadata": row,
+        }
+
+    if adapter == "polymath_numeric":
+        return {
+            "id": str(row.get("id") or f"polymath_{idx:06d}"),
+            "question": str(row["question"]),
+            "gold_answer": simple_numeric_answer([row.get("answer")]),
+            "source": "Qwen/PolyMath",
+            "metadata": row,
+        }
+
     raise ValueError(f"Unknown dataset adapter: {adapter!r}")
 
 
 def stable_shuffle(items: list[Any], key: str) -> None:
     seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:16], 16)
     random.Random(seed).shuffle(items)
+
+
+def simple_numeric_answer(value: Any) -> str | None:
+    if not isinstance(value, list) or len(value) != 1:
+        return None
+    answer = str(value[0]).strip().strip("$").replace(",", "").strip()
+    try:
+        float(answer)
+    except ValueError:
+        return None
+    return answer
 
 
 def normalize_dataset(

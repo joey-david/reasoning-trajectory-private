@@ -8,6 +8,7 @@ build/
 # Output and results (not tracked)
 output/
 logs/
+.tmp/
 runs/*/*/*
 !runs/*/*/config.yaml
 *.npz
@@ -19,6 +20,7 @@ data/**/*.json*
 .venv/
 venv/
 todo.md
+AGENTS.md
 
 # IDE
 .vscode/

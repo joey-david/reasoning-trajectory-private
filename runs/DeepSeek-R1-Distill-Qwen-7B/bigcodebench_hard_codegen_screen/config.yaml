@@ -1,0 +1,46 @@
+model:
+  name: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+  revision: 916b56a44061fd5cd7d6a8fb632557ed4f724f60
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+dataset:
+  source: hf
+  path: bigcode/bigcodebench-hard
+  revision: 298d2cc7b96612e15e47313c3603ee124cee0c1f
+  name: null
+  split: v0.1.4
+  adapter: bigcodebench
+  sample_limit: 20
+  sample_offset: 0
+  shuffle_seed: 72002
+
+generation:
+  max_new_tokens: 2048
+  num_samples_per_item: 10
+  base_seed: 7100200
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: ""
+  instruction: |
+    Think only as long as needed. Keep the reasoning clear and concise.
+    Identify the requirements and key edge cases, then construct the solution.
+    Put the complete final implementation in one fenced python code block.
+
+analysis:
+  produced_answer_regex: "(?s)```python\\s*(.*?)```"
+  think_end_token_id: 151649
+  hard_question_limit: 20

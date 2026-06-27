@@ -9,6 +9,7 @@ NPZ:
 
 from __future__ import annotations
 
+import fcntl
 import json
 import re
 from pathlib import Path
@@ -167,13 +168,21 @@ def load_hidden_states_npz(path: str | Path) -> tuple[np.ndarray, list[int]]:
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
         handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        handle.flush()
+        fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def write_json(path: Path, obj: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
+    with path.open("a+", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        handle.seek(0)
+        handle.truncate()
         json.dump(obj, handle, ensure_ascii=False, indent=2)
+        handle.flush()
+        fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def to_numpy(x: Any) -> np.ndarray:

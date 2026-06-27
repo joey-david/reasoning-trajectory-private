@@ -29,6 +29,8 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
         "torch_dtype": torch_dtype_from_config(model_cfg.get("dtype")),
         "trust_remote_code": bool(model_cfg.get("trust_remote_code", False)),
     }
+    if model_cfg.get("revision"):
+        model_kwargs["revision"] = model_cfg["revision"]
     if model_cfg.get("attn_implementation"):
         model_kwargs["attn_implementation"] = model_cfg["attn_implementation"]
 
@@ -36,6 +38,7 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
     tokenizer = AutoTokenizer.from_pretrained(
         model_cfg["name"],
         trust_remote_code=trust_remote_code,
+        revision=model_cfg.get("revision"),
     )
 
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:

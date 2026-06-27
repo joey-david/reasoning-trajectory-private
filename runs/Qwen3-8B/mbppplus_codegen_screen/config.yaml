@@ -1,0 +1,48 @@
+model:
+  name: Qwen/Qwen3-8B
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: true
+
+dataset:
+  source: hf
+  path: evalplus/mbppplus
+  revision: b2d74c91837c3f2a20c1299ae98133cbe7cfa077
+  name: null
+  split: test
+  adapter: mbppplus
+  sample_limit: 20
+  sample_offset: 0
+  shuffle_seed: 81002
+
+generation:
+  max_new_tokens: 2048
+  num_samples_per_item: 10
+  base_seed: 8200000
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: "You are a careful Python programmer."
+  instruction: |
+    Design and implement the requested function.
+    Reason briefly about the contract and edge cases.
+    Put the complete final implementation in one fenced python code block.
+    /think
+  chat_template_kwargs:
+    enable_thinking: true
+
+analysis:
+  produced_answer_regex: "(?s)```python\\s*(.*?)```"
+  hard_question_limit: 20

@@ -22,6 +22,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import time
 from typing import Any
 
@@ -70,6 +71,11 @@ class GenerationRequest:
     seed: int
     temperature: float
     max_new_tokens: int
+    forced_prefix: str
+    stop_regex: str | None
+    cap_fallback_prefix: str
+    cap_fallback_min_new_tokens: int
+    cap_fallback_max_new_tokens: int
     layer_indices: list[int]
     model_name: str
     gold_answer: str | None
@@ -92,6 +98,8 @@ def generate_run(
     run_path: str | Path,
     config: RunConfig | Mapping[str, Any],
     samples: list[dict[str, Any]],
+    *,
+    sample_index_offset: int = 0,
 ) -> None:
     """Generate and store outputs for a run folder."""
     run_path = Path(run_path)
@@ -117,6 +125,12 @@ def generate_run(
     num_samples_per_item = int(generation_cfg.get("num_samples_per_item", 1))
     temperature = float(generation_cfg.get("temperature", 0.0))
     max_new_tokens = int(generation_cfg.get("max_new_tokens", 1024))
+    forced_prefix_value = generation_cfg.get("forced_prefix")
+    forced_prefix = "" if forced_prefix_value is None else str(forced_prefix_value)
+    stop_regex = generation_cfg.get(
+        "stop_regex", cfg.get("analysis", {}).get("produced_answer_regex")
+    )
+    cap_fallback = generation_cfg.get("cap_fallback", {})
     top_p = generation_cfg.get("top_p")
     top_k = generation_cfg.get("top_k")
 
@@ -133,7 +147,8 @@ def generate_run(
         desc="generation",
         unit="iter",
     ) as progress:
-        for sample_index, sample in enumerate(samples):
+        for local_sample_index, sample in enumerate(samples):
+            sample_index = sample_index_offset + local_sample_index
             prompt = build_prompt(sample, prompt_cfg, tokenizer)
             sample_id = sample_id_from_sample(sample)
             gold_answer = gold_answer_from_sample(sample)
@@ -142,7 +157,7 @@ def generate_run(
             for sample_iter in range(num_samples_per_item):
                 seed = base_seed + sample_index * 10_000 + sample_iter
                 progress_label = (
-                    f"item {sample_index + 1}/{len(samples)} {sample_id} "
+                    f"item {local_sample_index + 1}/{len(samples)} {sample_id} "
                     f"iter {sample_iter + 1}/{num_samples_per_item}"
                 )
 
@@ -161,6 +176,15 @@ def generate_run(
                         seed=seed,
                         temperature=temperature,
                         max_new_tokens=max_new_tokens,
+                        forced_prefix=forced_prefix,
+                        stop_regex=stop_regex,
+                        cap_fallback_prefix=str(cap_fallback.get("prefix", "")),
+                        cap_fallback_min_new_tokens=int(
+                            cap_fallback.get("min_new_tokens", 3)
+                        ),
+                        cap_fallback_max_new_tokens=int(
+                            cap_fallback.get("max_new_tokens", 4)
+                        ),
                         layer_indices=layer_indices,
                         model_name=model_cfg["name"],
                         gold_answer=gold_answer,
@@ -293,9 +317,16 @@ def generate_sequence(
     request: GenerationRequest,
 ) -> GeneratedSequence:
     do_sample = request.temperature > 0.0
+    forced_prefix_ids = encode_forced_prefix(tokenizer, request.forced_prefix)
+    encoded_for_generation = append_forced_prefix(encoded, forced_prefix_ids)
+    continuation_tokens = int(request.max_new_tokens) - len(forced_prefix_ids)
+    if continuation_tokens < 1:
+        raise ValueError(
+            "generation.forced_prefix must use fewer tokens than max_new_tokens"
+        )
     kwargs: dict[str, Any] = {
-        **encoded,
-        "max_new_tokens": int(request.max_new_tokens),
+        **encoded_for_generation,
+        "max_new_tokens": continuation_tokens,
         "do_sample": do_sample,
         "use_cache": True,
         "pad_token_id": tokenizer.pad_token_id,
@@ -308,6 +339,11 @@ def generate_sequence(
         if request.top_k is not None:
             kwargs["top_k"] = int(request.top_k)
 
+    stopping_criteria: list[StoppingCriteria] = []
+    if request.stop_regex:
+        stopping_criteria.append(
+            GeneratedTextRegexStop(tokenizer, prompt_len, request.stop_regex)
+        )
     tracker = None
     if request.progress is not None:
         request.progress.set_description(f"generation {request.progress_label}".strip())
@@ -315,11 +351,39 @@ def generate_sequence(
             request.progress, prompt_len, request.progress_label
         )
         tracker.update(prompt_len, force=True)
-        kwargs["stopping_criteria"] = StoppingCriteriaList([tracker])
+        stopping_criteria.append(tracker)
+    if stopping_criteria:
+        kwargs["stopping_criteria"] = StoppingCriteriaList(stopping_criteria)
 
     generated = model.generate(**kwargs)
     if tracker is not None:
         tracker.update(int(generated.shape[-1]), force=True)
+
+    if (
+        request.cap_fallback_prefix
+        and int(generated.shape[-1]) - prompt_len >= request.max_new_tokens
+    ):
+        fallback = append_forced_prefix(
+            {
+                "input_ids": generated,
+                "attention_mask": torch.ones_like(generated),
+            },
+            encode_forced_prefix(tokenizer, request.cap_fallback_prefix),
+        )
+        generated = model.generate(
+            **fallback,
+            max_new_tokens=request.cap_fallback_max_new_tokens,
+            min_new_tokens=request.cap_fallback_min_new_tokens,
+            do_sample=do_sample,
+            use_cache=True,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            **{
+                key: kwargs[key]
+                for key in ("temperature", "top_p", "top_k")
+                if key in kwargs
+            },
+        )
 
     full_ids = generated[0].detach().cpu().tolist()
     token_ids = full_ids[prompt_len:]
@@ -332,6 +396,43 @@ def generate_sequence(
             clean_up_tokenization_spaces=False,
         ),
     )
+
+
+def encode_forced_prefix(
+    tokenizer: PreTrainedTokenizerBase,
+    text: str,
+) -> list[int]:
+    if not text:
+        return []
+    return tokenizer.encode(text, add_special_tokens=False)
+
+
+def append_forced_prefix(
+    encoded: dict[str, torch.Tensor],
+    forced_prefix_ids: list[int],
+) -> dict[str, torch.Tensor]:
+    if not forced_prefix_ids:
+        return encoded
+
+    input_ids = encoded["input_ids"]
+    prefix = torch.tensor(
+        [forced_prefix_ids],
+        dtype=input_ids.dtype,
+        device=input_ids.device,
+    )
+    updated = dict(encoded)
+    updated["input_ids"] = torch.cat([input_ids, prefix], dim=1)
+
+    attention_mask = encoded.get("attention_mask")
+    if attention_mask is not None:
+        prefix_mask = torch.ones(
+            (attention_mask.shape[0], len(forced_prefix_ids)),
+            dtype=attention_mask.dtype,
+            device=attention_mask.device,
+        )
+        updated["attention_mask"] = torch.cat([attention_mask, prefix_mask], dim=1)
+
+    return updated
 
 
 @torch.inference_mode()
@@ -579,6 +680,31 @@ class LiveGenerationProgress(StoppingCriteria):
             f"generation {generated_tokens} tok {tok_s:.1f} tok/s {self.label}"
         )
         self.last_update = now
+
+
+class GeneratedTextRegexStop(StoppingCriteria):
+    def __init__(
+        self,
+        tokenizer: PreTrainedTokenizerBase,
+        prompt_len: int,
+        pattern: str,
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.prompt_len = prompt_len
+        self.pattern = re.compile(pattern, re.S)
+        self.last_len = prompt_len
+        self.text = ""
+
+    def __call__(self, input_ids: torch.LongTensor, scores: Any, **kwargs) -> bool:
+        seq_len = int(input_ids.shape[-1])
+        self.text += self.tokenizer.decode(
+            input_ids[0, self.last_len : seq_len],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+        self.last_len = seq_len
+        match = self.pattern.search(self.text)
+        return match is not None and match.end() < len(self.text)
 
 
 def sample_id_from_sample(sample: dict[str, Any]) -> str:

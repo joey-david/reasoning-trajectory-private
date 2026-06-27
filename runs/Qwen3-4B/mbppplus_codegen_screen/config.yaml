@@ -1,0 +1,49 @@
+model:
+  name: Qwen/Qwen3-4B
+  revision: 1cfa9a7208912126459214e8b04321603b3df60c
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+dataset:
+  source: hf
+  path: evalplus/mbppplus
+  revision: b2d74c91837c3f2a20c1299ae98133cbe7cfa077
+  name: null
+  split: test
+  adapter: mbppplus
+  sample_limit: 20
+  sample_offset: 0
+  shuffle_seed: 32002
+
+generation:
+  max_new_tokens: 1536
+  num_samples_per_item: 10
+  base_seed: 4100200
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: "You are a careful Python programmer."
+  instruction: |
+    Think only as long as needed. Keep the reasoning clear and concise.
+    Identify the contract and key edge cases, then implement the function.
+    Put the complete final implementation in one fenced python code block.
+    /think
+  chat_template_kwargs:
+    enable_thinking: true
+
+analysis:
+  produced_answer_regex: "(?s)```python\\s*(.*?)```"
+  think_end_token_id: 151668
+  hard_question_limit: 20

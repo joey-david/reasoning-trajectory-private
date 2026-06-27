@@ -3,316 +3,253 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Reasoning Runs</title>
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <style>
-    :root { color-scheme: light; --line:#d8dee4; --muted:#59636e; --ok:#1f7a3f; --bad:#b42318; }
-    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; color: #111827; background: #fafafa; }
-    header { display: flex; gap: 12px; align-items: end; padding: 14px 18px; border-bottom: 1px solid var(--line); background: white; position: sticky; top: 0; z-index: 1; }
-    label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-    select, button, input { font: inherit; border: 1px solid var(--line); background: white; padding: 7px 9px; border-radius: 6px; }
-    input[type="checkbox"], input[type="range"] { padding: 0; }
-    button[aria-selected="true"] { background: #111827; color: white; }
-    main { padding: 18px; display: grid; gap: 14px; }
-    .tabs, .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .row { border: 1px solid var(--line); border-radius: 8px; background: white; padding: 12px; margin: 10px 0; }
-    .meta { display: flex; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
-    .ok { color: var(--ok); font-weight: 650; } .bad { color: var(--bad); font-weight: 650; }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; background: #f6f8fa; padding: 10px; border-radius: 6px; }
-    img { max-width: min(920px, 100%); border: 1px solid var(--line); border-radius: 8px; background: white; }
-    #plot3d { width: 100%; min-height: 620px; border: 1px solid var(--line); border-radius: 8px; background: white; }
-    .status { color: var(--muted); font-size: 13px; }
-    .token-entropy { border-radius: 3px; }
-    [hidden] { display: none; }
-    :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
-  </style>
+  <meta name="color-scheme" content="light">
+  <title>Reasoning Trajectory Explorer</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.dataset.protocol = location.protocol.slice(0, -1);</script>
+  <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script type="module" src="js/app.js"></script>
 </head>
 <body>
-  <header>
-    <label>Model <select id="model" data-testid="model-select"></select></label>
-    <label>Run <select id="run" data-testid="run-select"></select></label>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="file-protocol-warning" role="alert">
+    <strong>This interface must be served over HTTP.</strong>
+    <span>From the repository root, run <code>python3 -m http.server 8765</code>, then open <code>http://localhost:8765/web/index.html</code>.</span>
+  </div>
+
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <strong>Reasoning Trajectory Explorer</strong>
+        <span>Generation and latent-state analysis</span>
+      </div>
+    </div>
+    <div class="run-picker" aria-label="Active run">
+      <label>
+        <span>Model</span>
+        <select id="model" data-testid="model-select"></select>
+      </label>
+      <label>
+        <span>Run</span>
+        <select id="run" data-testid="run-select"></select>
+      </label>
+    </div>
   </header>
-  <main>
-    <nav class="tabs" aria-label="Views">
-      <button id="tab-generation" aria-selected="true" data-testid="generation-tab">Generation</button>
-      <button id="tab-analysis" aria-selected="false" data-testid="analysis-tab">Analysis</button>
-    </nav>
-    <section id="generation-panel">
-      <div class="toolbar">
-        <label>Iteration <select id="iteration" data-testid="iteration-select"></select></label>
-        <label>Step markers <select id="marker" data-testid="marker-select"></select></label>
-        <label><input id="entropy" type="checkbox"> Show token entropy</label>
-        <span id="entropy-status" class="status" role="status"></span>
+
+  <nav class="view-nav" aria-label="Workspace">
+    <button type="button" data-view="overview" aria-selected="true" aria-controls="overview-panel" aria-keyshortcuts="o">
+      Overview <kbd aria-hidden="true">O</kbd>
+    </button>
+    <button type="button" data-view="generations" aria-selected="false" aria-controls="generations-panel" aria-keyshortcuts="g">
+      Generations <kbd aria-hidden="true">G</kbd>
+    </button>
+    <button type="button" data-view="trajectories" aria-selected="false" aria-controls="trajectories-panel" aria-keyshortcuts="l">
+      Latent space <kbd aria-hidden="true">L</kbd>
+    </button>
+    <span id="header-run-status" class="nav-status" role="status"></span>
+  </nav>
+
+  <main id="main-content">
+    <div id="app-status" class="app-status" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      Loading run index…
+    </div>
+
+    <section id="overview-panel" class="view-panel" aria-labelledby="overview-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Run summary</p>
+          <h1 id="overview-title">Overview</h1>
+        </div>
+        <div id="artifact-status" class="artifact-status" aria-label="Available artifacts"></div>
       </div>
-      <div id="generations"></div>
+      <div id="run-metrics" class="metric-grid"></div>
+      <section class="content-section" aria-labelledby="question-table-title">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Question-level comparison</p>
+            <h2 id="question-table-title">Questions</h2>
+          </div>
+          <label class="search-field">
+            <span>Filter questions</span>
+            <input id="overview-search" type="search" placeholder="Question or sample ID" data-testid="overview-search">
+          </label>
+        </div>
+        <div id="question-table" class="table-shell"></div>
+      </section>
     </section>
-    <section id="analysis-panel" hidden>
-      <div class="toolbar" aria-label="3D plot controls">
-        <label>Plot <select id="plot-source" data-testid="plot-source-select"></select></label>
-        <label>Question <select id="plot-question" data-testid="plot-question-select"></select></label>
-        <label>Sub-run <select id="plot-seed" data-testid="plot-seed-select"></select></label>
-        <label>Step selector <select id="plot-selector" data-testid="plot-selector-select"></select></label>
-        <label>Cluster <select id="plot-cluster" data-testid="plot-cluster-select"></select></label>
-        <label>Color by <select id="plot-color-mode" data-testid="plot-color-mode-select"><option value="correctness">correctness</option><option value="cluster">cluster</option></select></label>
-        <label>Max trajectories <input id="plot-max-trajectories" data-testid="plot-max-trajectories" type="number" min="1" value="20"></label>
-        <label>Token start <input id="plot-token-start" data-testid="plot-token-start" type="range" min="0" max="100" value="0"></label>
-        <label>Token end <input id="plot-token-end" data-testid="plot-token-end" type="range" min="0" max="100" value="100"></label>
+
+    <section id="generations-panel" class="view-panel" aria-labelledby="generations-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Trace inspection</p>
+          <h1 id="generations-title">Generations</h1>
+        </div>
+        <p id="generation-count" class="section-count" role="status"></p>
       </div>
-      <div class="status" id="plot-status" role="status"></div>
-      <div id="plot3d" data-testid="interactive-plot"></div>
-      <details>
-        <summary>Static plot fallbacks</summary>
-        <div id="plots"></div>
-      </details>
+
+      <div class="workspace generation-workspace">
+        <aside id="generation-filters" class="control-panel" aria-label="Generation filters">
+          <div class="control-panel-heading">
+            <h2>Filters</h2>
+            <div class="panel-heading-actions">
+              <button class="text-button panel-toggle" type="button" data-toggle-panel="generation-filters" aria-controls="generation-filters" aria-expanded="true">Hide</button>
+              <button id="generation-clear" class="text-button" type="button">Clear</button>
+            </div>
+          </div>
+          <label class="control wide">
+            <span>Search</span>
+            <input id="generation-search" type="search" placeholder="Text, answer, or ID" aria-keyshortcuts="/" data-testid="generation-search">
+          </label>
+          <label class="control wide">
+            <span>Question</span>
+            <select id="generation-question" data-testid="generation-question-select"></select>
+          </label>
+          <label class="control">
+            <span>Sub-run</span>
+            <select id="generation-seed" data-testid="generation-seed-select"></select>
+          </label>
+          <label class="control">
+            <span>Outcome</span>
+            <select id="generation-outcome" data-testid="generation-outcome-select">
+              <option value="">All outcomes</option>
+              <option value="correct">Correct</option>
+              <option value="incorrect">Incorrect</option>
+              <option value="unknown">Not scored</option>
+            </select>
+          </label>
+          <label class="control wide">
+            <span>Step markers</span>
+            <select id="generation-marker" data-testid="generation-marker-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Sort</span>
+            <select id="generation-sort">
+              <option value="question">Question, then sub-run</option>
+              <option value="longest">Longest reasoning first</option>
+              <option value="shortest">Shortest reasoning first</option>
+            </select>
+          </label>
+          <label class="switch-row">
+            <input id="generation-entropy" type="checkbox">
+            <span>Token entropy</span>
+          </label>
+          <p id="entropy-status" class="field-note" role="status"></p>
+          <div id="entropy-legend" class="entropy-legend" hidden>
+            <span>Low</span><span class="entropy-ramp" aria-hidden="true"></span><span>High</span>
+          </div>
+        </aside>
+
+        <div class="results-column">
+          <div id="generation-empty" class="empty-state" hidden></div>
+          <div id="generation-list" class="generation-list" data-testid="generation-list"></div>
+          <button id="generation-more" class="secondary-button load-more" type="button" hidden>Show more</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="trajectories-panel" class="view-panel wide-panel" aria-labelledby="trajectories-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Interactive projection</p>
+          <h1 id="trajectories-title">Latent space</h1>
+        </div>
+        <div class="heading-actions">
+          <button id="copy-view-link" class="secondary-button" type="button">Copy view link</button>
+          <button id="reset-camera" class="secondary-button" type="button">Reset camera</button>
+        </div>
+      </div>
+
+      <div class="workspace trajectory-workspace">
+        <aside id="trajectory-filters" class="control-panel trajectory-controls" aria-label="Projection controls">
+          <div class="control-panel-heading">
+            <h2>Projection</h2>
+            <div class="panel-heading-actions">
+              <button class="text-button panel-toggle" type="button" data-toggle-panel="trajectory-filters" aria-controls="trajectory-filters" aria-expanded="true">Hide</button>
+              <button id="trajectory-clear" class="text-button" type="button">Clear</button>
+            </div>
+          </div>
+          <label class="control wide">
+            <span>Dataset</span>
+            <select id="plot-source" data-testid="plot-source-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Question</span>
+            <select id="plot-question" data-testid="plot-question-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Sub-run</span>
+            <select id="plot-seed" data-testid="plot-seed-select"></select>
+          </label>
+          <label id="plot-selector-control" class="control wide">
+            <span>Step sampling</span>
+            <select id="plot-selector" data-testid="plot-selector-select"></select>
+          </label>
+          <label id="plot-cluster-control" class="control wide">
+            <span>Step cluster</span>
+            <select id="plot-cluster" data-testid="plot-cluster-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Point color</span>
+            <select id="plot-color-mode" data-testid="plot-color-mode-select">
+              <option value="correctness">Correctness + progress</option>
+              <option value="cluster">Step cluster</option>
+            </select>
+          </label>
+          <label class="range-control">
+            <span>Maximum trajectories <output id="plot-max-output">12</output></span>
+            <input id="plot-max-trajectories" type="range" min="1" max="50" value="12" aria-label="Maximum trajectories" data-testid="plot-max-trajectories">
+          </label>
+          <fieldset class="range-group">
+            <legend>Token range</legend>
+            <label>
+              <span>Start <output id="plot-start-output">0%</output></span>
+              <input id="plot-token-start" type="range" min="0" max="100" value="0" aria-label="Token range start" data-testid="plot-token-start">
+            </label>
+            <label>
+              <span>End <output id="plot-end-output">100%</output></span>
+              <input id="plot-token-end" type="range" min="0" max="100" value="100" aria-label="Token range end" data-testid="plot-token-end">
+            </label>
+          </fieldset>
+          <div class="encoding-key" aria-label="Trajectory encoding">
+            <h3>Encoding</h3>
+            <p><span class="line-key correct"></span>Correct</p>
+            <p><span class="line-key incorrect"></span>Incorrect</p>
+            <p><span class="shape-key triangle"></span>Start <span class="shape-key square"></span>End</p>
+          </div>
+        </aside>
+
+        <div class="plot-column">
+          <div class="plot-toolbar">
+            <div>
+              <strong id="plot-title">Projection</strong>
+              <span id="plot-status" role="status" aria-live="polite"></span>
+            </div>
+            <span id="plot-link-status" class="field-note" role="status"></span>
+          </div>
+          <div id="plot-shell" class="plot-shell">
+            <div id="plot-loading" class="plot-loading" hidden>
+              <span class="spinner" aria-hidden="true"></span>
+              Loading projection…
+            </div>
+            <div id="plot3d" data-testid="interactive-plot" aria-label="Interactive three-dimensional trajectory plot"></div>
+          </div>
+          <section id="point-inspector" class="point-inspector" aria-labelledby="point-inspector-title">
+            <div>
+              <p class="eyebrow">Selected point</p>
+              <h2 id="point-inspector-title">Inspect a point</h2>
+            </div>
+            <p class="muted">Select a plotted point to see its token or reasoning-step details.</p>
+          </section>
+          <details class="static-fallbacks">
+            <summary>Static plot fallbacks</summary>
+            <div id="static-plots"></div>
+          </details>
+        </div>
+      </div>
     </section>
   </main>
-  <script>
-    const state = { manifest: null, run: null, rows: [], markers: null, plotPayload: null };
-    const $ = id => document.getElementById(id);
-    const jsonl = text => text.trim().split(/\n+/).filter(Boolean).map(JSON.parse);
-
-    async function init() {
-      state.manifest = await fetch("data/runs.json").then(r => r.json()).catch(() => ({ runs: [] }));
-      const models = [...new Set(state.manifest.runs.map(r => r.model))];
-      setOptions("model", models);
-      $("model").onchange = fillRuns; $("run").onchange = loadRun;
-      $("tab-generation").onclick = () => tab("generation");
-      $("tab-analysis").onclick = () => tab("analysis");
-      $("iteration").onchange = renderGenerations; $("marker").onchange = renderGenerations; $("entropy").onchange = renderGenerations;
-      $("plot-source").onchange = loadSelectedPlot;
-      for (const id of ["plot-question", "plot-seed", "plot-selector", "plot-cluster", "plot-color-mode", "plot-max-trajectories", "plot-token-start", "plot-token-end"]) {
-        $(id).onchange = renderInteractivePlot;
-        $(id).oninput = renderInteractivePlot;
-      }
-      fillRuns();
-    }
-    function fillRuns() {
-      const runs = state.manifest.runs.filter(r => r.model === $("model").value);
-      setOptions("run", runs.map(r => r.run));
-      loadRun();
-    }
-    async function loadRun() {
-      state.run = state.manifest.runs.find(r => r.model === $("model").value && r.run === $("run").value);
-      if (!state.run) return;
-      state.rows = await fetch(state.run.generations).then(r => r.text()).then(jsonl);
-      state.markers = state.run.step_markers ? await fetch(state.run.step_markers).then(r => r.json()).catch(() => null) : null;
-      state.plotPayload = null;
-      const seeds = [...new Set(state.rows.map(r => r.seed))];
-      setOptions("iteration", seeds, "all");
-      const markerNames = state.markers ? Object.keys(state.markers.selectors) : [];
-      setOptions("marker", markerNames, "none");
-      fillPlotControls();
-      renderGenerations(); renderPlots(); loadSelectedPlot();
-    }
-    function tab(name) {
-      for (const key of ["generation", "analysis"]) {
-        $(`tab-${key}`).setAttribute("aria-selected", key === name);
-        $(`${key}-panel`).hidden = key !== name;
-      }
-    }
-    function renderGenerations() {
-      const seed = $("iteration").value;
-      const rows = seed ? state.rows.filter(r => String(r.seed) === seed) : state.rows;
-      const hasEntropy = rows.some(row => hasEntropyTimesteps(row));
-      $("entropy").disabled = !hasEntropy;
-      $("entropy-status").textContent = hasEntropy ? "" : "No entropy timesteps stored for this run.";
-      $("generations").innerHTML = rows.map(rowHtml).join("");
-    }
-    function rowHtml(row) {
-      const sample = state.run.samples[row.sample_id] || {};
-      const cls = row.is_correct === true ? "ok" : row.is_correct === false ? "bad" : "";
-      const markerText = markerSummary(row);
-      return `<article class="row">
-        <div class="meta"><span>${row.sample_id}</span><span>seed ${row.seed}</span><span class="${cls}">${row.is_correct}</span><span>answer ${row.produced_answer ?? ""}</span><span>reasoning ${row.reasoning_length ?? ""}</span></div>
-        ${markerText ? `<div class="meta">markers: ${markerText}</div>` : ""}
-        <details><summary>Prompt</summary><pre>${escapeHtml(sample.prompt || "")}</pre></details>
-        <details><summary>Gold</summary><pre>${escapeHtml(sample.gold_answer || "")}</pre></details>
-        <pre>${formatText(row)}</pre>
-      </article>`;
-    }
-    function markerSummary(row) {
-      const name = $("marker").value;
-      if (!name || !state.markers) return "";
-      const record = state.markers.records.find(r => r.sample_id === row.sample_id && String(r.seed) === String(row.seed));
-      const values = record?.selectors?.[name] || [];
-      return values.join(", ");
-    }
-    function formatText(row) {
-      if (!$("entropy").checked || !hasEntropyTimesteps(row)) return escapeHtml(row.produced_text || "");
-      return row.timesteps.map(t => {
-        const e = entropyValue(t);
-        const light = Math.max(45, 92 - Math.min(e * 6, 45));
-        return `<span class="token-entropy" title="entropy ${e.toFixed(2)}" style="background:hsl(${210 - Math.min(e * 12, 170)} 90% ${light}%)">${escapeHtml(t.token_str || "")}</span>`;
-      }).join("");
-    }
-    function hasEntropyTimesteps(row) {
-      return Array.isArray(row.timesteps) && row.timesteps.some(t => Number.isFinite(entropyValue(t)));
-    }
-    function entropyValue(t) {
-      if (Array.isArray(t.entropy)) {
-        const values = t.entropy.filter(Number.isFinite);
-        return values.length ? Math.max(...values) : NaN;
-      }
-      return Number.isFinite(t.entropy) ? t.entropy : NaN;
-    }
-    function renderPlots() {
-      $("plots").innerHTML = (state.run.plots || []).map(p => `<figure><img src="${p.path}" alt="${p.method} layer ${p.layer}"><figcaption>${p.method.toUpperCase()} layer ${p.layer} · ${p.trajectories ?? "?"} trajectories</figcaption></figure>`).join("") || "<p>No plots yet.</p>";
-    }
-    function fillPlotControls() {
-      const plots = allInteractivePlots();
-      setOptions("plot-source", plots.map((p, i) => [i, plotLabel(p)]));
-      const sampleIds = [...new Set(state.rows.map(r => r.sample_id))];
-      const seeds = [...new Set(state.rows.map(r => r.seed))];
-      setOptions("plot-question", sampleIds, "all");
-      setOptions("plot-seed", seeds, "all");
-      if (!plots.length) $("plot-status").textContent = "No interactive plot data. Run scripts/analyze.py for this run.";
-    }
-    function allInteractivePlots() {
-      return [
-        ...(state.run.interactive_plots || []).map(p => ({ ...p, plot_type: "token" })),
-        ...(state.run.step_classification_plots || []).map(p => ({ ...p, plot_type: "step_classification" })),
-      ];
-    }
-    function plotLabel(plot) {
-      const prefix = plot.plot_type === "step_classification" ? "STEP" : "TOKEN";
-      return `${prefix} ${plot.method.toUpperCase()} layer ${plot.layer}`;
-    }
-    async function loadSelectedPlot() {
-      const plot = allInteractivePlots()[Number($("plot-source").value || 0)];
-      if (!plot) {
-        state.plotPayload = null;
-        renderInteractivePlot();
-        return;
-      }
-      $("plot-status").textContent = "Loading interactive plot data...";
-      state.plotPayload = await fetch(plot.path).then(r => r.json()).catch(() => null);
-      const selectors = state.plotPayload ? [...new Set((state.plotPayload.points || []).map(p => p.selector).filter(Boolean))] : [];
-      const clusters = state.plotPayload ? [...new Set((state.plotPayload.points || []).map(p => p.cluster_id).filter(v => v !== undefined && v !== null))].sort((a, b) => Number(a) - Number(b)) : [];
-      setOptions("plot-selector", selectors, "all");
-      setOptions("plot-cluster", clusters, "all");
-      renderInteractivePlot();
-    }
-    function renderInteractivePlot() {
-      if (!state.plotPayload || !window.Plotly) {
-        $("plot3d").innerHTML = "<p class=\"status\">Interactive plotting requires generated plot JSON and Plotly.</p>";
-        return;
-      }
-      const sampleId = $("plot-question").value;
-      const seed = $("plot-seed").value;
-      const selector = $("plot-selector").value;
-      const cluster = $("plot-cluster").value;
-      const start = Math.min(Number($("plot-token-start").value), Number($("plot-token-end").value)) / 100;
-      const end = Math.max(Number($("plot-token-start").value), Number($("plot-token-end").value)) / 100;
-      const maxTraj = Math.max(Number($("plot-max-trajectories").value || 20), 1);
-      const chosenTrajectories = new Set();
-      const points = [];
-      for (const point of state.plotPayload.points || []) {
-        if (sampleId && point.sample_id !== sampleId) continue;
-        if (seed && String(point.seed) !== seed) continue;
-        if (selector && point.selector !== selector) continue;
-        if (cluster && String(point.cluster_id) !== cluster) continue;
-        if (point.token_fraction < start || point.token_fraction > end) continue;
-        const trajKey = `${point.sample_id}::${point.seed}`;
-        if (!chosenTrajectories.has(trajKey)) {
-          if (chosenTrajectories.size >= maxTraj) continue;
-          chosenTrajectories.add(trajKey);
-        }
-        points.push(point);
-      }
-      const traces = tracesForPoints(points);
-      $("plot-status").textContent = `${points.length} points across ${chosenTrajectories.size} trajectories. Drag to rotate, scroll or pinch to zoom.`;
-      Plotly.react("plot3d", traces, {
-        margin: { l: 0, r: 0, t: 28, b: 0 },
-        scene: { xaxis: { title: "x" }, yaxis: { title: "y" }, zaxis: { title: "z" } },
-        showlegend: true,
-        title: `${state.plotPayload.method.toUpperCase()} layer ${state.plotPayload.layer}`,
-      }, { responsive: true, scrollZoom: true, displaylogo: false });
-    }
-    function tracesForPoints(points) {
-      const byTrajectory = new Map();
-      for (const point of points) {
-        const key = `${point.sample_id} seed ${point.seed} ${point.selector || ""}`;
-        if (!byTrajectory.has(key)) byTrajectory.set(key, []);
-        byTrajectory.get(key).push(point);
-      }
-      return [...byTrajectory.entries()].flatMap(([name, pts]) => {
-        pts.sort((a, b) => a.token_idx - b.token_idx);
-        const ok = pts.every(p => p.is_correct === true);
-        const colorMode = $("plot-color-mode").value;
-        const pointColor = colorMode === "cluster" && pts[0].cluster_id !== undefined ? clusterColor(pts[0].cluster_id) : ok ? "#16803c" : "#c7352a";
-        const lineColor = ok ? "rgba(31,122,63,0.32)" : "rgba(180,35,24,0.32)";
-        const start = pts[0];
-        const end = pts[pts.length - 1];
-        return [{
-          type: "scatter3d",
-          mode: "lines+markers",
-          name,
-          x: pts.map(p => p.x),
-          y: pts.map(p => p.y),
-          z: pts.map(p => p.z),
-          marker: {
-            size: 3.5,
-            color: pointColor,
-            opacity: 0.82,
-            showscale: false,
-          },
-          line: { width: 4, color: lineColor },
-          text: pts.map(hoverText),
-          hoverinfo: "text",
-        }, markerTrace(`${name} start`, start, "diamond", pointColor, 7), markerTrace(`${name} end`, end, "square", pointColor, 7)];
-      });
-    }
-    function clusterColor(clusterId) {
-      const palette = ["#2563eb", "#9333ea", "#db2777", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#4f46e5", "#64748b", "#be123c"];
-      return palette[Math.abs(Number(clusterId)) % palette.length];
-    }
-    function hoverText(point) {
-      const parts = [
-        point.sample_id,
-        `seed ${point.seed}`,
-        point.selector,
-        point.step_idx !== undefined ? `step ${point.step_idx}` : null,
-        point.cluster_id !== undefined ? `cluster ${point.cluster_id}` : null,
-        `token ${point.token_idx}`,
-        point.variance !== undefined ? `variance ${point.variance}` : null,
-        point.direction_norm !== undefined ? `direction ${point.direction_norm}` : null,
-        point.nudge_norm !== undefined ? `nudge ${point.nudge_norm}` : null,
-        `answer ${point.produced_answer ?? ""}`,
-        `correct ${point.is_correct}`,
-        point.step_text ? escapeHtml(point.step_text).slice(0, 220) : null,
-      ].filter(Boolean);
-      return parts.join("<br>");
-    }
-    function markerTrace(name, point, symbol, color, size) {
-      return {
-        type: "scatter3d",
-        mode: "markers",
-        name,
-        showlegend: false,
-        x: [point.x],
-        y: [point.y],
-        z: [point.z],
-        marker: {
-          symbol,
-          size,
-          color,
-          line: { color: "#111827", width: 1.5 },
-        },
-        text: [`${name}<br>${hoverText(point)}`],
-        hoverinfo: "text",
-      };
-    }
-    function setOptions(id, values, firstLabel = null) {
-      const select = $(id);
-      select.replaceChildren();
-      if (firstLabel !== null) select.add(new Option(firstLabel, ""));
-      for (const item of values) {
-        const [value, label] = Array.isArray(item) ? item : [item, item];
-        select.add(new Option(String(label), String(value)));
-      }
-    }
-    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
-    init();
-  </script>
 </body>
 </html>

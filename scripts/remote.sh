@@ -1,11 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage="usage: scripts/remote.sh push [run] | pull runs/<model>/<experiment>"
+usage="usage: scripts/remote.sh push | pull [runs/<model>/<experiment> ...]"
 action="${1:?$usage}"
-run_path="${2:-}"
+shift
 host="${SSH_SERVER:-lamgate}"
 remote_root="${REMOTE_REPO_ROOT:-/home/lamsade/jdavid/reasoning}"
+
+discover_runs() {
+  find runs -mindepth 3 -maxdepth 3 -name config.yaml -print \
+    | sed 's#/config.yaml$##' \
+    | sort
+}
+
+pull_run() {
+  local run_path="$1"
+  if ssh "$host" "test -d '$remote_root/$run_path'"; then
+    mkdir -p "$run_path"
+    rsync -avz --progress "$host:$remote_root/$run_path/" "$run_path/"
+  else
+    echo "skip missing remote run: $run_path" >&2
+  fi
+}
 
 case "$action" in
 push)
@@ -19,9 +35,15 @@ push)
     ./ "$host:$remote_root/"
   ;;
 pull)
-  [[ -n "$run_path" ]] || { echo "$usage" >&2; exit 2; }
-  mkdir -p "$run_path"
-  rsync -avz --progress "$host:$remote_root/$run_path/" "$run_path/"
+  if (($#)); then
+    for run_path in "$@"; do
+      pull_run "$run_path"
+    done
+  else
+    while IFS= read -r run_path; do
+      pull_run "$run_path"
+    done < <(discover_runs)
+  fi
   ;;
 *)
   echo "unknown action: $action" >&2
