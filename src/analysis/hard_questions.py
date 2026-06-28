@@ -1,12 +1,24 @@
+"""Rank samples by rollout failures, uncertainty, length, and answer disagreement."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from src.analysis.common import read_generation_rows, read_sample_records, write_jsonl
+from src.analysis.common import read_generation_rows, read_sample_records
+from src.data import write_jsonl
 
 
 def write_hard_questions(run_path: Path, cfg: dict[str, Any]) -> None:
+    """Write the highest-scoring hard-question summaries for a run.
+
+    Args:
+        run_path: Completed run folder to analyze.
+        cfg: Analysis configuration containing an optional output limit.
+
+    Returns:
+        None; writes ``analysis/hard_questions.jsonl``.
+    """
     rows = read_generation_rows(run_path)
     samples = read_sample_records(run_path)
     grouped: dict[str, list[dict[str, Any]]] = {}
@@ -30,6 +42,16 @@ def score_sample(
     rows: list[dict[str, Any]],
     sample: dict[str, Any],
 ) -> dict[str, Any]:
+    """Compute aggregate hardness signals for one sample's rollouts.
+
+    Args:
+        sample_id: Stable sample identifier.
+        rows: Generation rows belonging to the sample.
+        sample: Persisted sample metadata and question.
+
+    Returns:
+        A JSON-compatible hardness summary and composite score.
+    """
     correctness = [row.get("is_correct") for row in rows]
     known = [x for x in correctness if x is not None]
     wrong_rate = 0.0 if not known else sum(x is False for x in known) / len(known)

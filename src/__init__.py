@@ -1,1 +1,1 @@
-"""Small core for reasoning trajectory experiments."""
+"""Provide the lightweight core package for reasoning-trajectory generation and analysis."""

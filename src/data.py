@@ -1,3 +1,5 @@
+"""Provide shared JSONL dataset loading, selection, and writing helpers."""
+
 from __future__ import annotations
 
 import json
@@ -13,7 +15,15 @@ def load_samples(
     dataset_path: str | Path,
     indices: list[int] | None = None,
 ) -> list[dict[str, Any]]:
-    """Read a JSONL dataset, optionally retaining specific row indices."""
+    """Read a JSONL dataset, optionally retaining specific physical row indices.
+
+    Args:
+        dataset_path: Absolute path or path relative to the repository root.
+        indices: Zero-based line indices to retain, or ``None`` for every row.
+
+    Returns:
+        Parsed JSON objects in source order.
+    """
     path = resolve_repo_path(dataset_path)
     wanted = set(indices) if indices is not None else None
     rows: list[dict[str, Any]] = []
@@ -30,7 +40,15 @@ def load_samples(
 def select_samples(
     samples: list[dict[str, Any]], config: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
-    """Apply ID filtering, offset, and limit from a dataset config."""
+    """Apply configured ID filtering, offset, and limit to normalized samples.
+
+    Args:
+        samples: Normalized sample records in their current order.
+        config: Dataset options containing optional IDs, offset, and limit.
+
+    Returns:
+        The selected sample records.
+    """
     if "sample_ids" in config:
         wanted = {str(item) for item in config["sample_ids"]}
         samples = [
@@ -47,7 +65,15 @@ def select_samples(
 
 
 def write_jsonl(path: str | Path, rows: Iterable[dict[str, Any]]) -> None:
-    """Write dictionaries as JSONL."""
+    """Replace a JSONL file with the supplied records.
+
+    Args:
+        path: Destination file path.
+        rows: Dictionary records to serialize, one per line.
+
+    Returns:
+        None.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:

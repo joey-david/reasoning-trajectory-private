@@ -1,8 +1,4 @@
-"""Generation output dataclasses.
-
-These are in-memory / JSON-facing objects.
-Heavy tensors are referenced by artifact paths, not embedded in JSON.
-"""
+"""Define JSON-facing generation records and per-token diagnostics. Heavy tensors remain external and are referenced by artifact paths."""
 
 from __future__ import annotations
 
@@ -53,6 +49,16 @@ class TimestepArtifacts:
         token_str: str,
         token_pos: int,
     ) -> "TimestepArtifacts":
+        """Initialize diagnostics for one generated token.
+
+        Args:
+            token_id: Tokenizer ID of the generated token.
+            token_str: Decoded representation of the token.
+            token_pos: Absolute token position in the prompt-plus-generation sequence.
+
+        Returns:
+            A diagnostic record with the autoregressive prediction position set.
+        """
         return cls(
             token_id=int(token_id),
             token_str=token_str,
@@ -61,6 +67,11 @@ class TimestepArtifacts:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the token diagnostics into JSON-compatible values.
+
+        Returns:
+            A dictionary containing token identity, positions, and scalar metrics.
+        """
         return {
             "token_id": self.token_id,
             "token_str": self.token_str,

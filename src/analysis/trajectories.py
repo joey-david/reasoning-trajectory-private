@@ -1,3 +1,5 @@
+"""Render static three-dimensional PCA and t-SNE plots of selected hidden-state trajectories."""
+
 from __future__ import annotations
 
 import json
@@ -11,17 +13,26 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.analysis.common import evenly_capped, project_3d, read_generation_rows
+from src.analysis.token_selectors import build_token_selector
 from src.artifact_store import load_hidden_states_npz
-from src.analysis.token_selectors import Selector, build_token_selector
 
 
 def plot_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
+    """Create configured static trajectory plots and their manifest.
+
+    Args:
+        run_path: Completed run folder with hidden-state artifacts.
+        cfg: Analysis options for filtering, token selection, and point limits.
+
+    Returns:
+        None; writes PNG plots and ``analysis/plots/index.json`` when data exists.
+    """
     rows = read_generation_rows(run_path)
     rows = [r for r in rows if r.get("hidden_states_file")]
     rows = filter_trajectories(rows, cfg.get("trajectory_selector", {}))
     if not rows:
         return
-    selector = token_selector(cfg.get("token_selector", {"every_n": 1}))
+    selector = build_token_selector(cfg.get("token_selector", {"every_n": 1}))
     max_points = int(cfg.get("max_plot_points", 5000))
     out_dir = run_path / "analysis" / "plots"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -59,6 +70,15 @@ def plot_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
 def filter_trajectories(
     rows: list[dict[str, Any]], spec: dict[str, Any]
 ) -> list[dict[str, Any]]:
+    """Filter generation rows by configured sample IDs and seeds.
+
+    Args:
+        rows: Candidate generation rows.
+        spec: Optional ``sample_ids`` and ``seeds`` allowlists.
+
+    Returns:
+        Rows satisfying both configured allowlists.
+    """
     sample_ids = {str(x) for x in spec.get("sample_ids", [])}
     seeds = {int(x) for x in spec.get("seeds", [])}
     return [
@@ -69,16 +89,23 @@ def filter_trajectories(
     ]
 
 
-def token_selector(spec: dict[str, Any]) -> Selector:
-    return build_token_selector(spec)
-
-
 def draw_plot(
     coords: np.ndarray,
     items: list[tuple[np.ndarray, dict[str, Any], int, int]],
     path: Path,
     title: str,
 ) -> None:
+    """Draw and save one correctness-styled three-dimensional scatter plot.
+
+    Args:
+        coords: Three-dimensional coordinates aligned with ``items``.
+        items: Hidden vectors, source rows, token indices, and trajectory IDs.
+        path: Destination image path.
+        title: Plot title.
+
+    Returns:
+        None.
+    """
     fig = plt.figure(figsize=(7, 5))
     ax = fig.add_subplot(projection="3d")
     by_traj: dict[int, list[np.ndarray]] = {}

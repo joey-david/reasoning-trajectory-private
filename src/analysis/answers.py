@@ -1,3 +1,5 @@
+"""Extract comparable answers from generated text and update rollout correctness metadata."""
+
 from __future__ import annotations
 
 import re
@@ -5,13 +7,23 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from src.analysis.common import read_generation_rows, read_sample_records, write_jsonl
+from src.analysis.common import read_generation_rows, read_sample_records
+from src.data import write_jsonl
 
 
 NUMBER_RE = r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?"
 
 
 def update_answers(run_path: Path, cfg: dict[str, Any]) -> None:
+    """Recompute answer, correctness, and reasoning-boundary fields for a run.
+
+    Args:
+        run_path: Completed run folder containing generation and sample records.
+        cfg: Analysis options for answer regexes and the think-end token ID.
+
+    Returns:
+        None; the generation JSONL file is replaced in place.
+    """
     gen_path = run_path / "generation" / "generations.jsonl"
     rows = read_generation_rows(run_path)
     samples = read_sample_records(run_path)
@@ -37,6 +49,15 @@ def update_answers(run_path: Path, cfg: dict[str, Any]) -> None:
 
 
 def extract_answer(text: str, pattern: str | None) -> str | None:
+    """Extract an answer using a configured regex or the final numeric value.
+
+    Args:
+        text: Generated or gold-answer text to inspect.
+        pattern: Optional regular expression whose final participating group wins.
+
+    Returns:
+        The stripped matched answer, final number, or ``None`` when absent.
+    """
     if pattern:
         match = re.search(pattern, text, re.S)
         if match:
@@ -50,6 +71,15 @@ def answers_match(
     a: str | None,
     b: str | None,
 ) -> bool | None:
+    """Compare two extracted answers numerically when possible, otherwise as text.
+
+    Args:
+        a: First normalized answer.
+        b: Second normalized answer.
+
+    Returns:
+        Whether the answers match, or ``None`` when either answer is missing.
+    """
     if a is None or b is None:
         return None
     try:

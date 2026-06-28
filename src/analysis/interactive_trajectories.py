@@ -1,3 +1,5 @@
+"""Build browser-consumable PCA and t-SNE payloads for selected trajectory points."""
+
 from __future__ import annotations
 
 import json
@@ -16,6 +18,15 @@ PointItem = tuple[np.ndarray, dict[str, Any], int, int, str]
 
 
 def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
+    """Write interactive trajectory point payloads and their manifest.
+
+    Args:
+        run_path: Completed run folder with hidden-state artifacts.
+        cfg: Analysis selector, projection, and point-limit options.
+
+    Returns:
+        None; writes JSON payloads under ``analysis/plots`` when data exists.
+    """
     rows = read_generation_rows(run_path)
     rows = [row for row in rows if row.get("hidden_states_file")]
     if not rows:
@@ -78,6 +89,18 @@ def build_payload(
     items: list[PointItem],
     selectors: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
+    """Combine projected coordinates and source metadata for the web UI.
+
+    Args:
+        method: Projection name, such as ``pca`` or ``tsne``.
+        layer: Decoder-layer ID represented by the points.
+        coords: Three-dimensional coordinates aligned with ``items``.
+        items: Hidden vectors and associated rollout/token/selector metadata.
+        selectors: Named selector specifications used to produce the points.
+
+    Returns:
+        A JSON-compatible interactive plot payload.
+    """
     points: list[dict[str, Any]] = []
     for point, (_, row, token_idx, traj_id, selector_name) in zip(coords, items):
         points.append(

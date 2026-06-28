@@ -1,3 +1,5 @@
+"""Load Hugging Face causal language models and tokenizers from run configuration."""
+
 from __future__ import annotations
 
 import torch
@@ -5,6 +7,14 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 def torch_dtype_from_config(dtype: str | None):
+    """Resolve a configured precision alias to a PyTorch dtype.
+
+    Args:
+        dtype: Precision alias, ``"auto"``, or ``None``.
+
+    Returns:
+        A PyTorch dtype, ``"auto"``, or ``None`` for ``from_pretrained``.
+    """
     if dtype in (None, "auto"):
         return dtype
 
@@ -24,6 +34,14 @@ def torch_dtype_from_config(dtype: str | None):
 
 
 def load_hf_model_and_tokenizer(model_cfg: dict):
+    """Load and configure a Hugging Face causal LM and tokenizer.
+
+    Args:
+        model_cfg: Model name, device, precision, revision, trust, and attention options.
+
+    Returns:
+        The evaluation-mode model and tokenizer, with padding configured when possible.
+    """
     model_kwargs = {
         "device_map": model_cfg.get("device_map", "auto"),
         "torch_dtype": torch_dtype_from_config(model_cfg.get("dtype")),
@@ -57,4 +75,13 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
 
 
 def load_model(name: str, kwargs: dict):
+    """Load one pretrained causal language model in evaluation mode.
+
+    Args:
+        name: Hugging Face model identifier or local model path.
+        kwargs: Keyword arguments forwarded to ``from_pretrained``.
+
+    Returns:
+        The loaded evaluation-mode causal language model.
+    """
     return AutoModelForCausalLM.from_pretrained(name, **kwargs).eval()

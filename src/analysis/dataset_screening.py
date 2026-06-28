@@ -1,3 +1,5 @@
+"""Summarize generation runs for dataset-difficulty screening and maintain screening CSV artifacts."""
+
 from __future__ import annotations
 
 import csv
@@ -40,39 +42,77 @@ FIELDNAMES = [
 ]
 
 
-def summarize_run(run_path: Path) -> dict[str, Any]:
-    config = load_config(run_path)
-    rows = read_generation_rows(run_path)
+def _sample_screening_stats(
+    rows: list[dict[str, Any]], max_new_tokens: int
+) -> list[dict[str, Any]]:
+    """Aggregate scoring and length-cap outcomes for each sample.
+
+    Args:
+        rows: Generation rows to group by sample ID.
+        max_new_tokens: Configured generation cap, or zero when disabled.
+
+    Returns:
+        Per-sample rollout counts, pass rates, cap counts, and difficulty flags.
+    """
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         grouped.setdefault(str(row["sample_id"]), []).append(row)
 
-    scored = [row for row in rows if row.get("is_correct") is not None]
-    accuracy = (
-        sum(row["is_correct"] is True for row in scored) / len(scored)
-        if scored
-        else None
-    )
-    rates = [
-        sum(row.get("is_correct") is True for row in item_rows)
-        / len([row for row in item_rows if row.get("is_correct") is not None])
-        for item_rows in grouped.values()
-        if any(row.get("is_correct") is not None for row in item_rows)
-    ]
-    mixed = sum(0.0 < rate < 1.0 for rate in rates)
-    frontier = sum(0.2 <= rate <= 0.8 for rate in rates)
-    counts = [len(item_rows) for item_rows in grouped.values()]
+    stats = []
+    for sample_id, sample_rows in grouped.items():
+        scored = [row for row in sample_rows if row.get("is_correct") is not None]
+        correct = sum(row.get("is_correct") is True for row in scored)
+        pass_rate = correct / len(scored) if scored else None
+        stats.append(
+            {
+                "sample_id": sample_id,
+                "rollouts": len(sample_rows),
+                "correct": correct,
+                "incorrect": len(scored) - correct,
+                "unscored": len(sample_rows) - len(scored),
+                "pass_rate": pass_rate,
+                "capped": sum(
+                    max_new_tokens > 0
+                    and len(row.get("generated_token_ids", [])) >= max_new_tokens
+                    for row in sample_rows
+                ),
+                "mixed": pass_rate is not None and 0.0 < pass_rate < 1.0,
+                "frontier": pass_rate is not None and 0.2 <= pass_rate <= 0.8,
+            }
+        )
+    return stats
+
+
+def summarize_run(run_path: Path) -> dict[str, Any]:
+    """Aggregate one run's completion, scoring, capping, and frontier statistics.
+
+    Args:
+        run_path: Generated run folder with configuration and rollout rows.
+
+    Returns:
+        A screening-table row containing model, dataset, rollout, and
+        classification fields.
+    """
+    config = load_config(run_path)
+    rows = read_generation_rows(run_path)
     dataset_cfg = config["dataset"]
     generation_cfg = config["generation"]
     model_cfg = config["model"]
-    expected_instances = int(dataset_cfg.get("sample_limit") or len(grouped))
+    max_new_tokens = int(generation_cfg.get("max_new_tokens", 0))
+    item_stats = _sample_screening_stats(rows, max_new_tokens)
+    scored_rollouts = sum(item["correct"] + item["incorrect"] for item in item_stats)
+    correct_rollouts = sum(item["correct"] for item in item_stats)
+    accuracy = correct_rollouts / scored_rollouts if scored_rollouts else None
+    rates = [
+        item["pass_rate"] for item in item_stats if item["pass_rate"] is not None
+    ]
+    mixed = sum(item["mixed"] for item in item_stats)
+    frontier = sum(item["frontier"] for item in item_stats)
+    counts = [item["rollouts"] for item in item_stats]
+    capped = sum(item["capped"] for item in item_stats)
+    expected_instances = int(dataset_cfg.get("sample_limit") or len(item_stats))
     samples_per_item = int(generation_cfg.get("num_samples_per_item", 1))
     expected_rollouts = expected_instances * samples_per_item
-    max_new_tokens = int(generation_cfg.get("max_new_tokens", 0))
-    capped = sum(
-        max_new_tokens > 0 and len(row.get("generated_token_ids", [])) >= max_new_tokens
-        for row in rows
-    )
     status = "completed" if len(rows) >= expected_rollouts else "partial"
 
     return {
@@ -83,13 +123,15 @@ def summarize_run(run_path: Path) -> dict[str, Any]:
         "dataset": dataset_cfg["path"],
         "run_path": run_path.as_posix(),
         "status": status,
-        "instances": len(grouped),
+        "instances": len(item_stats),
         "rollouts": len(rows),
         "expected_rollouts": expected_rollouts,
         "min_rollouts_per_instance": min(counts, default=0),
         "max_rollouts_per_instance": max(counts, default=0),
-        "scored_rollouts": len(scored),
-        "scored_rollout_rate": decimal(len(scored) / len(rows) if rows else None),
+        "scored_rollouts": scored_rollouts,
+        "scored_rollout_rate": decimal(
+            scored_rollouts / len(rows) if rows else None
+        ),
         "capped_rollouts": capped,
         "capped_rollout_rate": decimal(capped / len(rows) if rows else None),
         "accuracy": decimal(accuracy),
@@ -100,7 +142,7 @@ def summarize_run(run_path: Path) -> dict[str, Any]:
         "classification": classify_screening(
             accuracy,
             rates,
-            len(scored) / len(rows) if rows else 0.0,
+            scored_rollouts / len(rows) if rows else 0.0,
             capped / len(rows) if rows else 0.0,
             complete=status == "completed",
         ),
@@ -113,12 +155,18 @@ def summarize_run(run_path: Path) -> dict[str, Any]:
 
 
 def write_mixed_samples(run_path: Path) -> Path:
+    """Write per-sample rollout outcomes for mixed and frontier cases.
+
+    Args:
+        run_path: Generated run folder to summarize.
+
+    Returns:
+        Path to the written ``analysis/mixed_samples.csv`` file.
+    """
     config = load_config(run_path)
     rows = read_generation_rows(run_path)
     max_new_tokens = int(config["generation"].get("max_new_tokens", 0))
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        grouped.setdefault(str(row["sample_id"]), []).append(row)
+    item_stats = _sample_screening_stats(rows, max_new_tokens)
 
     output = run_path / "analysis" / "mixed_samples.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -136,25 +184,11 @@ def write_mixed_samples(run_path: Path) -> Path:
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
-        for sample_id, sample_rows in sorted(grouped.items()):
-            scored = [row for row in sample_rows if row.get("is_correct") is not None]
-            correct = sum(row.get("is_correct") is True for row in scored)
-            pass_rate = correct / len(scored) if scored else None
+        for item in sorted(item_stats, key=lambda row: row["sample_id"]):
             writer.writerow(
                 {
-                    "sample_id": sample_id,
-                    "rollouts": len(sample_rows),
-                    "correct": correct,
-                    "incorrect": len(scored) - correct,
-                    "unscored": len(sample_rows) - len(scored),
-                    "pass_rate": decimal(pass_rate),
-                    "capped": sum(
-                        max_new_tokens > 0
-                        and len(row.get("generated_token_ids", [])) >= max_new_tokens
-                        for row in sample_rows
-                    ),
-                    "mixed": pass_rate is not None and 0.0 < pass_rate < 1.0,
-                    "frontier": pass_rate is not None and 0.2 <= pass_rate <= 0.8,
+                    **item,
+                    "pass_rate": decimal(item["pass_rate"]),
                 }
             )
     return output
@@ -168,6 +202,18 @@ def classify_screening(
     *,
     complete: bool = True,
 ) -> str:
+    """Assign a coarse screening outcome from run-level and per-item results.
+
+    Args:
+        accuracy: Accuracy across scored rollouts, or ``None`` when unscored.
+        item_rates: Per-sample pass rates for samples with scored rollouts.
+        scored_rate: Fraction of all rollouts with correctness labels.
+        capped_rate: Fraction reaching the configured generation token cap.
+        complete: Whether the expected rollout count was reached.
+
+    Returns:
+        One of the screening classification labels.
+    """
     if not complete:
         return "partial"
     if capped_rate >= 0.5:
@@ -187,6 +233,15 @@ def classify_screening(
 
 
 def update_screening_csv(csv_path: Path, summaries: list[dict[str, Any]]) -> None:
+    """Upsert run summaries into the persistent screening table.
+
+    Args:
+        csv_path: Screening CSV to create or update.
+        summaries: Fresh summary dictionaries keyed logically by model and run path.
+
+    Returns:
+        None; rewrites the CSV while preserving existing notes.
+    """
     existing: dict[tuple[str, str], dict[str, str]] = {}
     if csv_path.exists():
         with csv_path.open(newline="", encoding="utf-8") as handle:
@@ -209,4 +264,12 @@ def update_screening_csv(csv_path: Path, summaries: list[dict[str, Any]]) -> Non
 
 
 def decimal(value: float | None) -> str:
+    """Format an optional ratio for stable CSV output.
+
+    Args:
+        value: Ratio to format, or ``None`` for a blank cell.
+
+    Returns:
+        Four-decimal text or an empty string.
+    """
     return "" if value is None else f"{value:.4f}"

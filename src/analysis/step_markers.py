@@ -1,3 +1,5 @@
+"""Apply configured token selectors to generations and persist reusable step-marker indices."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,6 +19,15 @@ DEFAULT_MARKER_SELECTORS: dict[str, dict[str, Any]] = {
 
 
 def write_step_markers(run_path: Path, cfg: dict[str, Any]) -> None:
+    """Write selector-derived token markers for every generation.
+
+    Args:
+        run_path: Completed run folder to analyze.
+        cfg: Analysis configuration containing optional token selectors.
+
+    Returns:
+        None; writes ``analysis/step_markers.json``.
+    """
     rows = read_generation_rows(run_path)
     selectors = configured_selectors(cfg)
     out_dir = run_path / "analysis"
@@ -43,6 +54,14 @@ def write_step_markers(run_path: Path, cfg: dict[str, Any]) -> None:
 
 
 def configured_selectors(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Resolve named token selectors from analysis configuration.
+
+    Args:
+        cfg: Analysis configuration with modern plural or legacy singular options.
+
+    Returns:
+        Named selector specifications, including defaults where appropriate.
+    """
     selectors = cfg.get("token_selectors")
     if isinstance(selectors, dict) and selectors:
         return {str(name): dict(spec or {}) for name, spec in selectors.items()}
@@ -57,6 +76,15 @@ def configured_selectors(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def write_json(path: Path, obj: dict[str, Any]) -> None:
+    """Serialize one dictionary as indented JSON with a trailing newline.
+
+    Args:
+        path: Existing-parent destination path.
+        obj: JSON-compatible dictionary.
+
+    Returns:
+        None.
+    """
     import json
 
     path.write_text(

@@ -1,21 +1,4 @@
-"""Two-pass generation with selected-layer artifact capture.
-
-Pass 1:
-    Generate normally with model.generate(...).
-
-Pass 2:
-    Re-run the realized sequence once, teacher-forced, while forward hooks capture
-    selected decoder-layer hidden states.
-
-Storage is intentionally not handled here. This module returns:
-    CompleteGenerationOutput
-    hidden_states tensor with shape [T, L, H]
-
-where:
-    T = number of generated tokens
-    L = number of selected layers
-    H = hidden size
-"""
+"""Orchestrate generation followed by a teacher-forced pass that captures selected decoder-layer states. It also derives optional token diagnostics and persists completed outputs through the artifact store."""
 
 from __future__ import annotations
 
@@ -66,6 +49,8 @@ from src.run_io import load_generation_index
 
 @dataclass(slots=True)
 class GenerationRequest:
+    """Hold all resolved inputs needed to generate and analyze one rollout."""
+
     prompt: str
     sample_id: str
     seed: int
@@ -89,6 +74,8 @@ class GenerationRequest:
 
 @dataclass(slots=True)
 class GeneratedSequence:
+    """Hold the full sequence, generated suffix, and decoded generated text."""
+
     full_ids: list[int]
     token_ids: list[int]
     text: str
@@ -101,7 +88,17 @@ def generate_run(
     *,
     sample_index_offset: int = 0,
 ) -> None:
-    """Generate and store outputs for a run folder."""
+    """Generate and persist every configured rollout for selected samples.
+
+    Args:
+        run_path: Run folder receiving generated artifacts.
+        config: Typed or mapping-compatible model, generation, capture, and prompt config.
+        samples: Normalized dataset samples to generate.
+        sample_index_offset: Global index of the first sample, used for sharded seeds.
+
+    Returns:
+        None; completed rollout artifacts are written under the run folder.
+    """
     run_path = Path(run_path)
     cfg = (
         config
@@ -214,17 +211,17 @@ def generate_one_twopass(
     tokenizer: PreTrainedTokenizerBase,
     request: GenerationRequest,
 ) -> tuple[CompleteGenerationOutput, torch.Tensor | None]:
-    """Generate one sample and capture selected-layer hidden states.
+    """Generate one rollout, then optionally capture and diagnose its hidden states.
 
-    Convention:
-        For generated token at position `pos`, the predicting hidden state is
-        at `pos - 1`.
+    Args:
+        model: Loaded causal language model.
+        tokenizer: Tokenizer paired with ``model``.
+        request: Fully resolved prompt, sampling, capture, and progress options.
 
     Returns:
-        output:
-            JSON-facing generation output with scalar timestep artifacts.
-        hidden_states:
-            Tensor [T, L, H], CPU, float32, or None when no layers are requested.
+        The JSON-facing output and an optional CPU float32 tensor shaped
+        ``[generated_tokens, selected_layers, hidden_size]``. Each generated
+        token uses the hidden state at its preceding prediction position.
     """
     if request.layer_indices:
         assert_unique_layers(request.layer_indices)
@@ -316,6 +313,18 @@ def generate_sequence(
     prompt_len: int,
     request: GenerationRequest,
 ) -> GeneratedSequence:
+    """Run autoregressive generation, including forced prefixes and cap fallback.
+
+    Args:
+        model: Loaded causal language model.
+        tokenizer: Tokenizer paired with ``model``.
+        encoded: Tokenized prompt tensors on the model input device.
+        prompt_len: Prompt length before any forced generation prefix.
+        request: Sampling, stopping, fallback, and progress options.
+
+    Returns:
+        Full token IDs, generated suffix IDs, and decoded generated text.
+    """
     do_sample = request.temperature > 0.0
     forced_prefix_ids = encode_forced_prefix(tokenizer, request.forced_prefix)
     encoded_for_generation = append_forced_prefix(encoded, forced_prefix_ids)
@@ -402,6 +411,15 @@ def encode_forced_prefix(
     tokenizer: PreTrainedTokenizerBase,
     text: str,
 ) -> list[int]:
+    """Tokenize text for forced insertion without special tokens.
+
+    Args:
+        tokenizer: Tokenizer used by generation.
+        text: Prefix text to encode; an empty string disables the prefix.
+
+    Returns:
+        Prefix token IDs, or an empty list.
+    """
     if not text:
         return []
     return tokenizer.encode(text, add_special_tokens=False)
@@ -411,6 +429,16 @@ def append_forced_prefix(
     encoded: dict[str, torch.Tensor],
     forced_prefix_ids: list[int],
 ) -> dict[str, torch.Tensor]:
+    """Append fixed token IDs and corresponding attention positions to inputs.
+
+    Args:
+        encoded: Tokenizer output containing ``input_ids`` and optional mask.
+        forced_prefix_ids: Token IDs to append before model generation.
+
+    Returns:
+        The original mapping when no prefix exists, otherwise a shallow copy
+        with extended tensors.
+    """
     if not forced_prefix_ids:
         return encoded
 
@@ -444,10 +472,18 @@ def capture_selected_hidden_states(
     num_generated: int,
     layer_indices: list[int],
 ) -> torch.Tensor:
-    """Capture selected decoder block outputs for generated-token decisions.
+    """Capture selected decoder outputs at positions that predict generated tokens.
+
+    Args:
+        model: Loaded causal language model.
+        full_seq_ids: Prompt and generated token IDs from pass one.
+        prompt_len: Number of prompt tokens.
+        num_generated: Number of generated suffix tokens.
+        layer_indices: Requested positive or negative decoder-layer IDs.
 
     Returns:
-        hidden_states: [T, L, H], CPU, float32.
+        CPU float32 hidden states shaped
+        ``[generated_tokens, selected_layers, hidden_size]``.
     """
     input_device = get_input_device(model)
     full_seq = torch.tensor([full_seq_ids], dtype=torch.long, device=input_device)
@@ -497,10 +533,18 @@ def compute_timestep_artifacts(
     prompt_len: int,
     gold_token_id: int | None,
 ) -> list[TimestepArtifacts]:
-    """Compute scalar per-token artifacts from selected hidden states.
+    """Compute per-layer scalar diagnostics for each generated token.
 
-    hidden_states:
-        [T, L, H], CPU or GPU.
+    Args:
+        model: Model providing the final norm and language-model head.
+        tokenizer: Tokenizer used to decode tokens and identify EOS.
+        hidden_states: Tensor shaped ``[tokens, layers, hidden]``.
+        generated_token_ids: Target generated IDs aligned with the token axis.
+        prompt_len: Prompt length used to calculate absolute token positions.
+        gold_token_id: Optional single-token gold answer to diagnose.
+
+    Returns:
+        One populated :class:`TimestepArtifacts` record per generated token.
     """
     lm_head = get_lm_head(model)
     final_norm = get_final_norm(model)
@@ -592,13 +636,15 @@ def project_hidden_state(
     lm_head: torch.nn.Module,
     final_norm: torch.nn.Module | None,
 ) -> torch.Tensor:
-    """Apply final norm + lm_head to one hidden state.
+    """Project hidden states into vocabulary logits using the model output stack.
 
     Args:
-        hidden_state: [batch, hidden_dim]
+        hidden_state: Tensor shaped ``[batch, hidden_size]``.
+        lm_head: Hidden-state-to-vocabulary projection.
+        final_norm: Optional final decoder normalization applied before projection.
 
     Returns:
-        logits: [batch, vocab_size]
+        Float32 logits shaped ``[batch, vocabulary_size]``.
     """
     h = hidden_state.float()
 
@@ -625,6 +671,16 @@ class SelectedLayerCapture:
         requested_layers: list[int],
         resolved_layers: list[int],
     ) -> None:
+        """Configure a hook context for requested decoder layers.
+
+        Args:
+            decoder_layers: Ordered decoder-block modules.
+            requested_layers: User-facing layer IDs used as output keys.
+            resolved_layers: Non-negative module indices aligned with requested IDs.
+
+        Returns:
+            None.
+        """
         self.decoder_layers = decoder_layers
         self.requested_layers = requested_layers
         self.resolved_layers = resolved_layers
@@ -632,11 +688,35 @@ class SelectedLayerCapture:
         self.handles: list[Any] = []
 
     def __enter__(self) -> SelectedLayerCapture:
+        """Register forward hooks for all selected layers.
+
+        Returns:
+            This capture object, whose ``outputs`` fill during a model forward pass.
+        """
         for requested, resolved in zip(self.requested_layers, self.resolved_layers):
             layer = self.decoder_layers[resolved]
 
             def make_hook(key: int):
+                """Build a forward hook that records one requested layer.
+
+                Args:
+                    key: User-facing layer ID used in the output mapping.
+
+                Returns:
+                    A PyTorch forward-hook callback.
+                """
+
                 def hook(_module, _inputs, output):
+                    """Detach and retain the decoder block's hidden-state output.
+
+                    Args:
+                        _module: Decoder module supplied by PyTorch's hook API.
+                        _inputs: Positional module inputs supplied by the hook API.
+                        output: Tensor or tuple whose first item is the hidden state.
+
+                    Returns:
+                        None.
+                    """
                     hidden = output[0] if isinstance(output, tuple) else output
                     self.outputs[key] = hidden.detach()
 
@@ -647,11 +727,29 @@ class SelectedLayerCapture:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
+        """Remove all registered hooks when leaving the capture context.
+
+        Args:
+            exc_type: Exception type raised in the context, if any.
+            exc: Exception instance raised in the context, if any.
+            tb: Associated traceback, if any.
+
+        Returns:
+            None; exceptions are not suppressed.
+        """
         for handle in self.handles:
             handle.remove()
 
 
 def set_seed(seed: int) -> None:
+    """Seed PyTorch CPU and available CUDA random generators.
+
+    Args:
+        seed: Deterministic generation seed.
+
+    Returns:
+        None.
+    """
     torch.manual_seed(seed)
 
     if torch.cuda.is_available():
@@ -659,7 +757,19 @@ def set_seed(seed: int) -> None:
 
 
 class LiveGenerationProgress(StoppingCriteria):
+    """Update a tqdm progress description while always allowing generation to continue."""
+
     def __init__(self, progress: Any, prompt_len: int, label: str) -> None:
+        """Initialize throttled token-rate reporting.
+
+        Args:
+            progress: tqdm-compatible progress object.
+            prompt_len: Input length excluded from generated-token counts.
+            label: Human-readable rollout identity appended to the description.
+
+        Returns:
+            None.
+        """
         self.progress = progress
         self.prompt_len = prompt_len
         self.label = label
@@ -667,10 +777,29 @@ class LiveGenerationProgress(StoppingCriteria):
         self.last_update = 0.0
 
     def __call__(self, input_ids: torch.LongTensor, scores: Any, **kwargs) -> bool:
+        """Receive a Transformers stopping callback and update progress.
+
+        Args:
+            input_ids: Current prompt-plus-generation token IDs.
+            scores: Current generation scores, unused by this tracker.
+            **kwargs: Additional Transformers callback values, ignored.
+
+        Returns:
+            Always ``False`` so this tracker never stops generation.
+        """
         self.update(int(input_ids.shape[-1]))
         return False
 
     def update(self, seq_len: int, *, force: bool = False) -> None:
+        """Refresh the displayed token count and throughput when due.
+
+        Args:
+            seq_len: Current total prompt-plus-generation sequence length.
+            force: Bypass the one-second display throttle.
+
+        Returns:
+            None.
+        """
         now = time.monotonic()
         if not force and now - self.last_update < 1.0:
             return
@@ -683,12 +812,24 @@ class LiveGenerationProgress(StoppingCriteria):
 
 
 class GeneratedTextRegexStop(StoppingCriteria):
+    """Stop generation after a regex match has been followed by more decoded text."""
+
     def __init__(
         self,
         tokenizer: PreTrainedTokenizerBase,
         prompt_len: int,
         pattern: str,
     ) -> None:
+        """Initialize incremental decoded-text matching.
+
+        Args:
+            tokenizer: Tokenizer used to decode newly generated IDs.
+            prompt_len: Input length marking the start of generated text.
+            pattern: Regular expression compiled with dot matching newlines.
+
+        Returns:
+            None.
+        """
         self.tokenizer = tokenizer
         self.prompt_len = prompt_len
         self.pattern = re.compile(pattern, re.S)
@@ -696,6 +837,16 @@ class GeneratedTextRegexStop(StoppingCriteria):
         self.text = ""
 
     def __call__(self, input_ids: torch.LongTensor, scores: Any, **kwargs) -> bool:
+        """Decode new IDs and report whether the completed match can stop generation.
+
+        Args:
+            input_ids: Current prompt-plus-generation token IDs.
+            scores: Current generation scores, unused by this criterion.
+            **kwargs: Additional Transformers callback values, ignored.
+
+        Returns:
+            ``True`` once at least one character follows a regex match.
+        """
         seq_len = int(input_ids.shape[-1])
         self.text += self.tokenizer.decode(
             input_ids[0, self.last_len : seq_len],
@@ -708,6 +859,14 @@ class GeneratedTextRegexStop(StoppingCriteria):
 
 
 def sample_id_from_sample(sample: dict[str, Any]) -> str:
+    """Resolve a normalized sample identifier through supported fallback fields.
+
+    Args:
+        sample: Dataset sample containing one of the supported identity fields.
+
+    Returns:
+        String sample ID, falling back to ``"sample"``.
+    """
     return str(
         sample.get("id")
         or sample.get("problem_id")
@@ -717,6 +876,14 @@ def sample_id_from_sample(sample: dict[str, Any]) -> str:
 
 
 def gold_answer_from_sample(sample: dict[str, Any]) -> str | None:
+    """Resolve a gold answer through supported dataset field names.
+
+    Args:
+        sample: Dataset sample with an optional expected answer.
+
+    Returns:
+        String answer or ``None`` when no answer field is populated.
+    """
     answer = (
         sample.get("expected_answer")
         or sample.get("correct_letter")
@@ -730,6 +897,15 @@ def single_token_id(
     tokenizer: PreTrainedTokenizerBase,
     text: str | None,
 ) -> int | None:
+    """Resolve text to one tokenizer ID, retrying with a leading space.
+
+    Args:
+        tokenizer: Tokenizer used by the model.
+        text: Candidate answer string.
+
+    Returns:
+        The sole token ID when either encoding is one token, otherwise ``None``.
+    """
     if text is None:
         return None
 

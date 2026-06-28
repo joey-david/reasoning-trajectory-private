@@ -1,3 +1,5 @@
+"""Derive latent mean, direction, nudge, and scalar features for segmented reasoning steps."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +12,8 @@ from src.analysis.step_classification.segmentation import StepSegment
 
 @dataclass(slots=True)
 class StepFeature:
+    """Pair one step's serializable metadata with its full latent feature vectors."""
+
     record: dict[str, Any]
     mean: np.ndarray
     direction: np.ndarray
@@ -18,6 +22,8 @@ class StepFeature:
 
 @dataclass(slots=True)
 class StepMatrices:
+    """Hold aligned matrices of step mean, direction, and previous-step nudge vectors."""
+
     means: np.ndarray
     directions: np.ndarray
     nudges: np.ndarray
@@ -31,6 +37,18 @@ def build_step_features(
     row: dict[str, Any],
     segments: list[StepSegment],
 ) -> list[StepFeature]:
+    """Compute latent features for one row, layer, and segmentation.
+
+    Args:
+        states: Hidden states shaped ``[tokens, layers, hidden]``.
+        layer: Decoder-layer ID written into output metadata.
+        layer_col: Column of ``states`` corresponding to ``layer``.
+        row: Source generation row.
+        segments: Token-aligned steps to featurize in order.
+
+    Returns:
+        Step features with metadata and full latent vectors.
+    """
     out: list[StepFeature] = []
     previous_mean: np.ndarray | None = None
     total_tokens = max(len(row.get("generated_token_ids", [])), 1)
@@ -82,6 +100,14 @@ def build_step_features(
 
 
 def stack_features(features: list[StepFeature]) -> StepMatrices:
+    """Stack aligned step feature vectors into dense matrices.
+
+    Args:
+        features: Non-empty ordered step features.
+
+    Returns:
+        Float32 mean, direction, and nudge matrices.
+    """
     return StepMatrices(
         means=np.stack([item.mean for item in features]).astype(np.float32),
         directions=np.stack([item.direction for item in features]).astype(np.float32),

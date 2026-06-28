@@ -1,3 +1,5 @@
+"""Cluster latent reasoning-step features and summarize representative text examples."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -15,6 +17,17 @@ def assign_clusters(
     vectors: StepMatrices,
     cfg: dict[str, Any],
 ) -> dict[str, Any]:
+    """Assign K-means clusters to step records using latent and scalar features.
+
+    Args:
+        records: Mutable step metadata aligned with ``vectors``.
+        vectors: Mean, direction, and nudge matrices for the records.
+        cfg: Step-classification PCA, cluster-count, and random-seed options.
+
+    Returns:
+        Cluster configuration and per-cluster summaries; records are augmented
+        in place with cluster IDs and distances.
+    """
     if len(records) < 3:
         return {"clusters": [], "feature_columns": []}
 
@@ -81,6 +94,16 @@ def assign_clusters(
 
 
 def normalized_pca(x: np.ndarray, n_components: int, random_state: int) -> np.ndarray:
+    """L2-normalize row vectors and reduce them with PCA.
+
+    Args:
+        x: Two-dimensional sample-by-feature matrix.
+        n_components: Requested output dimensions.
+        random_state: PCA random seed.
+
+    Returns:
+        PCA coordinates, or an empty-width matrix when no components are requested.
+    """
     if n_components <= 0:
         return np.zeros((x.shape[0], 0), dtype=np.float32)
     norms = np.linalg.norm(x, axis=1, keepdims=True)
@@ -91,6 +114,14 @@ def normalized_pca(x: np.ndarray, n_components: int, random_state: int) -> np.nd
 
 
 def cluster_summaries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Aggregate clustered step records and select nearest exemplars.
+
+    Args:
+        records: Step records containing cluster IDs, distances, and scalar features.
+
+    Returns:
+        Cluster sizes, correctness counts, average metrics, and up to five exemplars.
+    """
     clusters: dict[int, list[dict[str, Any]]] = {}
     for rec in records:
         clusters.setdefault(int(rec["cluster_id"]), []).append(rec)

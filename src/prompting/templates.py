@@ -1,3 +1,5 @@
+"""Render normalized questions as plain or tokenizer-specific chat prompts."""
+
 from __future__ import annotations
 
 from transformers import PreTrainedTokenizerBase
@@ -8,6 +10,16 @@ def build_prompt(
     prompt_cfg: dict,
     tokenizer: PreTrainedTokenizerBase | None = None,
 ) -> str:
+    """Build the text passed to the model for one sample.
+
+    Args:
+        sample: Normalized sample containing a ``question`` field.
+        prompt_cfg: System text, instruction, mode, and chat-template options.
+        tokenizer: Optional tokenizer used to render chat messages.
+
+    Returns:
+        A plain concatenated prompt or rendered chat-template prompt.
+    """
     question = sample["question"]
 
     system = prompt_cfg.get("system", "")

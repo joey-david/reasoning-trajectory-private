@@ -1,1 +1,1 @@
-"""Analysis tools over completed run folders."""
+"""Contain post-processing tools that derive analysis artifacts from completed runs."""

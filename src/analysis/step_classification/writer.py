@@ -1,3 +1,5 @@
+"""Orchestrate segmentation, latent featurization, clustering, and artifact writing for reasoning steps."""
+
 from __future__ import annotations
 
 import json
@@ -6,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from src.analysis.common import evenly_capped, read_generation_rows, write_jsonl
+from src.analysis.common import evenly_capped, read_generation_rows
 from src.analysis.step_classification.clustering import assign_clusters
 from src.analysis.step_classification.features import (
     StepMatrices,
@@ -19,9 +21,19 @@ from src.analysis.step_classification.segmentation import (
     configured_segmenters,
 )
 from src.artifact_store import load_hidden_states_npz
+from src.data import write_jsonl
 
 
 def write_step_classification(run_path: Path, cfg: dict[str, Any]) -> None:
+    """Generate all configured step-classification artifacts for a run.
+
+    Args:
+        run_path: Completed run folder with hidden-state artifacts.
+        cfg: Analysis step segmenter, clustering, projection, and cap options.
+
+    Returns:
+        None; writes per-layer records, vectors, clusters, plots, and a manifest.
+    """
     rows = read_generation_rows(run_path)
     rows = [row for row in rows if row.get("hidden_states_file")]
     if not rows:
@@ -86,6 +98,18 @@ def save_layer_artifacts(
     vectors: StepMatrices,
     cluster_info: dict[str, Any],
 ) -> None:
+    """Persist records, cluster metadata, and compact vectors for one layer.
+
+    Args:
+        out_dir: Step-classification artifact directory.
+        layer: Decoder-layer ID used in output filenames.
+        records: Mutable step records aligned with ``vectors``.
+        vectors: Full mean, direction, and nudge feature matrices.
+        cluster_info: JSON-compatible clustering metadata.
+
+    Returns:
+        None; also removes the obsolete probe-example artifact when present.
+    """
     for feature_row, record in enumerate(records):
         record["feature_row"] = feature_row
 

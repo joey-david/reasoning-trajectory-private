@@ -1,3 +1,5 @@
+"""Project step mean vectors into browser-ready three-dimensional plot payloads."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -14,6 +16,18 @@ def projection_payloads(
     layer: int,
     cfg: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
+    """Build capped PCA and t-SNE payloads for one layer's step records.
+
+    Args:
+        records: Step metadata aligned with the vector matrices.
+        vectors: Full step feature matrices.
+        layer: Decoder-layer ID represented by the records.
+        cfg: Projection seed, point cap, and t-SNE options.
+
+    Returns:
+        Plot payloads keyed by projection method, or an empty mapping with
+        fewer than three records.
+    """
     if len(records) < 3:
         return {}
     step_cfg = cfg.get("step_classification", {})
@@ -42,6 +56,15 @@ def projection_payloads(
 
 
 def point_record(record: dict[str, Any], coords: np.ndarray) -> dict[str, Any]:
+    """Add projected coordinates to a copy of one step record.
+
+    Args:
+        record: Source step metadata.
+        coords: Three-element projected coordinate vector.
+
+    Returns:
+        A copied record with rounded ``x``, ``y``, and ``z`` fields.
+    """
     out = dict(record)
     out.update(
         {

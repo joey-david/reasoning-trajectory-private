@@ -1,11 +1,4 @@
-"""Artifact storage for generation outputs.
-
-JSON/JSONL:
-    metadata, token ids, text, scalar diagnostics, paths.
-
-NPZ:
-    heavy numeric arrays such as hidden states.
-"""
+"""Persist generation metadata and scalar outputs as JSON/JSONL, with heavy hidden-state arrays in compressed NPZ files. File locks protect shared outputs during multi-process generation."""
 
 from __future__ import annotations
 
@@ -27,13 +20,17 @@ def save_generation_output(
     hidden_states: Any | None,
     storage_dtype: str,
 ) -> CompleteGenerationOutput:
-    """Save one generation output and return the updated object.
+    """Persist one generation and return its artifact-linked output object.
 
-    Directory layout:
-        generation/
-          generations.jsonl
-          samples/<sample>.json
-          hidden_states/<sample>__seed....npz
+    Args:
+        run_path: Run folder that owns the ``generation`` directory.
+        output: Completed in-memory generation record.
+        hidden_states: Optional ``[tokens, layers, hidden]`` tensor or array.
+        storage_dtype: Hidden-state encoding, such as ``float16`` or
+            ``int8_scaled``.
+
+    Returns:
+        The same output object, updated with its hidden-state path when saved.
     """
     generation_dir = run_path / "generation"
     hidden_dir = generation_dir / "hidden_states"
@@ -75,6 +72,15 @@ def save_generation_output(
 def generation_metadata(
     output: CompleteGenerationOutput, storage_dtype: str
 ) -> dict[str, Any]:
+    """Build run-level metadata for a stored generation.
+
+    Args:
+        output: Generation providing model, layer, and convention metadata.
+        storage_dtype: Encoding used for persisted activations.
+
+    Returns:
+        JSON-compatible schema and activation metadata.
+    """
     return {
         "schema_version": 2,
         "model_name": output.model_name,
@@ -85,6 +91,14 @@ def generation_metadata(
 
 
 def sample_record(output: CompleteGenerationOutput) -> dict[str, Any]:
+    """Build the stable per-sample prompt record.
+
+    Args:
+        output: Generation containing the sample's prompt and input metadata.
+
+    Returns:
+        JSON-compatible sample identity, prompt, input IDs, answer, and DP1 index.
+    """
     return {
         "sample_id": output.sample_id,
         "prompt": output.prompt,
@@ -95,6 +109,14 @@ def sample_record(output: CompleteGenerationOutput) -> dict[str, Any]:
 
 
 def compact_generation_record(output: CompleteGenerationOutput) -> dict[str, Any]:
+    """Build one append-only generation-index row.
+
+    Args:
+        output: Completed generation with optional token diagnostics.
+
+    Returns:
+        JSON-compatible rollout data, omitting timesteps when none were captured.
+    """
     row = {
         "sample_id": output.sample_id,
         "seed": output.seed,
@@ -119,11 +141,16 @@ def save_hidden_states_npz(
     layer_indices: list[int],
     storage_dtype: str,
 ) -> None:
-    """Save hidden states.
+    """Store selected hidden states in a compressed NPZ artifact.
 
-    Shape invariant:
-        hidden_states: [T, L, H]
-        layer_indices: [L]
+    Args:
+        path: Destination NPZ path.
+        hidden_states: Tensor or array shaped ``[tokens, layers, hidden]``.
+        layer_indices: Decoder-layer IDs corresponding to the layer axis.
+        storage_dtype: ``float16``, ``float32``, or symmetric ``int8_scaled``.
+
+    Returns:
+        None.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -151,6 +178,14 @@ def save_hidden_states_npz(
 
 
 def load_hidden_states_npz(path: str | Path) -> tuple[np.ndarray, list[int]]:
+    """Load and, when necessary, dequantize a hidden-state artifact.
+
+    Args:
+        path: NPZ artifact written by :func:`save_hidden_states_npz`.
+
+    Returns:
+        A hidden-state array and its ordered decoder-layer IDs.
+    """
     with np.load(path) as data:
         layer_indices = data["layer_indices"].astype(int).tolist()
 
@@ -166,6 +201,15 @@ def load_hidden_states_npz(path: str | Path) -> tuple[np.ndarray, list[int]]:
 
 
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    """Append one JSONL record while holding an exclusive file lock.
+
+    Args:
+        path: Destination JSONL file.
+        row: JSON-compatible record to append.
+
+    Returns:
+        None.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
@@ -175,6 +219,15 @@ def append_jsonl(path: Path, row: dict[str, Any]) -> None:
 
 
 def write_json(path: Path, obj: dict[str, Any]) -> None:
+    """Atomically-with-respect-to-cooperating-writers replace a JSON document.
+
+    Args:
+        path: Destination JSON file.
+        obj: JSON-compatible object to serialize.
+
+    Returns:
+        None.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+", encoding="utf-8") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
@@ -186,17 +239,27 @@ def write_json(path: Path, obj: dict[str, Any]) -> None:
 
 
 def to_numpy(x: Any) -> np.ndarray:
+    """Convert a NumPy array or detached tensor-like value to NumPy.
+
+    Args:
+        x: Existing array or tensor exposing ``detach``, ``cpu``, and ``numpy``.
+
+    Returns:
+        A NumPy view or copied CPU representation of ``x``.
+    """
     if isinstance(x, np.ndarray):
         return x
     return x.detach().cpu().numpy()
 
 
 def quantize_int8_symmetric(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Per-token/per-layer symmetric int8 quantization.
+    """Quantize hidden states symmetrically per token and layer.
 
-    x:     [T, L, H]
-    q:     [T, L, H]
-    scale: [T, L]
+    Args:
+        x: Floating-point array shaped ``[tokens, layers, hidden]``.
+
+    Returns:
+        The int8 array with the same shape and scales shaped ``[tokens, layers]``.
     """
     x = x.astype(np.float32)
 
@@ -211,11 +274,29 @@ def quantize_int8_symmetric(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def artifact_stem(sample_id: str, seed: int, temperature: float) -> str:
+    """Build a filesystem-safe identity for one generation.
+
+    Args:
+        sample_id: Source sample identifier.
+        seed: Generation seed.
+        temperature: Sampling temperature.
+
+    Returns:
+        A filename stem containing the sanitized identity fields.
+    """
     safe_sample = sanitize_filename(sample_id)
     safe_temp = str(temperature).replace(".", "p")
     return f"{safe_sample}__seed{seed}__temp{safe_temp}"
 
 
 def sanitize_filename(text: str) -> str:
+    """Normalize arbitrary text into a bounded safe filename component.
+
+    Args:
+        text: Value to sanitize.
+
+    Returns:
+        At most 160 safe characters, or ``"sample"`` when none remain.
+    """
     text = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(text))
     return text[:160] or "sample"

@@ -1,3 +1,5 @@
+"""Adapt supported benchmark schemas into the repository's normalized sample records."""
+
 from __future__ import annotations
 
 import hashlib
@@ -6,6 +8,17 @@ from typing import Any
 
 
 def adapt_row(row: dict[str, Any], adapter: str, idx: int) -> dict[str, Any]:
+    """Normalize one source row using a named dataset adapter.
+
+    Args:
+        row: Raw source-dataset record.
+        adapter: Supported adapter name selecting the source schema.
+        idx: Source row index used to synthesize stable fallback IDs.
+
+    Returns:
+        A record with ``id``, ``question``, ``gold_answer``, ``source``, and
+        the original row under ``metadata``.
+    """
     if adapter == "math_qa":
         return {
             "id": str(row.get("id") or row.get("problem_id") or f"item_{idx:06d}"),
@@ -153,11 +166,28 @@ def adapt_row(row: dict[str, Any], adapter: str, idx: int) -> dict[str, Any]:
 
 
 def stable_shuffle(items: list[Any], key: str) -> None:
+    """Shuffle a list deterministically using a string key.
+
+    Args:
+        items: Mutable list to shuffle in place.
+        key: Stable value hashed into the pseudo-random seed.
+
+    Returns:
+        None.
+    """
     seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:16], 16)
     random.Random(seed).shuffle(items)
 
 
 def simple_numeric_answer(value: Any) -> str | None:
+    """Extract a single scalar numeric answer from a one-element list.
+
+    Args:
+        value: Candidate source answer.
+
+    Returns:
+        A normalized numeric string, or ``None`` for unsupported values.
+    """
     if not isinstance(value, list) or len(value) != 1:
         return None
     answer = str(value[0]).strip().strip("$").replace(",", "").strip()
@@ -172,4 +202,13 @@ def normalize_dataset(
     rows: list[dict[str, Any]],
     adapter: str,
 ) -> list[dict[str, Any]]:
+    """Normalize all rows with one adapter.
+
+    Args:
+        rows: Raw source records.
+        adapter: Adapter name passed to :func:`adapt_row`.
+
+    Returns:
+        Normalized records in source order.
+    """
     return [adapt_row(row, adapter, i) for i, row in enumerate(rows)]

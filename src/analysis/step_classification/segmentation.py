@@ -1,3 +1,5 @@
+"""Segment generated text into sentence, sentence-group, or paragraph reasoning steps."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +11,8 @@ from src.analysis.token_selectors import char_to_token_index, token_count
 
 @dataclass(slots=True)
 class StepSegment:
+    """Describe one text span and its approximate generated-token boundaries."""
+
     segmenter: str
     step_idx: int
     char_start: int
@@ -26,6 +30,14 @@ DEFAULT_SEGMENTERS: dict[str, dict[str, Any]] = {
 
 
 def configured_segmenters(cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Resolve named step segmenters from analysis configuration.
+
+    Args:
+        cfg: Analysis configuration with optional step-classification settings.
+
+    Returns:
+        Configured segmenter specifications or the default segmenter set.
+    """
     step_cfg = cfg.get("step_classification", {})
     segmenters = step_cfg.get("segmenters")
     if isinstance(segmenters, dict) and segmenters:
@@ -38,6 +50,16 @@ def build_segments(
     segmenter_name: str,
     spec: dict[str, Any],
 ) -> list[StepSegment]:
+    """Convert one generation's text into token-aligned step segments.
+
+    Args:
+        row: Generation row containing produced text and token IDs.
+        segmenter_name: Name recorded on every resulting segment.
+        spec: Segmentation mode and optional sentence group size.
+
+    Returns:
+        Non-empty text segments with approximate inclusive token boundaries.
+    """
     text = row.get("produced_text", "")
     if not text or token_count(row) <= 0:
         return []
@@ -74,6 +96,14 @@ def build_segments(
 
 
 def sentence_spans(text: str) -> list[tuple[int, int]]:
+    """Find trimmed character spans ending at sentence punctuation.
+
+    Args:
+        text: Generated text to segment.
+
+    Returns:
+        Start-inclusive, end-exclusive character spans.
+    """
     spans: list[tuple[int, int]] = []
     start = 0
     for match in re.finditer(r"[.!?](?:\s+|$)", text):
@@ -87,6 +117,14 @@ def sentence_spans(text: str) -> list[tuple[int, int]]:
 
 
 def paragraph_spans(text: str) -> list[tuple[int, int]]:
+    """Find trimmed character spans separated by blank lines.
+
+    Args:
+        text: Generated text to segment.
+
+    Returns:
+        Start-inclusive, end-exclusive paragraph spans.
+    """
     spans: list[tuple[int, int]] = []
     start = 0
     for match in re.finditer(r"\n\s*\n+", text):
@@ -102,6 +140,15 @@ def paragraph_spans(text: str) -> list[tuple[int, int]]:
 def grouped_spans(
     spans: list[tuple[int, int]], group_size: int
 ) -> list[tuple[int, int]]:
+    """Merge consecutive spans into fixed-size groups.
+
+    Args:
+        spans: Ordered character spans.
+        group_size: Maximum number of adjacent spans per group.
+
+    Returns:
+        Spans covering each group from its first start to final end.
+    """
     grouped: list[tuple[int, int]] = []
     for i in range(0, len(spans), group_size):
         chunk = spans[i : i + group_size]
@@ -111,6 +158,15 @@ def grouped_spans(
 
 
 def trim_spans(text: str, spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Remove surrounding whitespace from character spans and drop empty ones.
+
+    Args:
+        text: Source text indexed by the spans.
+        spans: Start-inclusive, end-exclusive candidate spans.
+
+    Returns:
+        Trimmed non-empty spans in input order.
+    """
     out: list[tuple[int, int]] = []
     for start, end in spans:
         while start < end and text[start].isspace():

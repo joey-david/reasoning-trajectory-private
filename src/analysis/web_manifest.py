@@ -1,3 +1,5 @@
+"""Discover analyzed runs and write the manifest consumed by the static web interface."""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +9,15 @@ from src.analysis.common import read_sample_records
 
 
 def write_manifest(runs_root: Path, out_path: Path) -> None:
+    """Write web-visible artifacts for every generated run below a root.
+
+    Args:
+        runs_root: Root containing ``model/run/config.yaml`` folders.
+        out_path: Destination JSON manifest used by ``web/index.html``.
+
+    Returns:
+        None.
+    """
     runs = []
     for config in sorted(runs_root.glob("*/*/config.yaml")):
         run = config.parent
@@ -52,12 +63,38 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
 
 
 def load_json(path: Path, default):
+    """Load a JSON file when present.
+
+    Args:
+        path: JSON document to read.
+        default: Value returned when the path does not exist.
+
+    Returns:
+        The decoded JSON value or ``default``.
+    """
     return json.loads(path.read_text()) if path.exists() else default
 
 
 def web_path(path: Path) -> str:
+    """Convert a repository path into a URL relative to the web directory.
+
+    Args:
+        path: Repository-relative artifact path.
+
+    Returns:
+        A ``../``-prefixed path suitable for the static UI.
+    """
     return "../" + path.as_posix()
 
 
 def add_web_paths(run: Path, plots: list[dict]) -> list[dict]:
+    """Rewrite run-relative plot paths for web access.
+
+    Args:
+        run: Run folder containing each plot artifact.
+        plots: Plot manifest entries with run-relative ``path`` fields.
+
+    Returns:
+        Copied plot entries with browser-relative paths.
+    """
     return [{**plot, "path": web_path(run / plot["path"])} for plot in plots]
