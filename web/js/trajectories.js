@@ -148,9 +148,15 @@ export function createTrajectoryView({ getState, setQuery }) {
       return;
     }
 
-    const points = filteredPoints();
+    const { points, matchingCount } = filteredPoints();
     const trajectoryCount = new Set(points.map(trajectoryKey)).size;
-    $("plot-status").textContent = `${formatNumber(points.length)} points · ${formatNumber(trajectoryCount)} trajectories`;
+    const pointCount = points.length < matchingCount
+      ? `${formatNumber(points.length)} of ${formatNumber(matchingCount)} matching points`
+      : `${formatNumber(points.length)} points`;
+    const samplingNote = payload.sampled
+      ? ` · globally sampled from ${formatNumber(payload.source_points)}`
+      : "";
+    $("plot-status").textContent = `${pointCount} · ${formatNumber(trajectoryCount)} trajectories${samplingNote}`;
 
     if (!points.length) {
       window.Plotly.purge("plot3d");
@@ -196,7 +202,10 @@ export function createTrajectoryView({ getState, setQuery }) {
       }
       points.push(point);
     }
-    return points;
+    return {
+      points: evenlyCapped(points, Number(payload.max_points)),
+      matchingCount: points.length,
+    };
   }
 
   function tracesForPoints(points) {
@@ -389,6 +398,15 @@ export function createTrajectoryView({ getState, setQuery }) {
 
 function trajectoryKey(point) {
   return `${point.sample_id}::${point.seed}`;
+}
+
+function evenlyCapped(items, maxItems) {
+  if (!Number.isFinite(maxItems) || maxItems <= 0 || items.length <= maxItems) return items;
+  if (maxItems === 1) return [items[0]];
+  return Array.from(
+    { length: maxItems },
+    (_, index) => items[Math.floor(index * (items.length - 1) / (maxItems - 1))],
+  );
 }
 
 function plotLabel(plot) {

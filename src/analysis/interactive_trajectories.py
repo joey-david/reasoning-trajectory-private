@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from sklearn.decomposition import PCA
 
 from src.analysis.common import evenly_capped, project_3d, read_generation_rows
 from src.analysis.step_markers import configured_selectors
@@ -59,19 +60,37 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
 
     manifest: list[dict[str, Any]] = []
     for layer, items in points_by_layer.items():
-        items = evenly_capped(items, max_points)
-        if len(items) < 3:
+        projection_items = evenly_capped(items, max_points)
+        if len(projection_items) < 3:
             continue
-        x = np.stack([item[0] for item in items])
-        for method, coords in project_3d(x).items():
+        projection_x = np.stack([item[0] for item in projection_items])
+        projections = {
+            "pca": project_all_with_fitted_pca(items, projection_x),
+            "tsne": project_3d(projection_x)["tsne"],
+        }
+        projection_inputs = {
+            "pca": items,
+            "tsne": projection_items,
+        }
+        for method, coords in projections.items():
+            method_items = projection_inputs[method]
             path = out_dir / f"{method}_layer{layer}_interactive.json"
-            payload = build_payload(method, layer, coords, items, selectors)
+            payload = build_payload(
+                method,
+                layer,
+                coords,
+                method_items,
+                selectors,
+                max_points=max_points,
+                source_points=len(items),
+            )
             path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             manifest.append(
                 {
                     "method": method,
                     "layer": layer,
-                    "points": len(items),
+                    "points": len(method_items),
+                    "source_points": len(items),
                     "path": path.relative_to(run_path).as_posix(),
                 }
             )
@@ -82,12 +101,30 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
     )
 
 
+def project_all_with_fitted_pca(
+    items: list[PointItem],
+    fit_x: np.ndarray,
+    *,
+    chunk_size: int = 4096,
+) -> np.ndarray:
+    """Fit a shared PCA basis on a bounded sample, then transform every point."""
+    pca = PCA(n_components=3).fit(fit_x)
+    chunks = (
+        np.stack([item[0] for item in items[start : start + chunk_size]])
+        for start in range(0, len(items), chunk_size)
+    )
+    return np.concatenate([pca.transform(chunk) for chunk in chunks])
+
+
 def build_payload(
     method: str,
     layer: int,
     coords: np.ndarray,
     items: list[PointItem],
     selectors: dict[str, dict[str, Any]],
+    *,
+    max_points: int = 0,
+    source_points: int | None = None,
 ) -> dict[str, Any]:
     """Combine projected coordinates and source metadata for the web UI.
 
@@ -97,6 +134,8 @@ def build_payload(
         coords: Three-dimensional coordinates aligned with ``items``.
         items: Hidden vectors and associated rollout/token/selector metadata.
         selectors: Named selector specifications used to produce the points.
+        max_points: Browser-side cap applied after the active filters.
+        source_points: Candidate count before projection-specific sampling.
 
     Returns:
         A JSON-compatible interactive plot payload.
@@ -124,5 +163,8 @@ def build_payload(
         "method": method,
         "layer": layer,
         "selectors": selectors,
+        "max_points": max_points,
+        "source_points": source_points if source_points is not None else len(items),
+        "sampled": source_points is not None and len(items) < source_points,
         "points": points,
     }
