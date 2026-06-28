@@ -339,10 +339,21 @@ bash scripts/run_with_hf_download_fix.sh python scripts/generate.py \
   runs/SmolLM3-3B/gsm_symb_prefixed_frontier_300
 ```
 
-The run uses two model replicas when GPUs 0 and 1 are available, ten rollouts
+The run uses two model replicas when GPUs 0 and 1 are available, five rollouts
 per question, the forced reasoning prefix, a 4096-token primary cap, and the
 same cap-finalization behavior. To run on one GPU, replace `[0, 1]` with the
 single integer `0` or `1`.
+
+After rerunning the cap-affected questions at 8192 tokens, the merged inventory
+contains 65 unique mixed questions. The final capture pool retains the 58 that
+remain mixed after capped rollouts are excluded. It collects ten fresh
+rollouts per question, captures only the last layer, and forces an answer if a
+generation reaches 10,000 tokens:
+
+```bash
+bash scripts/run_with_hf_download_fix.sh python scripts/generate.py \
+  runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k
+```
 
 ## Remote Workflow
 

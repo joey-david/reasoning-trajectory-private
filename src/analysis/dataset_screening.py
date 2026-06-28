@@ -134,7 +134,7 @@ def write_mixed_samples(run_path: Path) -> Path:
         "frontier",
     ]
     with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         for sample_id, sample_rows in sorted(grouped.items()):
             scored = [row for row in sample_rows if row.get("is_correct") is not None]
@@ -201,7 +201,7 @@ def update_screening_csv(csv_path: Path, summaries: list[dict[str, Any]]) -> Non
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDNAMES)
+        writer = csv.DictWriter(handle, fieldnames=FIELDNAMES, lineterminator="\n")
         writer.writeheader()
         writer.writerows(
             sorted(existing.values(), key=lambda row: (row["model"], row["dataset"]))

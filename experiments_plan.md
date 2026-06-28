@@ -146,16 +146,20 @@ traces for the same questions. Activation capture begins only after that gate.
         three to four final tokens.
   - [ ] Generate, pull, and analyze the cap-finalization run.
   - [x] Prepare `runs/SmolLM3-3B/gsm_symb_prefixed_frontier_300` with 300 new
-        P1 questions, ten rollouts each, and no activation capture.
+        P1 questions, five rollouts each, and no activation capture.
   - [x] Verify the pinned 300-question pool has no overlap with prior SmolLM3
         screening or latent-run samples.
   - [x] Configure two model replicas on GPUs 0 and 1 with deterministic
         contiguous instance sharding.
-  - [ ] Generate and summarize the 300-question screen.
-  - [ ] Require at least 50 mixed/frontier questions across the new screen;
-        expand again if the observed yield misses that target.
-  - [ ] Select the final activation-capture pool only after comparing the
-        4096-token cap-finalization and 8192-token regimes.
+  - [x] Generate and summarize the 300-question screen.
+  - [x] Require at least 50 mixed/frontier questions across the new screen:
+        the merged inventory contains 65 mixed questions.
+  - [x] Select the final activation-capture pool after comparing capped and
+        uncapped outcomes: 58 questions remain mixed without capped rollouts.
+  - [x] Prepare `runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k` with ten
+        rollouts per question, last-layer capture, and forced answers at the
+        10,000-token cap.
+  - [ ] Generate, pull, and analyze the 58-question latent-state run.
   - [ ] If no dataset passes, add one harder/easier screen rather than capturing
         weak data.
 
