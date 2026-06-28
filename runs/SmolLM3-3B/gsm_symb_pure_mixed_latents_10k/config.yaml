@@ -25,7 +25,7 @@ generation:
   top_k: 20
   forced_prefix: "<think> Okay, let's see"
   cap_fallback:
-    prefix: "</think> Okay, I've thought about this enough . Given what I know, the final answer should be\n Answer: "
+    prefix: "</think>\n Okay, I've thought about this enough. Given what I know, the final answer should be\n Answer: "
     min_new_tokens: 3
     max_new_tokens: 8
 
