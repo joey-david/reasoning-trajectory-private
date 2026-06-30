@@ -19,6 +19,7 @@ def save_generation_output(
     output: CompleteGenerationOutput,
     hidden_states: Any | None,
     storage_dtype: str,
+    component_states: dict[str, Any] | None = None,
 ) -> CompleteGenerationOutput:
     """Persist one generation and return its artifact-linked output object.
 
@@ -49,11 +50,17 @@ def save_generation_output(
             hidden_states=hidden_states,
             layer_indices=output.layer_indices,
             storage_dtype=storage_dtype,
+            component_states=component_states,
         )
         output.hidden_states_file = hidden_path.relative_to(run_path).as_posix()
 
     write_json(
-        generation_dir / "metadata.json", generation_metadata(output, storage_dtype)
+        generation_dir / "metadata.json",
+        generation_metadata(
+            output,
+            storage_dtype,
+            components=sorted((component_states or {}).keys()),
+        ),
     )
 
     sample_path = samples_dir / f"{sanitize_filename(output.sample_id)}.json"
@@ -70,7 +77,10 @@ def save_generation_output(
 
 
 def generation_metadata(
-    output: CompleteGenerationOutput, storage_dtype: str
+    output: CompleteGenerationOutput,
+    storage_dtype: str,
+    *,
+    components: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build run-level metadata for a stored generation.
 
@@ -87,6 +97,7 @@ def generation_metadata(
         "layer_indices": output.layer_indices,
         "hidden_state_convention": output.hidden_state_convention,
         "activation_storage_dtype": storage_dtype,
+        "components": components or [],
     }
 
 
@@ -140,6 +151,7 @@ def save_hidden_states_npz(
     hidden_states: Any,
     layer_indices: list[int],
     storage_dtype: str,
+    component_states: dict[str, Any] | None = None,
 ) -> None:
     """Store selected hidden states in a compressed NPZ artifact.
 
@@ -160,19 +172,14 @@ def save_hidden_states_npz(
         "layer_indices": np.asarray(layer_indices, dtype=np.int32),
     }
 
-    if storage_dtype == "float16":
-        arrays["hidden_states"] = hidden_np.astype(np.float16)
-
-    elif storage_dtype == "float32":
-        arrays["hidden_states"] = hidden_np.astype(np.float32)
-
-    elif storage_dtype == "int8_scaled":
-        q, scale = quantize_int8_symmetric(hidden_np)
-        arrays["hidden_states_q"] = q
-        arrays["hidden_states_scale"] = scale
-
-    else:
-        raise ValueError(f"Unsupported hidden-state storage dtype: {storage_dtype!r}")
+    store_array(arrays, "hidden_states", hidden_np, storage_dtype)
+    for component, values in (component_states or {}).items():
+        store_array(
+            arrays,
+            f"component_{component}",
+            to_numpy(values),
+            storage_dtype,
+        )
 
     np.savez_compressed(path, **arrays)
 
@@ -198,6 +205,44 @@ def load_hidden_states_npz(path: str | Path) -> tuple[np.ndarray, list[int]]:
             return x * scale[..., None], layer_indices
 
     raise KeyError(f"No hidden states found in {path}")
+
+
+def load_component_states_npz(
+    path: str | Path,
+    component: str,
+) -> tuple[np.ndarray, list[int]]:
+    """Load and dequantize one captured decoder component."""
+    prefix = f"component_{component}"
+    with np.load(path) as data:
+        layer_indices = data["layer_indices"].astype(int).tolist()
+        if prefix in data:
+            return data[prefix].copy(), layer_indices
+        quantized = f"{prefix}_q"
+        scale_key = f"{prefix}_scale"
+        if quantized in data and scale_key in data:
+            values = data[quantized].astype(np.float32)
+            scale = data[scale_key].astype(np.float32)
+            return values * scale[..., None], layer_indices
+    raise KeyError(f"Component {component!r} not found in {path}")
+
+
+def store_array(
+    arrays: dict[str, np.ndarray],
+    name: str,
+    values: np.ndarray,
+    storage_dtype: str,
+) -> None:
+    """Encode one activation tensor under a stable NPZ key prefix."""
+    if storage_dtype == "float16":
+        arrays[name] = values.astype(np.float16)
+    elif storage_dtype == "float32":
+        arrays[name] = values.astype(np.float32)
+    elif storage_dtype == "int8_scaled":
+        quantized, scale = quantize_int8_symmetric(values)
+        arrays[f"{name}_q"] = quantized
+        arrays[f"{name}_scale"] = scale
+    else:
+        raise ValueError(f"Unsupported hidden-state storage dtype: {storage_dtype!r}")
 
 
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:

@@ -22,6 +22,7 @@ scripts/
   data/                 # dataset inspection and preparation
   generation/           # generation and remote orchestration entry points
   analysis/             # analysis and screening entry points
+  experiments/          # hypothesis-specific analysis and intervention commands
 src/
   datasets/             # dataset loaders and adapters
   prompting/            # prompt construction
@@ -29,6 +30,7 @@ src/
   runtime/              # configs, paths, and artifact I/O
   orchestration/        # generation runners and remote scheduling
   analysis/             # trajectory analysis
+  experiments/          # symbolic updates, probes, contrastive learning, patching
 web/                    # static results interface
 lit/literature/         # local paper corpus and notes
 ```

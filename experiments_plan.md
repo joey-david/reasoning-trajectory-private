@@ -1,134 +1,105 @@
 # Experiment Plan
 
-This file is now the live plan for the current corpus, not a history of every
-screen that led here. Old model ladders, abandoned code-grading branches, and
-speculative Paper 2 work are intentionally removed.
+The hypotheses are implemented under `src/experiments/`, with thin commands in
+`scripts/experiments/`. Heavy inference has not been started.
 
-## Current State
+## Local Results
 
-Primary corpus:
+Source corpus:
 
 ```text
 runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k
 ```
 
-This is the active dataset for Paper 1 work:
+All local metrics use exactly 10 seed-sorted trajectories per question: 580
+traces across 58 questions. Raw generation data remains unchanged.
 
-- 58 GSM-Symbolic-P1 questions from the robust mixed-question pool.
-- Forced reasoning prefix: `<think> Okay, let's see`.
-- 10,000-token cap with forced final-answer fallback.
-- Final-layer activation capture enabled with `int8_scaled` storage.
-- Analysis artifacts exist, including token projections, step markers,
-  solution-object records, and step-classification vectors/clusters.
+- **H2:** 17,602 verified symbolic updates. Update-completion states have mean
+  per-trace magnitude AUC `0.642`, but sharp-spike overlap is only `5.6%`
+  against a `4.0%` shifted null. Current verdict: elevated change without
+  strong sharp localization.
+- **H4:** a linear 128-dimensional contrastive projection trained on strict
+  lexical controls raises question-disjoint pair AUC from `0.315` to `0.920`.
+  This supports learned operator structure, not natural unsupervised clustering.
+- **H5:** step mean plus variance reaches ROC-AUC `0.754`, `0.741`, and `0.757`
+  at 25%, 50%, and 75%. Its grouped-bootstrap gain over sentence means excludes
+  zero at all checkpoints. Latent-spike features do not beat sentence means, so
+  LiveCodeBench transfer is gated off for now.
 
-Current analyzed summary:
-
-- 631 scored rollouts across 58 questions.
-- 71.95% aggregate accuracy.
-- 47 mixed questions.
-- 36 frontier questions.
-- 11 capped rollouts, or 1.74%.
-- 0 unscored rollouts.
-
-The run has more rollouts than the configured 580 expected rows because some
-questions have extra completed samples. Treat this as a corpus hygiene issue to
-resolve before reporting headline statistics, not as a blocker for exploratory
-analysis.
-
-## Screening Evidence To Keep
-
-The useful screening result is already distilled into:
+Reports live under:
 
 ```text
-experiments/mixed_question_inventory.jsonl
-experiments/mixed_question_inventory.csv
-experiments/dataset_saturation.csv
+runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k/analysis/experiments/
 ```
 
-Keep these facts:
+## GPU Runs
 
-- The merged mixed inventory has 65 questions.
-- 58 questions remain mixed without relying on capped failures.
-- The 58 robust questions define the current latent-capture corpus.
-- Earlier Qwen, DeepSeek, PolyMath, MBPP+, BigCodeBench, and AIME screens are
-  background calibration only. They are not active experimental branches.
-
-## Active Questions
-
-Focus the next work on Paper 1:
-
-1. Are text boundaries a weak proxy for latent reasoning boundaries?
-2. Do step-level transition features separate correct and incorrect traces?
-3. Do sentence, sentence-pair, and paragraph segmenters produce stable and
-   interpretable update clusters?
-4. Which step features carry signal: mean state, within-step direction,
-   variance, nudge, or cluster identity?
-
-Do not start Paper 2 object-edit labeling, hidden-information probes, compressed
-control-sequence experiments, or steering interventions until the Paper 1 signal
-is clear.
-
-## Next Steps
-
-1. Resolve corpus hygiene.
-   - Decide whether to keep all 631 analyzed rollouts or downsample to exactly
-     10 rollouts per question.
-   - If downsampling, do it by deterministic seed order and rerun analysis.
-   - Record the final corpus row count before using any metric in a writeup.
-
-2. Audit answer and cap behavior.
-   - Inspect every capped rollout.
-   - Spot-check a small random sample of correct and incorrect parsed answers.
-   - Confirm that mixed/frontier labels are not created by parser mistakes.
-
-3. Run the first Paper 1 analysis pass.
-   - Compare sentence, sentence-pair, and paragraph step segmenters.
-   - Report cluster composition by correctness and question.
-   - Compare feature families already written by `step_classification`:
-     mean, direction, variance, nudge, and cluster.
-   - Prefer question-disjoint validation for any probe.
-
-4. Decide the next experimental branch.
-   - If the current corpus gives a clean signal, freeze it and write the Paper 1
-     result around endogenous step quality and correctness prediction.
-   - If the signal is weak, add one new focused screen rather than reviving the
-     old broad model/dataset ladder.
-
-## Useful Commands
-
-Summarize the current corpus:
+Push the prepared configs and pinned H1 datasets:
 
 ```bash
-.venv/bin/python scripts/analysis/summarize_screening.py \
-  runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k
+bash scripts/remote.sh push
 ```
 
-Rerun analysis after any corpus cleanup:
+Run these replays in parallel. Their uncompressed activation estimate is
+`15.9 GiB`; all four H1 conditions add about `1.3 GiB` at baseline trace
+lengths. The total raw estimate is `17.2 GiB`, before int8 compression.
 
 ```bash
-.venv/bin/python scripts/analysis/analyze.py \
-  runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k
+# A100: 174 traces, layers 9/18/27/-1, residual + MLP + attention.
+.venv/bin/python scripts/experiments/replay_capture.py \
+  runs/SmolLM3-3B/h2_component_replay
+
+# A6000: 1,500 existing traces, final-layer residual only.
+.venv/bin/python scripts/experiments/replay_capture.py \
+  runs/SmolLM3-3B/h4_structural_replay
 ```
 
-Inspect the static UI:
+After the H2 replay, capture diagnostics for the 60 matched existing freeform
+traces:
 
 ```bash
-python3 -m http.server 8765
+.venv/bin/python scripts/experiments/replay_capture.py \
+  runs/SmolLM3-3B/h1_freeform_replay
 ```
 
-Then open:
+The prompted H1 pilot is three matched 60-generation runs:
 
-```text
-http://localhost:8765/web/index.html
+```bash
+.venv/bin/python scripts/generation/generate.py \
+  runs/SmolLM3-3B/h1_numbered_steps_pilot \
+  runs/SmolLM3-3B/h1_sentence_separated_pilot \
+  runs/SmolLM3-3B/h1_paragraph_separated_pilot
 ```
 
-## Removed From The Active Plan
+## Post-Run Analysis
 
-- Qwen3-8B screening commands.
-- Smaller-model ladder execution checklists.
-- Code benchmark grading as a blocker for the current math corpus.
-- DeepSeek/AIME length-cap followups.
-- Cap-finalization comparison as a required branch.
-- Paper 2 solution-object edit labeling.
-- Hidden-information, compression, and steering-intervention phases.
-- Long dataset/model reference lists.
+```bash
+# H2 component localization and automatic H3 patch target.
+.venv/bin/python scripts/experiments/component_localization.py \
+  runs/SmolLM3-3B/h2_component_replay \
+  runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates
+
+# H1 matched comparison, using the existing freeform corpus as control.
+.venv/bin/python scripts/experiments/boundary_comparison.py \
+  runs/SmolLM3-3B/h1_freeform_replay \
+  runs/SmolLM3-3B/h1_numbered_steps_pilot \
+  runs/SmolLM3-3B/h1_sentence_separated_pilot \
+  runs/SmolLM3-3B/h1_paragraph_separated_pilot
+
+# H4 scale-up.
+.venv/bin/python scripts/experiments/localized_updates.py \
+  runs/SmolLM3-3B/h4_structural_replay --per-sample 5
+.venv/bin/python scripts/experiments/structural_contrast.py \
+  runs/SmolLM3-3B/h4_structural_replay/analysis/experiments/h2_localized_updates
+```
+
+H3 is intentionally last. Its 30 state-equivalent pairs are already prepared;
+the runner reads the H2 component report and patches the recommended component
+and layer automatically:
+
+```bash
+.venv/bin/python scripts/experiments/causal_patching.py \
+  runs/SmolLM3-3B/h3_process_isomer_patching
+.venv/bin/python scripts/experiments/analyze_causal_patching.py \
+  runs/SmolLM3-3B/h3_process_isomer_patching
+```

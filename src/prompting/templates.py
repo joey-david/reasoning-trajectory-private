@@ -27,9 +27,18 @@ def build_prompt(
     mode = prompt_cfg.get("mode", "plain")
 
     user_text = "\n\n".join(part for part in [instruction, question] if part)
+    demonstrations = prompt_cfg.get("demonstrations", [])
 
     if mode == "plain":
-        return "\n\n".join(part for part in [system, user_text] if part)
+        if not demonstrations:
+            return "\n\n".join(part for part in [system, user_text] if part)
+        examples = [
+            f"User: {example['user']}\nAssistant: {example['assistant']}"
+            for example in demonstrations
+        ]
+        return "\n\n".join(
+            part for part in [system, *examples, f"User: {user_text}"] if part
+        )
 
     if mode == "chat":
         if tokenizer is None or not hasattr(tokenizer, "apply_chat_template"):
@@ -38,6 +47,13 @@ def build_prompt(
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
+        for example in demonstrations:
+            messages.extend(
+                [
+                    {"role": "user", "content": str(example["user"])},
+                    {"role": "assistant", "content": str(example["assistant"])},
+                ]
+            )
         messages.append({"role": "user", "content": user_text})
 
         return tokenizer.apply_chat_template(

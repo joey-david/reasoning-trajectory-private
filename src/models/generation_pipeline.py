@@ -20,12 +20,6 @@ from transformers import (
 
 from src.runtime.artifact_store import save_generation_output
 from src.runtime.config import RunConfig
-from src.features.logit_lens import (
-    ce_for_token,
-    entropy_from_logits,
-    prob_for_token,
-    rank_for_token,
-)
 from src.runtime.generation_output import (
     HIDDEN_STATE_CONVENTION,
     CompleteGenerationOutput,
@@ -62,6 +56,7 @@ class GenerationRequest:
     cap_fallback_min_new_tokens: int
     cap_fallback_max_new_tokens: int
     layer_indices: list[int]
+    capture_components: list[str]
     model_name: str
     gold_answer: str | None
     gold_token_id: int | None
@@ -212,7 +207,7 @@ def generate_task(
     capture_enabled = bool(capture_cfg.get("enabled", True))
     layer_indices = list(capture_cfg.get("layers", [-1])) if capture_enabled else []
     gold_answer = gold_answer_from_sample(sample)
-    output, hidden_states = generate_one_twopass(
+    output, hidden_states, component_states = generate_one_twopass(
         model=model,
         tokenizer=tokenizer,
         request=GenerationRequest(
@@ -230,6 +225,9 @@ def generate_task(
             cap_fallback_min_new_tokens=int(cap_fallback.get("min_new_tokens", 3)),
             cap_fallback_max_new_tokens=int(cap_fallback.get("max_new_tokens", 4)),
             layer_indices=layer_indices,
+            capture_components=[
+                str(component) for component in capture_cfg.get("components", [])
+            ],
             model_name=str(model_cfg["name"]),
             gold_answer=gold_answer,
             gold_token_id=single_token_id(tokenizer, gold_answer),
@@ -245,6 +243,7 @@ def generate_task(
         output=output,
         hidden_states=hidden_states if capture_enabled else None,
         storage_dtype=str(capture_cfg.get("activation_storage_dtype", "float16")),
+        component_states=component_states if capture_enabled else None,
     )
     return output
 
@@ -255,7 +254,11 @@ def generate_one_twopass(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
     request: GenerationRequest,
-) -> tuple[CompleteGenerationOutput, torch.Tensor | None]:
+) -> tuple[
+    CompleteGenerationOutput,
+    torch.Tensor | None,
+    dict[str, torch.Tensor],
+]:
     """Generate one rollout, then optionally capture and diagnose its hidden states.
 
     Args:
@@ -264,9 +267,9 @@ def generate_one_twopass(
         request: Fully resolved prompt, sampling, capture, and progress options.
 
     Returns:
-        The JSON-facing output and an optional CPU float32 tensor shaped
-        ``[generated_tokens, selected_layers, hidden_size]``. Each generated
-        token uses the hidden state at its preceding prediction position.
+        The JSON-facing output, optional residual states, and any requested
+        component states. Activation tensors are shaped
+        ``[generated_tokens, selected_layers, hidden_size]``.
     """
     if request.layer_indices:
         assert_unique_layers(request.layer_indices)
@@ -295,18 +298,20 @@ def generate_one_twopass(
     # Pass 2: teacher-forced selected-layer capture
     # -------------------------------------------------------------------------
     hidden_states = None
+    component_states: dict[str, torch.Tensor] = {}
     if request.layer_indices:
         if request.progress is not None:
             request.progress.set_postfix({}, refresh=True)
             request.progress.set_description(
                 f"activation capture {request.progress_label}".strip()
             )
-        hidden_states = capture_selected_hidden_states(
+        hidden_states, component_states = capture_selected_activations(
             model=model,
             full_seq_ids=sequence.full_ids,
             prompt_len=prompt_len,
             num_generated=len(sequence.token_ids),
             layer_indices=request.layer_indices,
+            components=request.capture_components,
         )
     elif request.progress is not None:
         request.progress.set_postfix({}, refresh=True)
@@ -347,7 +352,7 @@ def generate_one_twopass(
         hidden_states_file=None,
     )
 
-    return output, hidden_states
+    return output, hidden_states, component_states
 
 
 def generate_sequence(
@@ -530,6 +535,33 @@ def capture_selected_hidden_states(
         CPU float32 hidden states shaped
         ``[generated_tokens, selected_layers, hidden_size]``.
     """
+    hidden_states, _ = capture_selected_activations(
+        model=model,
+        full_seq_ids=full_seq_ids,
+        prompt_len=prompt_len,
+        num_generated=num_generated,
+        layer_indices=layer_indices,
+        components=[],
+    )
+    return hidden_states
+
+
+@torch.inference_mode()
+def capture_selected_activations(
+    *,
+    model: PreTrainedModel,
+    full_seq_ids: list[int],
+    prompt_len: int,
+    num_generated: int,
+    layer_indices: list[int],
+    components: list[str],
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Capture residual, MLP, and attention outputs in one teacher-forced pass."""
+    supported = {"mlp_output", "attention_output"}
+    unknown = set(components) - supported
+    if unknown:
+        raise ValueError(f"Unsupported capture components: {sorted(unknown)}")
+
     input_device = get_input_device(model)
     full_seq = torch.tensor([full_seq_ids], dtype=torch.long, device=input_device)
     attention_mask = torch.ones_like(full_seq)
@@ -543,7 +575,12 @@ def capture_selected_hidden_states(
         decoder_layers=decoder_layers,
         requested_layers=layer_indices,
         resolved_layers=resolved_layers,
-    ) as capture:
+    ) as residual_capture, SelectedComponentCapture(
+        decoder_layers=decoder_layers,
+        requested_layers=layer_indices,
+        resolved_layers=resolved_layers,
+        components=components,
+    ) as component_capture:
         _ = base_model(
             input_ids=full_seq,
             attention_mask=attention_mask,
@@ -553,19 +590,33 @@ def capture_selected_hidden_states(
 
     if num_generated == 0:
         hidden_size = get_hidden_size(model)
-        return torch.empty(
+        empty = torch.empty(
             (0, len(layer_indices), hidden_size),
             dtype=torch.float32,
             device="cpu",
         )
+        return empty, {component: empty.clone() for component in components}
 
     start = prompt_len - 1
     stop = start + num_generated
     selected = [
-        capture.outputs[layer][0, start:stop, :].float().cpu()
+        residual_capture.outputs[layer][0, start:stop, :].float().cpu()
         for layer in layer_indices
     ]
-    return torch.stack(selected, dim=1)  # [T, L, H]
+    hidden_states = torch.stack(selected, dim=1)
+    component_states = {
+        component: torch.stack(
+            [
+                component_capture.outputs[component][layer][
+                    0, start:stop, :
+                ].float().cpu()
+                for layer in layer_indices
+            ],
+            dim=1,
+        )
+        for component in components
+    }
+    return hidden_states, component_states
 
 
 @torch.inference_mode()
@@ -596,81 +647,99 @@ def compute_timestep_artifacts(
 
     eos_token_id = tokenizer.eos_token_id
 
-    artifacts: list[TimestepArtifacts] = []
-
     T, L, _ = hidden_states.shape
-
-    for t in range(T):
-        token_id = int(generated_token_ids[t])
-        token_str = tokenizer.decode(
-            [token_id],
-            skip_special_tokens=False,
-            clean_up_tokenization_spaces=False,
+    metrics: dict[str, torch.Tensor] = {
+        "entropy": torch.empty((T, L), dtype=torch.float32),
+        "ce_next_token": torch.empty((T, L), dtype=torch.float32),
+        "rank_next_token": torch.empty((T, L), dtype=torch.int64),
+    }
+    if gold_token_id is not None:
+        metrics.update(
+            {
+                "ce_gold_answer": torch.empty((T, L), dtype=torch.float32),
+                "rank_gold_answer": torch.empty((T, L), dtype=torch.int64),
+                "prob_gold_answer": torch.empty((T, L), dtype=torch.float32),
+            }
+        )
+    if eos_token_id is not None:
+        metrics.update(
+            {
+                "prob_eos": torch.empty((T, L), dtype=torch.float32),
+                "rank_eos": torch.empty((T, L), dtype=torch.int64),
+            }
         )
 
-        token_pos = prompt_len + t
-        artifact = TimestepArtifacts.from_token(
-            token_id=token_id,
-            token_str=token_str,
-            token_pos=token_pos,
-        )
-
-        entropy: list[float] = []
-        ce_next_token: list[float] = []
-        rank_next_token: list[int] = []
-
-        ce_gold_answer: list[float] | None = [] if gold_token_id is not None else None
-        rank_gold_answer: list[int] | None = [] if gold_token_id is not None else None
-        prob_gold_answer: list[float] | None = [] if gold_token_id is not None else None
-
-        prob_eos: list[float] | None = [] if eos_token_id is not None else None
-        rank_eos: list[int] | None = [] if eos_token_id is not None else None
-
-        for layer_col in range(L):
-            h = hidden_states[t, layer_col, :].unsqueeze(0)  # [1, H]
+    targets = torch.tensor(generated_token_ids, dtype=torch.long)
+    batch_size = 64
+    for layer_col in range(L):
+        for start in range(0, T, batch_size):
+            stop = min(start + batch_size, T)
             logits = project_hidden_state(
-                h,
+                hidden_states[start:stop, layer_col, :],
                 lm_head=lm_head,
                 final_norm=final_norm,
-            )  # [1, vocab]
-
-            entropy.append(float(entropy_from_logits(logits)[0].detach().cpu()))
-            ce_next_token.append(
-                float(ce_for_token(logits, token_id)[0].detach().cpu())
             )
-            rank_next_token.append(
-                int(rank_for_token(logits, token_id)[0].detach().cpu())
+            log_probs = torch.log_softmax(logits, dim=-1)
+            probabilities = log_probs.exp()
+            target_ids = targets[start:stop].to(logits.device)
+            target_logits = logits.gather(1, target_ids[:, None]).squeeze(1)
+            metrics["entropy"][start:stop, layer_col] = (
+                -(probabilities * log_probs).sum(dim=-1).cpu()
             )
+            metrics["ce_next_token"][start:stop, layer_col] = (
+                -log_probs.gather(1, target_ids[:, None]).squeeze(1).cpu()
+            )
+            metrics["rank_next_token"][start:stop, layer_col] = (
+                (logits > target_logits[:, None]).sum(dim=-1).add(1).cpu()
+            )
+            for token_id, ce_key, probability_key, rank_key in (
+                (
+                    gold_token_id,
+                    "ce_gold_answer",
+                    "prob_gold_answer",
+                    "rank_gold_answer",
+                ),
+                (eos_token_id, None, "prob_eos", "rank_eos"),
+            ):
+                if token_id is None:
+                    continue
+                token_logits = logits[:, int(token_id)]
+                token_log_probs = log_probs[:, int(token_id)]
+                if ce_key is not None:
+                    metrics[ce_key][start:stop, layer_col] = -token_log_probs.cpu()
+                metrics[probability_key][start:stop, layer_col] = (
+                    token_log_probs.exp().cpu()
+                )
+                metrics[rank_key][start:stop, layer_col] = (
+                    (logits > token_logits[:, None]).sum(dim=-1).add(1).cpu()
+                )
 
-            if gold_token_id is not None:
-                ce_gold_answer.append(
-                    float(ce_for_token(logits, gold_token_id)[0].detach().cpu())
-                )
-                rank_gold_answer.append(
-                    int(rank_for_token(logits, gold_token_id)[0].detach().cpu())
-                )
-                prob_gold_answer.append(
-                    float(prob_for_token(logits, gold_token_id)[0].detach().cpu())
-                )
-
-            if eos_token_id is not None:
-                prob_eos.append(
-                    float(prob_for_token(logits, eos_token_id)[0].detach().cpu())
-                )
-                rank_eos.append(
-                    int(rank_for_token(logits, eos_token_id)[0].detach().cpu())
-                )
-
-        artifact.entropy = entropy
-        artifact.ce_next_token = ce_next_token
-        artifact.rank_next_token = rank_next_token
-        artifact.ce_gold_answer = ce_gold_answer
-        artifact.rank_gold_answer = rank_gold_answer
-        artifact.prob_gold_answer = prob_gold_answer
-        artifact.prob_eos = prob_eos
-        artifact.rank_eos = rank_eos
+    artifacts: list[TimestepArtifacts] = []
+    for token_index, token_id in enumerate(generated_token_ids):
+        artifact = TimestepArtifacts.from_token(
+            token_id=int(token_id),
+            token_str=tokenizer.decode(
+                [int(token_id)],
+                skip_special_tokens=False,
+                clean_up_tokenization_spaces=False,
+            ),
+            token_pos=prompt_len + token_index,
+        )
+        artifact.entropy = metrics["entropy"][token_index].tolist()
+        artifact.ce_next_token = metrics["ce_next_token"][token_index].tolist()
+        artifact.rank_next_token = metrics["rank_next_token"][token_index].tolist()
+        if gold_token_id is not None:
+            artifact.ce_gold_answer = metrics["ce_gold_answer"][token_index].tolist()
+            artifact.rank_gold_answer = metrics["rank_gold_answer"][
+                token_index
+            ].tolist()
+            artifact.prob_gold_answer = metrics["prob_gold_answer"][
+                token_index
+            ].tolist()
+        if eos_token_id is not None:
+            artifact.prob_eos = metrics["prob_eos"][token_index].tolist()
+            artifact.rank_eos = metrics["rank_eos"][token_index].tolist()
         artifacts.append(artifact)
-
     return artifacts
 
 
@@ -782,6 +851,57 @@ class SelectedLayerCapture:
         Returns:
             None; exceptions are not suppressed.
         """
+        for handle in self.handles:
+            handle.remove()
+
+
+class SelectedComponentCapture:
+    """Forward-hook capture for MLP and attention outputs inside decoder blocks."""
+
+    def __init__(
+        self,
+        *,
+        decoder_layers: torch.nn.ModuleList,
+        requested_layers: list[int],
+        resolved_layers: list[int],
+        components: list[str],
+    ) -> None:
+        self.decoder_layers = decoder_layers
+        self.requested_layers = requested_layers
+        self.resolved_layers = resolved_layers
+        self.components = components
+        self.outputs: dict[str, dict[int, torch.Tensor]] = {
+            component: {} for component in components
+        }
+        self.handles: list[Any] = []
+
+    def __enter__(self) -> SelectedComponentCapture:
+        for requested, resolved in zip(self.requested_layers, self.resolved_layers):
+            layer = self.decoder_layers[resolved]
+            for component in self.components:
+                attribute = (
+                    "mlp" if component == "mlp_output" else "self_attn"
+                )
+                module = getattr(layer, attribute, None)
+                if module is None:
+                    raise TypeError(
+                        f"{type(layer).__name__} has no {attribute!r} module"
+                    )
+                self.handles.append(
+                    module.register_forward_hook(
+                        self._make_hook(component, requested)
+                    )
+                )
+        return self
+
+    def _make_hook(self, component: str, layer: int):
+        def hook(_module, _inputs, output):
+            hidden = output[0] if isinstance(output, tuple) else output
+            self.outputs[component][layer] = hidden.detach()
+
+        return hook
+
+    def __exit__(self, exc_type, exc, tb) -> None:
         for handle in self.handles:
             handle.remove()
 
