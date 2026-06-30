@@ -18,15 +18,15 @@ from transformers import (
     StoppingCriteriaList,
 )
 
-from src.artifact_store import save_generation_output
-from src.config import RunConfig
+from src.runtime.artifact_store import save_generation_output
+from src.runtime.config import RunConfig
 from src.features.logit_lens import (
     ce_for_token,
     entropy_from_logits,
     prob_for_token,
     rank_for_token,
 )
-from src.generation_output import (
+from src.runtime.generation_output import (
     HIDDEN_STATE_CONVENTION,
     CompleteGenerationOutput,
     TimestepArtifacts,
@@ -44,7 +44,7 @@ from src.models.introspection import (
     resolve_layer_indices,
 )
 from src.prompting.templates import build_prompt
-from src.run_io import load_generation_index
+from src.runtime.run_io import load_generation_index
 
 
 @dataclass(slots=True)
@@ -105,103 +105,148 @@ def generate_run(
         if isinstance(config, RunConfig)
         else RunConfig.from_dict(run_path, dict(config))
     )
-
     model_cfg = cfg["model"]
-    generation_cfg = cfg["generation"]
-    capture_cfg = cfg.get("capture", {})
-    prompt_cfg = cfg.get("prompt", {})
-
     if model_cfg.get("backend", "hf") != "hf":
         raise ValueError(
             f"Unsupported generation backend: {model_cfg.get('backend')!r}"
         )
-
     model, tokenizer = load_hf_model_and_tokenizer(model_cfg)
-
-    base_seed = int(generation_cfg.get("base_seed", 0))
-    num_samples_per_item = int(generation_cfg.get("num_samples_per_item", 1))
-    temperature = float(generation_cfg.get("temperature", 0.0))
-    max_new_tokens = int(generation_cfg.get("max_new_tokens", 1024))
-    forced_prefix_value = generation_cfg.get("forced_prefix")
-    forced_prefix = "" if forced_prefix_value is None else str(forced_prefix_value)
-    stop_regex = generation_cfg.get(
-        "stop_regex", cfg.get("analysis", {}).get("produced_answer_regex")
-    )
-    cap_fallback = generation_cfg.get("cap_fallback", {})
-    top_p = generation_cfg.get("top_p")
-    top_k = generation_cfg.get("top_k")
-
-    layer_indices = list(capture_cfg.get("layers", [-1]))
-    capture_enabled = bool(capture_cfg.get("enabled", True))
-    if not capture_enabled:
-        layer_indices = []
-    capture_diagnostics = bool(capture_cfg.get("diagnostics", False))
-    storage_dtype = str(capture_cfg.get("activation_storage_dtype", "float16"))
+    generation_cfg = cfg["generation"]
+    samples_per_item = int(generation_cfg.get("num_samples_per_item", 1))
     existing_generations = load_generation_index(run_path)
 
     with tqdm(
-        total=len(samples) * num_samples_per_item,
+        total=len(samples) * samples_per_item,
         desc="generation",
         unit="iter",
     ) as progress:
         for local_sample_index, sample in enumerate(samples):
             sample_index = sample_index_offset + local_sample_index
-            prompt = build_prompt(sample, prompt_cfg, tokenizer)
-            sample_id = sample_id_from_sample(sample)
-            gold_answer = gold_answer_from_sample(sample)
-            gold_token_id = single_token_id(tokenizer, gold_answer)
-
-            for sample_iter in range(num_samples_per_item):
-                seed = base_seed + sample_index * 10_000 + sample_iter
-                progress_label = (
-                    f"item {local_sample_index + 1}/{len(samples)} {sample_id} "
-                    f"iter {sample_iter + 1}/{num_samples_per_item}"
+            for sample_iter in range(samples_per_item):
+                key = generation_key_for(
+                    sample, sample_index, sample_iter, generation_cfg
                 )
-
-                generation_key = (sample_id, seed, temperature)
-                if generation_key in existing_generations:
-                    progress.set_description(f"skipping {progress_label}")
+                label = (
+                    f"item {local_sample_index + 1}/{len(samples)} {key[0]} "
+                    f"iter {sample_iter + 1}/{samples_per_item}"
+                )
+                if key in existing_generations:
+                    progress.set_description(f"skipping {label}")
                     progress.update(1)
                     continue
-
-                output, hidden_states = generate_one_twopass(
+                generate_task(
+                    run_path=run_path,
+                    config=cfg,
                     model=model,
                     tokenizer=tokenizer,
-                    request=GenerationRequest(
-                        prompt=prompt,
-                        sample_id=sample_id,
-                        seed=seed,
-                        temperature=temperature,
-                        max_new_tokens=max_new_tokens,
-                        forced_prefix=forced_prefix,
-                        stop_regex=stop_regex,
-                        cap_fallback_prefix=str(cap_fallback.get("prefix", "")),
-                        cap_fallback_min_new_tokens=int(
-                            cap_fallback.get("min_new_tokens", 3)
-                        ),
-                        cap_fallback_max_new_tokens=int(
-                            cap_fallback.get("max_new_tokens", 4)
-                        ),
-                        layer_indices=layer_indices,
-                        model_name=model_cfg["name"],
-                        gold_answer=gold_answer,
-                        gold_token_id=gold_token_id,
-                        capture_diagnostics=capture_diagnostics,
-                        top_p=top_p,
-                        top_k=top_k,
-                        progress=progress,
-                        progress_label=progress_label,
-                    ),
-                )
-
-                save_generation_output(
-                    run_path=run_path,
-                    output=output,
-                    hidden_states=hidden_states if capture_enabled else None,
-                    storage_dtype=storage_dtype,
+                    sample=sample,
+                    sample_index=sample_index,
+                    sample_iter=sample_iter,
+                    progress=progress,
+                    progress_label=label,
                 )
                 progress.update(1)
-                existing_generations.add(generation_key)
+                existing_generations.add(key)
+
+
+def generation_key_for(
+    sample: dict[str, Any],
+    sample_index: int,
+    sample_iter: int,
+    generation_cfg: Mapping[str, Any],
+) -> tuple[str, int, float]:
+    """Build the deterministic persisted identity for one rollout.
+
+    Args:
+        sample: Normalized dataset sample.
+        sample_index: Global sample index used in the seed formula.
+        sample_iter: Zero-based rollout iteration for the sample.
+        generation_cfg: Seed and temperature configuration.
+
+    Returns:
+        ``(sample_id, seed, temperature)`` generation key.
+    """
+    sample_id = sample_id_from_sample(sample)
+    seed = int(generation_cfg.get("base_seed", 0)) + sample_index * 10_000 + sample_iter
+    temperature = float(generation_cfg.get("temperature", 0.0))
+    return sample_id, seed, temperature
+
+
+def generate_task(
+    *,
+    run_path: Path,
+    config: Mapping[str, Any],
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    sample: dict[str, Any],
+    sample_index: int,
+    sample_iter: int,
+    progress: Any | None,
+    progress_label: str,
+) -> CompleteGenerationOutput:
+    """Generate and persist one rollout using an already loaded model.
+
+    Args:
+        run_path: Run folder receiving artifacts.
+        config: Complete run configuration.
+        model: Long-lived causal language model.
+        tokenizer: Tokenizer paired with the model.
+        sample: Normalized sample to generate.
+        sample_index: Global sample index used in the seed.
+        sample_iter: Zero-based rollout iteration.
+        progress: Optional tqdm-compatible progress sink.
+        progress_label: Human-readable item and iteration label.
+
+    Returns:
+        The completed and persisted generation output.
+    """
+    model_cfg = config["model"]
+    generation_cfg = config["generation"]
+    capture_cfg = config.get("capture", {})
+    prompt_cfg = config.get("prompt", {})
+    sample_id, seed, temperature = generation_key_for(
+        sample, sample_index, sample_iter, generation_cfg
+    )
+    forced_prefix = generation_cfg.get("forced_prefix")
+    cap_fallback = generation_cfg.get("cap_fallback", {})
+    capture_enabled = bool(capture_cfg.get("enabled", True))
+    layer_indices = list(capture_cfg.get("layers", [-1])) if capture_enabled else []
+    gold_answer = gold_answer_from_sample(sample)
+    output, hidden_states = generate_one_twopass(
+        model=model,
+        tokenizer=tokenizer,
+        request=GenerationRequest(
+            prompt=build_prompt(sample, prompt_cfg, tokenizer),
+            sample_id=sample_id,
+            seed=seed,
+            temperature=temperature,
+            max_new_tokens=int(generation_cfg.get("max_new_tokens", 1024)),
+            forced_prefix="" if forced_prefix is None else str(forced_prefix),
+            stop_regex=generation_cfg.get(
+                "stop_regex",
+                config.get("analysis", {}).get("produced_answer_regex"),
+            ),
+            cap_fallback_prefix=str(cap_fallback.get("prefix", "")),
+            cap_fallback_min_new_tokens=int(cap_fallback.get("min_new_tokens", 3)),
+            cap_fallback_max_new_tokens=int(cap_fallback.get("max_new_tokens", 4)),
+            layer_indices=layer_indices,
+            model_name=str(model_cfg["name"]),
+            gold_answer=gold_answer,
+            gold_token_id=single_token_id(tokenizer, gold_answer),
+            capture_diagnostics=bool(capture_cfg.get("diagnostics", False)),
+            top_p=generation_cfg.get("top_p"),
+            top_k=generation_cfg.get("top_k"),
+            progress=progress,
+            progress_label=progress_label,
+        ),
+    )
+    save_generation_output(
+        run_path=run_path,
+        output=output,
+        hidden_states=hidden_states if capture_enabled else None,
+        storage_dtype=str(capture_cfg.get("activation_storage_dtype", "float16")),
+    )
+    return output
 
 
 @torch.inference_mode()

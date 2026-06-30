@@ -32,6 +32,7 @@ const generationView = createGenerationView({
 const trajectoryView = createTrajectoryView({
   getState: () => state,
   setQuery,
+  openGeneration,
 });
 
 init();
@@ -221,6 +222,18 @@ function openTrajectory(sampleId, seed) {
   showView("trajectories");
 }
 
+function openGeneration(point) {
+  setQuery({
+    view: "generations",
+    question: point.sample_id,
+    seed: point.seed,
+    token: point.token_idx,
+    char_start: point.char_start,
+    char_end: point.char_end,
+  }, true);
+  showView("generations");
+}
+
 function handleShortcut(event) {
   if (event.metaKey || event.ctrlKey || event.altKey || isFormTarget(event.target)) return;
   const view = { o: "overview", g: "generations", l: "trajectories" }[event.key.toLowerCase()];
@@ -253,18 +266,28 @@ function routeState() {
   return Object.fromEntries(new URLSearchParams(window.location.search));
 }
 
-function setQuery(values) {
+function setQuery(values, push = false) {
   const query = new URLSearchParams(window.location.search);
   for (const [key, value] of Object.entries(values)) {
     if (value === undefined) continue;
     if (value === null || value === "") query.delete(key);
     else query.set(key, value);
   }
-  history.replaceState(null, "", `${window.location.pathname}?${query.toString()}${window.location.hash}`);
+  const method = push ? "pushState" : "replaceState";
+  history[method](null, "", `${window.location.pathname}?${query.toString()}${window.location.hash}`);
 }
 
 function queryCleanup(view) {
-  const generationKeys = ["search", "outcome", "marker", "sort", "entropy"];
+  const generationKeys = [
+    "search",
+    "outcome",
+    "marker",
+    "sort",
+    "entropy",
+    "token",
+    "char_start",
+    "char_end",
+  ];
   const trajectoryKeys = ["source", "selector", "cluster", "color", "limit", "start", "end"];
   const keys = view === "overview"
     ? [...generationKeys, ...trajectoryKeys, "question", "seed"]

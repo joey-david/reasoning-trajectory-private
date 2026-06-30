@@ -721,6 +721,20 @@ main {
   border-radius: 2px;
 }
 
+.activation-token-highlight {
+  padding: 2px 1px;
+  border-radius: 3px;
+  outline: 2px solid #c57a00;
+  outline-offset: 1px;
+  color: #17211c;
+  background: #ffe08a;
+  scroll-margin-block: 45vh;
+}
+
+.activation-token-highlight:focus {
+  outline-width: 3px;
+}
+
 .generation-details {
   display: grid;
   grid-template-columns: 1fr 1fr;

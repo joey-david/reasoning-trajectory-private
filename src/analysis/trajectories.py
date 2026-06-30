@@ -14,7 +14,7 @@ import numpy as np
 
 from src.analysis.common import evenly_capped, project_3d, read_generation_rows
 from src.analysis.token_selectors import build_token_selector
-from src.artifact_store import load_hidden_states_npz
+from src.runtime.artifact_store import load_hidden_states_npz
 
 
 def plot_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:

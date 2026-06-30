@@ -19,11 +19,12 @@ const CLUSTER_COLORS = [
   "#a53d4d",
 ];
 
-export function createTrajectoryView({ getState, setQuery }) {
+export function createTrajectoryView({ getState, setQuery, openGeneration }) {
   const payloadCache = new Map();
   let payload = null;
   let activePlot = null;
   let loadSequence = 0;
+  let interactionVersion = 0;
 
   $("plot-source").addEventListener("change", () => loadSelectedPlot());
   $("plot-question").addEventListener("change", () => {
@@ -89,7 +90,7 @@ export function createTrajectoryView({ getState, setQuery }) {
     $("plot-title").textContent = activePlot ? plotLabel(activePlot) : "Projection";
     if (!activePlot) {
       showLoading(false);
-      showPlotMessage("No interactive projections are available. Run scripts/analyze.py for this run.");
+      showPlotMessage("No interactive projections are available. Run scripts/analysis/analyze.py for this run.");
       return;
     }
 
@@ -164,7 +165,7 @@ export function createTrajectoryView({ getState, setQuery }) {
       return;
     }
 
-    const traces = tracesForPoints(points);
+    const traces = tracesForPoints(points, trajectoryCount > 1);
     window.Plotly.react("plot3d", traces, plotLayout(), {
       responsive: true,
       scrollZoom: true,
@@ -172,7 +173,7 @@ export function createTrajectoryView({ getState, setQuery }) {
       modeBarButtonsToRemove: ["select2d", "lasso2d"],
     }).then(() => {
       improveModebarAccessibility();
-      bindPlotClick();
+      bindPlotInteractions(trajectoryCount);
     }).catch(error => {
       showPlotMessage(`Plot rendering failed: ${error.message}`);
     });
@@ -208,15 +209,23 @@ export function createTrajectoryView({ getState, setQuery }) {
     };
   }
 
-  function tracesForPoints(points) {
+  function tracesForPoints(points, multipleTrajectories) {
     const groups = new Map();
+    const rowsByTrajectory = new Map(
+      getState().rows.map(row => [trajectoryKey(row), row]),
+    );
+    const pointHoverText = point => hoverText(
+      point,
+      transcriptSlice(point, rowsByTrajectory.get(trajectoryKey(point))),
+      multipleTrajectories,
+    );
     for (const point of points) {
       const key = `${trajectoryKey(point)}::${point.selector ?? ""}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(point);
     }
 
-    return [...groups.values()].flatMap(group => {
+    const traces = [...groups.values()].flatMap(group => {
       group.sort((a, b) => Number(a.token_idx) - Number(b.token_idx));
       const correctness = group[0].is_correct;
       const lineColor = correctness === true
@@ -233,21 +242,35 @@ export function createTrajectoryView({ getState, setQuery }) {
         y: group.map(point => point.y),
         z: group.map(point => point.z),
         customdata: group,
-        text: group.map(hoverText),
+        text: group.map(pointHoverText),
         hoverinfo: "text",
         showlegend: false,
       };
-      return [
+      const groupTraces = [
         {
           ...common,
           mode: "lines+markers",
           marker: { size: 4, color: markerColors, opacity: 0.9 },
           line: { width: 4, color: lineColor },
         },
-        endpointTrace(`${name} · start`, group[0], "triangle", markerColors[0]),
-        endpointTrace(`${name} · end`, group.at(-1), "square", markerColors.at(-1)),
+        endpointTrace(
+          `${name} · start`,
+          group[0],
+          "triangle",
+          markerColors[0],
+          pointHoverText(group[0]),
+        ),
+        endpointTrace(
+          `${name} · end`,
+          group.at(-1),
+          "square",
+          markerColors.at(-1),
+          pointHoverText(group.at(-1)),
+        ),
       ];
+      return groupTraces;
     });
+    return traces;
   }
 
   function plotLayout() {
@@ -262,6 +285,7 @@ export function createTrajectoryView({ getState, setQuery }) {
         bgcolor: "#17211c",
         bordercolor: "#17211c",
         font: { color: "#ffffff", size: 12 },
+        align: "left",
       },
       scene: {
         bgcolor: "#fbfcfb",
@@ -275,13 +299,105 @@ export function createTrajectoryView({ getState, setQuery }) {
     };
   }
 
-  function bindPlotClick() {
+  function bindPlotInteractions(trajectoryCount) {
     const plot = $("plot3d");
+    const version = ++interactionVersion;
+    const multipleTrajectories = trajectoryCount > 1;
+    const hiddenTrace = -1;
+    const baseStyles = new Map();
+    if (multipleTrajectories) {
+      for (let traceIndex = 0; traceIndex < plot.data.length; traceIndex += 3) {
+        baseStyles.set(traceIndex, traceStyle(plot.data[traceIndex]));
+      }
+    }
+    let desiredTrace = hiddenTrace;
+    let appliedTrace = hiddenTrace;
+    let updateScheduled = false;
+    let updateInFlight = false;
+    let latestCamera = currentCamera(plot);
+
+    const scheduleUpdate = () => {
+      if (updateScheduled || updateInFlight || version !== interactionVersion) return;
+      updateScheduled = true;
+      requestAnimationFrame(() => {
+        updateScheduled = false;
+        applyLatestHighlight();
+      });
+    };
+
+    const applyLatestHighlight = async () => {
+      if (updateInFlight || appliedTrace === desiredTrace || version !== interactionVersion) return;
+      const nextTrace = desiredTrace;
+      updateInFlight = true;
+      try {
+        await transitionHighlight(
+          plot,
+          appliedTrace,
+          nextTrace,
+          baseStyles,
+          latestCamera,
+        );
+        appliedTrace = nextTrace;
+      } catch {
+        desiredTrace = hiddenTrace;
+        appliedTrace = hiddenTrace;
+      } finally {
+        updateInFlight = false;
+        if (appliedTrace !== desiredTrace) scheduleUpdate();
+      }
+    };
+
+    const clearHighlight = () => {
+      setPlotCursor(plot, "grab");
+      if (!multipleTrajectories) return;
+      desiredTrace = hiddenTrace;
+      scheduleUpdate();
+    };
+
     plot.removeAllListeners?.("plotly_click");
+    plot.removeAllListeners?.("plotly_hover");
+    plot.removeAllListeners?.("plotly_unhover");
+    plot.removeAllListeners?.("plotly_relayout");
+    if (plot._trajectoryMouseleave) {
+      plot.removeEventListener("mouseleave", plot._trajectoryMouseleave);
+    }
+    plot._trajectoryMouseleave = clearHighlight;
+    plot.addEventListener("mouseleave", clearHighlight);
+    plot.on?.("plotly_relayout", update => {
+      if (update["scene.camera"]) {
+        latestCamera = copyCamera(update["scene.camera"]);
+      } else if (Object.keys(update).some(key => key.startsWith("scene.camera."))) {
+        latestCamera = currentCamera(plot);
+      }
+    });
+    plot.on?.("plotly_hover", event => {
+      setPlotCursor(plot, "pointer");
+      if (!multipleTrajectories) return;
+      const curveNumber = event.points?.[0]?.curveNumber;
+      if (!Number.isInteger(curveNumber)) return;
+      const mainTrace = Math.floor(curveNumber / 3) * 3;
+      if (desiredTrace === mainTrace) return;
+      desiredTrace = mainTrace;
+      scheduleUpdate();
+    });
+    plot.on?.("plotly_unhover", clearHighlight);
     plot.on?.("plotly_click", event => {
       const point = event.points?.[0]?.customdata;
-      if (point) renderInspector(point);
+      if (!point) return;
+      if (multipleTrajectories) {
+        isolateTrajectory(point);
+        return;
+      }
+      openGeneration(point);
     });
+  }
+
+  function isolateTrajectory(point) {
+    $("plot-question").value = String(point.sample_id);
+    updateSeedOptions(point.seed);
+    $("plot-seed").value = String(point.seed);
+    render();
+    syncQuery(true);
   }
 
   function improveModebarAccessibility() {
@@ -361,7 +477,7 @@ export function createTrajectoryView({ getState, setQuery }) {
     $("plot-end-output").value = `${$("plot-token-end").value}%`;
   }
 
-  function syncQuery() {
+  function syncQuery(push = false) {
     setQuery({
       source: $("plot-source").value,
       question: $("plot-question").value,
@@ -372,7 +488,7 @@ export function createTrajectoryView({ getState, setQuery }) {
       limit: $("plot-max-trajectories").value === "12" ? "" : $("plot-max-trajectories").value,
       start: $("plot-token-start").value === "0" ? "" : $("plot-token-start").value,
       end: $("plot-token-end").value === "100" ? "" : $("plot-token-end").value,
-    });
+    }, push);
   }
 
   function showLoading(visible) {
@@ -424,7 +540,7 @@ function pointColor(point, correctness) {
   return `hsl(210 10% ${68 - fraction * 30}%)`;
 }
 
-function endpointTrace(name, point, symbol, color) {
+function endpointTrace(name, point, symbol, color, hover) {
   if (symbol === "triangle") {
     return {
       type: "scatter3d",
@@ -437,7 +553,7 @@ function endpointTrace(name, point, symbol, color) {
       customdata: [point],
       text: ["▲"],
       textfont: { color, size: 18 },
-      hovertext: [`${escapeHtml(name)}<br>${hoverText(point)}`],
+      hovertext: [`${escapeHtml(name)}<br>${hover}`],
       hoverinfo: "text",
     };
   }
@@ -450,7 +566,7 @@ function endpointTrace(name, point, symbol, color) {
     y: [point.y],
     z: [point.z],
     customdata: [point],
-    text: [`${escapeHtml(name)}<br>${hoverText(point)}`],
+    text: [`${escapeHtml(name)}<br>${hover}`],
     hoverinfo: "text",
     marker: {
       symbol,
@@ -461,18 +577,124 @@ function endpointTrace(name, point, symbol, color) {
   };
 }
 
-function hoverText(point) {
+function hoverText(point, transcriptText, multipleTrajectories) {
+  const content = point.step_idx !== undefined
+    ? formatStepText(transcriptText)
+    : formatTokenCharacters(transcriptText);
   return [
-    `<b>${escapeHtml(point.sample_id)}</b>`,
-    `sub-run ${escapeHtml(point.seed)}`,
-    point.selector ? escapeHtml(point.selector) : null,
-    point.step_idx !== undefined ? `step ${escapeHtml(point.step_idx)}` : `token ${escapeHtml(point.token_idx)}`,
-    point.cluster_id !== undefined ? `cluster ${escapeHtml(point.cluster_id)}` : null,
+    `<b>${escapeHoverText(point.sample_id)}</b>`,
     `position ${Math.round(Number(point.token_fraction ?? 0) * 100)}%`,
-    `answer ${escapeHtml(point.produced_answer ?? "—")}`,
-    `correct ${escapeHtml(point.is_correct)}`,
-    point.step_text ? escapeHtml(point.step_text).slice(0, 220) : null,
+    content,
+    multipleTrajectories
+      ? "<b>Click to isolate this run</b>"
+      : "<b>Click to open transcript</b>",
   ].filter(Boolean).join("<br>");
+}
+
+function transcriptSlice(point, row) {
+  const text = String(row?.produced_text ?? "");
+  const start = Number(point.char_start);
+  const end = Number(point.char_end);
+  if (Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end >= start && end <= text.length) {
+    return text.slice(start, end);
+  }
+  return String(point.step_text ?? "");
+}
+
+function formatTokenCharacters(text) {
+  if (text === "") return "⟨no visible characters⟩";
+  return escapeHoverText(text)
+    .replace(/ /g, "␠")
+    .replace(/\t/g, "⇥")
+    .replace(/\n/g, "↵");
+}
+
+function formatStepText(text) {
+  return escapeHoverText(text).replace(/\n/g, "<br>");
+}
+
+function escapeHoverText(value) {
+  return String(value ?? "")
+    .replace(/&/g, "＆")
+    .replace(/</g, "‹")
+    .replace(/>/g, "›");
+}
+
+function setPlotCursor(plot, cursor) {
+  plot.style.cursor = cursor;
+  for (const element of plot.querySelectorAll("canvas, .nsewdrag")) {
+    element.style.cursor = cursor;
+  }
+}
+
+function traceStyle(trace) {
+  return {
+    lineColor: trace.line?.color,
+    lineWidth: trace.line?.width,
+    markerColor: trace.marker?.color,
+    markerSize: trace.marker?.size,
+    markerOpacity: trace.marker?.opacity,
+  };
+}
+
+function transitionHighlight(
+  plot,
+  previousTrace,
+  nextTrace,
+  baseStyles,
+  camera,
+) {
+  const traceIndices = [];
+  const lineColors = [];
+  const lineWidths = [];
+  const markerColors = [];
+  const markerSizes = [];
+  const markerOpacities = [];
+  if (previousTrace >= 0) {
+    const style = baseStyles.get(previousTrace);
+    traceIndices.push(previousTrace);
+    lineColors.push(style.lineColor);
+    lineWidths.push(style.lineWidth);
+    markerColors.push(style.markerColor);
+    markerSizes.push(style.markerSize);
+    markerOpacities.push(style.markerOpacity);
+  }
+  if (nextTrace >= 0) {
+    traceIndices.push(nextTrace);
+    lineColors.push("#d99a00");
+    lineWidths.push(10);
+    markerColors.push("#f2b21b");
+    markerSizes.push(7);
+    markerOpacities.push(1);
+  }
+  if (!traceIndices.length) return;
+  return window.Plotly.update(
+    plot,
+    {
+      "line.color": lineColors,
+      "line.width": lineWidths,
+      "marker.color": markerColors,
+      "marker.size": markerSizes,
+      "marker.opacity": markerOpacities,
+    },
+    camera ? { "scene.camera": camera } : {},
+    traceIndices,
+  );
+}
+
+function currentCamera(plot) {
+  const camera = plot.layout?.scene?.camera ?? plot._fullLayout?.scene?.camera;
+  return copyCamera(camera);
+}
+
+function copyCamera(camera) {
+  if (!camera) return null;
+  return {
+    eye: { ...camera.eye },
+    center: { ...camera.center },
+    up: { ...camera.up },
+    projection: { ...camera.projection },
+  };
 }
 
 function axisStyle(title) {

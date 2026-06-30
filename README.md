@@ -49,7 +49,7 @@ Run configs can load Hugging Face or JSONL datasets directly. To pin the exact
 normalized rows before generation:
 
 ```bash
-python scripts/prepare_dataset.py runs/<model>/<experiment>
+python scripts/data/prepare_dataset.py runs/<model>/<experiment>
 ```
 
 Dataset loading, normalization, deterministic shuffling, offset, and limit are
@@ -60,13 +60,13 @@ shared between preparation and generation, so both paths select identical rows.
 Run one experiment:
 
 ```bash
-python scripts/generate.py runs/<model>/<experiment>
+python scripts/generation/generate.py runs/<model>/<experiment>
 ```
 
 Run multiple experiments sequentially:
 
 ```bash
-python scripts/generate.py \
+python scripts/generation/generate.py \
   runs/Qwen3-14B/bigcodebench_hard_screen \
   runs/Qwen3-14B/bigcodebench_hard_latent
 ```
@@ -119,7 +119,7 @@ screening run.
 Analyze a completed run without loading the model:
 
 ```bash
-python scripts/analyze.py runs/<model>/<experiment>
+python scripts/analysis/analyze.py runs/<model>/<experiment>
 ```
 
 The analyzer operates only on the run's generation artifacts and produces:
@@ -192,45 +192,6 @@ Entropy highlighting is available only when generation rows contain timestep
 entropy diagnostics. Colors are normalized within each generation; the UI
 disables the control and reports when a run did not store them.
 
-## Recommended Next Runs
-
-The Qwen3-14B AIME 2024 pilot is unsuitable: its first five generations all
-hit the 8,192-token cap. The next no-capture screens use Qwen3-8B in explicit
-thinking mode on open-ended math and code-construction tasks:
-
-```text
-runs/Qwen3-8B/polymath_medium_numeric_screen
-runs/Qwen3-8B/mbppplus_codegen_screen
-runs/Qwen3-8B/bigcodebench_hard_codegen_screen
-```
-
-Each run contains 20 questions with ten sampled answers. PolyMath is restricted
-to scalar numeric answers. Its medium-difficulty replacement has a 3,072-token
-cap; the retained high-difficulty pilot is marked unsuitable because all 22
-pulled generations hit 4,096 tokens. MBPP+ and BigCodeBench-Hard require the
-model to construct complete Python implementations rather than predict an
-existing program's output. Their generation caps are 2,048 and 3,072 tokens,
-respectively. All three disable activation capture.
-
-PolyMath can be analyzed directly. Generated programs must first be graded
-against their benchmark tests in an isolated evaluation environment; do not
-classify a code run from answer-string matching. After test results have been
-imported into `generation/generations.jsonl`, update the dataset/model ledger:
-
-```bash
-python scripts/summarize_screening.py \
-  runs/Qwen3-8B/polymath_medium_numeric_screen \
-  runs/Qwen3-8B/mbppplus_codegen_screen \
-  runs/Qwen3-8B/bigcodebench_hard_codegen_screen
-```
-
-The result is written to `experiments/dataset_saturation.csv`. See
-`experiments_plan.md` for the selection gate and the full experiment program.
-Each summarized run also gets `analysis/mixed_samples.csv`, sorted by sample ID,
-with pass rate, cap count, and mixed/frontier flags.
-Multiple-choice and program-output-prediction datasets are intentionally
-excluded from the primary solution-object corpus.
-
 ### Smaller-Model Screens
 
 Three additional reasoning-capable sizes are prepared, with one math and one
@@ -251,21 +212,6 @@ long as needed. MBPP+ uses the same selected tasks at 3B and 4B; PolyMath uses
 the same selected tasks at 4B and 7B. See `experiments_plan.md` for the
 benchmark evidence behind each pairing.
 
-The pulled DeepSeek-7B and Qwen3-4B math screens are cap-distorted, while
-SmolLM3-3B on GSM-Symbolic-P1 produced clean frontier cases. Because forcing
-generation to begin with `<think> Okay, let's see` changes model performance,
-the next run rescreens the full 100-question P1 pool under that regime. It uses
-ten rollouts per question and disables activation capture:
-
-```bash
-bash scripts/run_with_hf_download_fix.sh python scripts/generate.py \
-  runs/SmolLM3-3B/gsm_symbolic_p1_forced_think_screen
-```
-
-This wrapper uses a node-local cache under `/tmp/$USER/huggingface`, disables
-Xet downloads, raises Hub timeouts, and checks the model CDN over IPv4 before
-starting generation. Set `HF_LOCAL_CACHE` to override the cache directory.
-
 Pull completed runs after generation. With no run paths, this pulls every local
 run folder that has a `config.yaml`:
 
@@ -277,56 +223,10 @@ After pulling, summarize the forced-prefix screen alongside the original
 regime:
 
 ```bash
-python scripts/summarize_screening.py \
+python scripts/analysis/summarize_screening.py \
   runs/SmolLM3-3B/gsm_symbolic_p1_screen \
   runs/SmolLM3-3B/gsm_symbolic_p1_frontier_expand \
   runs/SmolLM3-3B/gsm_symbolic_p1_forced_think_screen
-```
-
-The forced-prefix screen reached 85.7% accuracy, with 35 mixed questions and
-129/1000 capped generations. Fourteen mixed questions had a pass rate strictly
-below 80%; every one had at least one capped rollout. They were isolated with:
-
-```bash
-python scripts/select_mixed_samples.py \
-  runs/SmolLM3-3B/gsm_symbolic_p1_forced_think_screen \
-  --max-pass-rate 0.8 \
-  --out runs/SmolLM3-3B/gsm_symb_prefixed_mixed/dataset.jsonl
-```
-
-The first latent run repeated those 14 questions ten times with an 8192-token
-cap and final-layer capture:
-
-```bash
-bash scripts/run_with_hf_download_fix.sh python scripts/generate.py \
-  runs/SmolLM3-3B/gsm_symb_prefixed_mixed
-```
-
-After pulling it, build the interactive trajectory and step plots and serve
-the website:
-
-```bash
-python scripts/analyze.py \
-  runs/SmolLM3-3B/gsm_symb_prefixed_mixed
-python3 -m http.server 8765
-```
-
-Open `http://localhost:8765/web/index.html`.
-
-That run produced 10 mixed questions and still capped 12/140 generations. The
-next run pins those 10 mixed questions, restores the 4096-token primary cap,
-and finalizes only capped generations by appending:
-
-```text
-</think> Given what I've assessed, the answer is
-Answer:
-```
-
-The model then generates between three and four additional tokens:
-
-```bash
-bash scripts/run_with_hf_download_fix.sh python scripts/generate.py \
-  runs/SmolLM3-3B/gsm_symb_prefixed_mixed_cap4096
 ```
 
 To identify at least 50 additional mixed/frontier questions, a separate
@@ -335,24 +235,8 @@ offset 100 in the same deterministic shuffle, and its pinned dataset has zero
 overlap with previously screened SmolLM3 items:
 
 ```bash
-bash scripts/run_with_hf_download_fix.sh python scripts/generate.py \
+bash scripts/run_with_hf_download_fix.sh python scripts/generation/generate.py \
   runs/SmolLM3-3B/gsm_symb_prefixed_frontier_300
-```
-
-The run uses two model replicas when GPUs 0 and 1 are available, five rollouts
-per question, the forced reasoning prefix, a 4096-token primary cap, and the
-same cap-finalization behavior. To run on one GPU, replace `[0, 1]` with the
-single integer `0` or `1`.
-
-After rerunning the cap-affected questions at 8192 tokens, the merged inventory
-contains 65 unique mixed questions. The final capture pool retains the 58 that
-remain mixed after capped rollouts are excluded. It collects ten fresh
-rollouts per question, captures only the last layer, and forces an answer if a
-generation reaches 10,000 tokens:
-
-```bash
-bash scripts/run_with_hf_download_fix.sh python scripts/generate.py \
-  runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k
 ```
 
 ## Remote Workflow
@@ -370,13 +254,25 @@ On the server:
 cd /home/lamsade/jdavid/reasoning
 source .venv/bin/activate
 
-python scripts/generate.py \
+python scripts/generation/generate.py \
   runs/Qwen3-8B/polymath_medium_numeric_screen \
   runs/Qwen3-8B/mbppplus_codegen_screen \
   runs/Qwen3-8B/bigcodebench_hard_codegen_screen
 
-python scripts/analyze.py runs/Qwen3-8B/polymath_medium_numeric_screen
+python scripts/analysis/analyze.py runs/Qwen3-8B/polymath_medium_numeric_screen
 ```
+
+For dynamic rollout scheduling across several hosts, stop any generator already
+using the run and launch one worker per selected GPU from lamgate:
+
+```bash
+./scripts/generation/orchestrate.py \
+  --nodes kaisertrot boldeagle \
+  --devices 0,1 1 \
+  --run runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k
+```
+
+Workers reject GPUs that do not support the run's configured BF16 dtype.
 
 The datasets are already pinned in each run folder, so the server does not need
 Hub access for dataset preparation. Pull completed runs:

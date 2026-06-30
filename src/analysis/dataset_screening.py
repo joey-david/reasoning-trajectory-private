@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from src.analysis.common import read_generation_rows
-from src.config import load_config
+from src.runtime.config import load_config
 
 
 FIELDNAMES = [

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from src.analysis.common import read_generation_rows, read_sample_records
-from src.data import write_jsonl
+from src.runtime.data import write_jsonl
 
 
 def write_hard_questions(run_path: Path, cfg: dict[str, Any]) -> None:

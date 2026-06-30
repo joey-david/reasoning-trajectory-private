@@ -11,8 +11,9 @@ from sklearn.decomposition import PCA
 
 from src.analysis.common import evenly_capped, project_3d, read_generation_rows
 from src.analysis.step_markers import configured_selectors
+from src.analysis.token_alignment import TokenSpan, build_token_spans
 from src.analysis.token_selectors import build_token_selector
-from src.artifact_store import load_hidden_states_npz
+from src.runtime.artifact_store import load_hidden_states_npz
 
 
 PointItem = tuple[np.ndarray, dict[str, Any], int, int, str]
@@ -34,6 +35,7 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
         return
 
     selectors = configured_selectors(cfg)
+    token_spans = build_token_spans(run_path, rows)
     max_points = int(
         cfg.get("max_interactive_points", cfg.get("max_plot_points", 5000))
     )
@@ -83,6 +85,7 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
                 selectors,
                 max_points=max_points,
                 source_points=len(items),
+                token_spans=token_spans,
             )
             path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             manifest.append(
@@ -125,6 +128,7 @@ def build_payload(
     *,
     max_points: int = 0,
     source_points: int | None = None,
+    token_spans: list[list[TokenSpan]] | None = None,
 ) -> dict[str, Any]:
     """Combine projected coordinates and source metadata for the web UI.
 
@@ -136,29 +140,32 @@ def build_payload(
         selectors: Named selector specifications used to produce the points.
         max_points: Browser-side cap applied after the active filters.
         source_points: Candidate count before projection-specific sampling.
+        token_spans: Character spans indexed by trajectory and generated token.
 
     Returns:
         A JSON-compatible interactive plot payload.
     """
     points: list[dict[str, Any]] = []
     for point, (_, row, token_idx, traj_id, selector_name) in zip(coords, items):
-        points.append(
-            {
-                "x": round(float(point[0]), 6),
-                "y": round(float(point[1]), 6),
-                "z": round(float(point[2]), 6),
-                "sample_id": row.get("sample_id"),
-                "seed": row.get("seed"),
-                "trajectory_id": traj_id,
-                "selector": selector_name,
-                "token_idx": token_idx,
-                "token_fraction": token_idx
-                / max(len(row.get("generated_token_ids", [])) - 1, 1),
-                "is_correct": row.get("is_correct"),
-                "produced_answer": row.get("produced_answer"),
-                "reasoning_length": row.get("reasoning_length"),
-            }
-        )
+        span = token_span(token_spans, traj_id, token_idx)
+        record = {
+            "x": round(float(point[0]), 6),
+            "y": round(float(point[1]), 6),
+            "z": round(float(point[2]), 6),
+            "sample_id": row.get("sample_id"),
+            "seed": row.get("seed"),
+            "trajectory_id": traj_id,
+            "selector": selector_name,
+            "token_idx": token_idx,
+            "token_fraction": token_idx
+            / max(len(row.get("generated_token_ids", [])) - 1, 1),
+            "is_correct": row.get("is_correct"),
+            "produced_answer": row.get("produced_answer"),
+            "reasoning_length": row.get("reasoning_length"),
+        }
+        if span is not None:
+            record["char_start"], record["char_end"] = span
+        points.append(record)
     return {
         "method": method,
         "layer": layer,
@@ -168,3 +175,15 @@ def build_payload(
         "sampled": source_points is not None and len(items) < source_points,
         "points": points,
     }
+
+
+def token_span(
+    token_spans: list[list[TokenSpan]] | None,
+    trajectory_id: int,
+    token_idx: int,
+) -> TokenSpan:
+    """Return a safely bounded character span for one plotted token."""
+    if token_spans is None or not 0 <= trajectory_id < len(token_spans):
+        return None
+    spans = token_spans[trajectory_id]
+    return spans[token_idx] if 0 <= token_idx < len(spans) else None

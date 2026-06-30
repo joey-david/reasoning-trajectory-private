@@ -13,6 +13,7 @@ const PAGE_SIZE = 12;
 export function createGenerationView({ getState, setQuery, openTrajectory }) {
   let visibleCount = PAGE_SIZE;
   let filteredRows = [];
+  let activationTarget = null;
 
   const rerender = () => {
     visibleCount = PAGE_SIZE;
@@ -48,6 +49,7 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
     $("generation-search").value = route.search ?? "";
     $("generation-outcome").value = route.outcome ?? "";
     $("generation-sort").value = route.sort ?? "question";
+    activationTarget = parseActivationTarget(route);
 
     const hasEntropy = rows.some(hasEntropyTimesteps);
     $("generation-entropy").disabled = !hasEntropy;
@@ -124,6 +126,7 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
     if (!$("generation-more").hidden) {
       $("generation-more").textContent = `Show ${Math.min(PAGE_SIZE, filteredRows.length - visibleCount)} more`;
     }
+    requestAnimationFrame(focusActivationTarget);
   }
 
   function rowHtml(row) {
@@ -177,6 +180,14 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
   }
 
   function formatOutput(row) {
+    if (matchesActivationTarget(row)) {
+      const text = row.produced_text ?? "";
+      const { charStart, charEnd, tokenIdx } = activationTarget;
+      const tokenText = charEnd > charStart
+        ? escapeHtml(text.slice(charStart, charEnd))
+        : `⟨token ${escapeHtml(tokenIdx)}⟩`;
+      return `${escapeHtml(text.slice(0, charStart))}<mark class="activation-token-highlight" data-testid="activation-token-highlight" tabindex="-1" title="Latent activation at token ${escapeHtml(tokenIdx)}">${tokenText}</mark>${escapeHtml(text.slice(charEnd))}`;
+    }
     if (!$("generation-entropy").checked || !hasEntropyTimesteps(row)) {
       return escapeHtml(row.produced_text ?? "");
     }
@@ -220,9 +231,43 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
     });
   }
 
+  function matchesActivationTarget(row) {
+    if (!activationTarget) return false;
+    const textLength = String(row.produced_text ?? "").length;
+    return row.sample_id === activationTarget.sampleId
+      && String(row.seed) === activationTarget.seed
+      && activationTarget.charStart >= 0
+      && activationTarget.charEnd >= activationTarget.charStart
+      && activationTarget.charEnd <= textLength;
+  }
+
+  function focusActivationTarget() {
+    const target = document.querySelector('[data-testid="activation-token-highlight"]');
+    if (!target) return;
+    target.scrollIntoView({ block: "center" });
+    target.focus({ preventScroll: true });
+  }
+
   return {
     load,
     focusSearch: () => $("generation-search").focus(),
+  };
+}
+
+function parseActivationTarget(route) {
+  if (route.token === undefined || route.char_start === undefined || route.char_end === undefined) {
+    return null;
+  }
+  const tokenIdx = Number(route.token);
+  const charStart = Number(route.char_start);
+  const charEnd = Number(route.char_end);
+  if (![tokenIdx, charStart, charEnd].every(Number.isInteger)) return null;
+  return {
+    sampleId: route.question ?? "",
+    seed: String(route.seed ?? ""),
+    tokenIdx,
+    charStart,
+    charEnd,
   };
 }
 

@@ -8,7 +8,7 @@ from typing import Any
 
 from src.analysis.answers import extract_answer
 from src.analysis.common import read_generation_rows, read_sample_records
-from src.data import write_jsonl
+from src.runtime.data import write_jsonl
 
 
 NUMBER_RE = r"-?\d+(?:\.\d+)?"

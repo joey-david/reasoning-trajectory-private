@@ -6,7 +6,12 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
-from src.analysis.token_selectors import char_to_token_index, token_count
+from src.analysis.token_alignment import TokenSpan, token_range_for_chars
+from src.analysis.token_selectors import (
+    char_to_token_index,
+    sentence_end_positions,
+    token_count,
+)
 
 
 @dataclass(slots=True)
@@ -49,6 +54,7 @@ def build_segments(
     row: dict[str, Any],
     segmenter_name: str,
     spec: dict[str, Any],
+    token_spans: list[TokenSpan] | None = None,
 ) -> list[StepSegment]:
     """Convert one generation's text into token-aligned step segments.
 
@@ -56,6 +62,7 @@ def build_segments(
         row: Generation row containing produced text and token IDs.
         segmenter_name: Name recorded on every resulting segment.
         spec: Segmentation mode and optional sentence group size.
+        token_spans: Exact generated-token character spans when available.
 
     Returns:
         Non-empty text segments with approximate inclusive token boundaries.
@@ -75,8 +82,12 @@ def build_segments(
 
     segments: list[StepSegment] = []
     for idx, (start, end) in enumerate(spans):
-        token_start = char_to_token_index(row, start)
-        token_end = char_to_token_index(row, max(end - 1, start))
+        token_range = token_range_for_chars(token_spans or [], start, end)
+        if token_range is None:
+            token_start = char_to_token_index(row, start)
+            token_end = char_to_token_index(row, max(end - 1, start))
+        else:
+            token_start, token_end = token_range
         if token_end < token_start:
             token_start, token_end = token_end, token_start
         step_text = text[start:end].strip()
@@ -96,7 +107,7 @@ def build_segments(
 
 
 def sentence_spans(text: str) -> list[tuple[int, int]]:
-    """Find trimmed character spans ending at sentence punctuation.
+    """Find trimmed spans ending at non-decimal period runs.
 
     Args:
         text: Generated text to segment.
@@ -106,8 +117,7 @@ def sentence_spans(text: str) -> list[tuple[int, int]]:
     """
     spans: list[tuple[int, int]] = []
     start = 0
-    for match in re.finditer(r"[.!?](?:\s+|$)", text):
-        end = match.end()
+    for end in sentence_end_positions(text):
         if end > start:
             spans.append((start, end))
         start = end

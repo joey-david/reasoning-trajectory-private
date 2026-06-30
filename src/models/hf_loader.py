@@ -52,15 +52,7 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
     if model_cfg.get("attn_implementation"):
         model_kwargs["attn_implementation"] = model_cfg["attn_implementation"]
 
-    trust_remote_code = model_kwargs["trust_remote_code"]
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_cfg["name"],
-        trust_remote_code=trust_remote_code,
-        revision=model_cfg.get("revision"),
-    )
-
-    if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer = load_hf_tokenizer(model_cfg)
 
     try:
         model = load_model(model_cfg["name"], model_kwargs)
@@ -72,6 +64,25 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
         model = load_model(model_cfg["name"], model_kwargs)
 
     return model, tokenizer
+
+
+def load_hf_tokenizer(model_cfg: dict):
+    """Load and configure only the tokenizer described by a model config.
+
+    Args:
+        model_cfg: Model name, revision, and remote-code trust options.
+
+    Returns:
+        The configured Hugging Face tokenizer.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_cfg["name"],
+        trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
+        revision=model_cfg.get("revision"),
+    )
+    if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
+        tokenizer.pad_token = tokenizer.eos_token
+    return tokenizer
 
 
 def load_model(name: str, kwargs: dict):

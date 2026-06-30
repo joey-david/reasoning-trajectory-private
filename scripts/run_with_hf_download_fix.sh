@@ -19,7 +19,7 @@ if (($#)); then
   exec "$@"
 fi
 
-exec python scripts/generate.py \
+exec python scripts/generation/generate.py \
   runs/SmolLM3-3B/gsm_symbolic_p1_screen \
   runs/SmolLM3-3B/mbppplus_codegen_screen \
   runs/Qwen3-4B/polymath_medium_numeric_screen \

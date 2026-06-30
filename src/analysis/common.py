@@ -10,7 +10,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
-from src.data import load_samples
+from src.runtime.data import load_samples
 
 
 T = TypeVar("T")

@@ -60,7 +60,7 @@ def every_n_tokens(row: dict[str, Any], n: int) -> list[int]:
 
 
 def sentence_end_tokens(row: dict[str, Any]) -> list[int]:
-    """Approximate generated-token indices at sentence-ending characters.
+    """Approximate generated-token indices at non-decimal periods.
 
     Args:
         row: Generation row containing decoded text and token IDs.
@@ -71,10 +71,27 @@ def sentence_end_tokens(row: dict[str, Any]) -> list[int]:
     text = row.get("produced_text", "")
     if not text:
         return []
-    candidates = [match.end() for match in re.finditer(r"[.!?](?:\s|$)", text)]
+    candidates = sentence_end_positions(text)
     return unique_existing_tokens(
         row, [char_to_token_index(row, pos) for pos in candidates]
     )
+
+
+def sentence_end_positions(text: str) -> list[int]:
+    """Return offsets after period runs, excluding decimal points."""
+    positions: list[int] = []
+    for match in re.finditer(r"\.+", text):
+        start, end = match.span()
+        is_decimal = (
+            end - start == 1
+            and start > 0
+            and end < len(text)
+            and text[start - 1].isdigit()
+            and text[end].isdigit()
+        )
+        if not is_decimal:
+            positions.append(end)
+    return positions
 
 
 def percentile_tokens(row: dict[str, Any], percentiles: list[int | float]) -> list[int]:

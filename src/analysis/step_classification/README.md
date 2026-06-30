@@ -85,9 +85,9 @@ On the server:
 ```bash
 cd /home/lamsade/jdavid/reasoning
 source .venv/bin/activate
-python scripts/prepare_dataset.py runs/Qwen3-14B/bigcodebench_hard_screen
-python scripts/generate.py runs/Qwen3-14B/bigcodebench_hard_screen
-python scripts/analyze.py runs/Qwen3-14B/bigcodebench_hard_screen
+python scripts/data/prepare_dataset.py runs/Qwen3-14B/bigcodebench_hard_screen
+python scripts/generation/generate.py runs/Qwen3-14B/bigcodebench_hard_screen
+python scripts/analysis/analyze.py runs/Qwen3-14B/bigcodebench_hard_screen
 ```
 
 Pull and inspect the screen run:
@@ -108,9 +108,9 @@ On the server:
 ```bash
 cd /home/lamsade/jdavid/reasoning
 source .venv/bin/activate
-python scripts/prepare_dataset.py runs/Qwen3-14B/bigcodebench_hard_latent
-python scripts/generate.py runs/Qwen3-14B/bigcodebench_hard_latent
-python scripts/analyze.py runs/Qwen3-14B/bigcodebench_hard_latent
+python scripts/data/prepare_dataset.py runs/Qwen3-14B/bigcodebench_hard_latent
+python scripts/generation/generate.py runs/Qwen3-14B/bigcodebench_hard_latent
+python scripts/analysis/analyze.py runs/Qwen3-14B/bigcodebench_hard_latent
 ```
 
 Pull it back:
