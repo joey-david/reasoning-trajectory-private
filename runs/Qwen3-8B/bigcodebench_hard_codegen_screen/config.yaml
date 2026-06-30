@@ -1,0 +1,48 @@
+model:
+  name: Qwen/Qwen3-8B
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: true
+
+dataset:
+  source: hf
+  path: bigcode/bigcodebench-hard
+  revision: 298d2cc7b96612e15e47313c3603ee124cee0c1f
+  name: null
+  split: v0.1.4
+  adapter: bigcodebench
+  sample_limit: 20
+  sample_offset: 0
+  shuffle_seed: 81003
+
+generation:
+  max_new_tokens: 3072
+  num_samples_per_item: 10
+  base_seed: 8300000
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: "You are a careful Python programmer."
+  instruction: |
+    Construct a complete solution to the programming task.
+    Reason about the requirements, implementation, and edge cases.
+    Put the complete final implementation in one fenced python code block.
+    /think
+  chat_template_kwargs:
+    enable_thinking: true
+
+analysis:
+  produced_answer_regex: "(?s)```python\\s*(.*?)```"
+  hard_question_limit: 20

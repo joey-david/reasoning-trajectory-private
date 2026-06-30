@@ -8,14 +8,19 @@ build/
 # Output and results (not tracked)
 output/
 logs/
-runs/
+.tmp/
+runs/*/*/*
+!runs/*/*/config.yaml
 *.npz
 *.pkl
+data/**/*.json*
 
 # Environment
 .env
 .venv/
 venv/
+todo.md
+AGENTS.md
 
 # IDE
 .vscode/
@@ -25,3 +30,4 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+joey_intro_pres.pdf

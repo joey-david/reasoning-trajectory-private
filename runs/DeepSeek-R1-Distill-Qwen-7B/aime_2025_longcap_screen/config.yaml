@@ -1,0 +1,47 @@
+model:
+  name: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+  revision: 916b56a44061fd5cd7d6a8fb632557ed4f724f60
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+dataset:
+  source: hf
+  path: MathArena/aime_2025
+  revision: c94da77eb22bbd6439e62a323bec18493a421302
+  name: null
+  split: train
+  adapter: aime
+  sample_limit: 6
+  sample_offset: 0
+  shuffle_seed: 72005
+
+generation:
+  max_new_tokens: 16384
+  num_samples_per_item: 3
+  base_seed: 7200500
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: ""
+  instruction: |
+    Solve the problem. Think as long as needed, but stop once the result is checked.
+    End with exactly: Answer: N
+    Replace N with an integer from 000 through 999.
+
+analysis:
+  produced_answer_regex: "(?i)(?:\\\\boxed\\{|(?:Final\\s+)?Answer\\s*:\\s*)(\\d{1,3})"
+  gold_answer_regex: "(\\d{1,3})"
+  think_end_token_id: 151649
+  hard_question_limit: 20

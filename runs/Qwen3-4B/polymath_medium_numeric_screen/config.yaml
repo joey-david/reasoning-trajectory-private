@@ -1,0 +1,52 @@
+model:
+  name: Qwen/Qwen3-4B
+  revision: 1cfa9a7208912126459214e8b04321603b3df60c
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+dataset:
+  source: hf
+  path: Qwen/PolyMath
+  revision: 71e0db902e0ece05e208dfd8b1695bd3d95cf130
+  name: en
+  split: medium
+  adapter: polymath_numeric
+  require_gold_answer: true
+  sample_limit: 20
+  sample_offset: 0
+  shuffle_seed: 42001
+
+generation:
+  max_new_tokens: 2048
+  num_samples_per_item: 10
+  base_seed: 4100100
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: "You are a careful mathematical reasoner."
+  instruction: |
+    Think only as long as needed. Keep the reasoning clear and concise.
+    Solve the problem and check the result.
+    End with exactly: Answer: N
+    Replace N with the final numeric answer.
+    /think
+  chat_template_kwargs:
+    enable_thinking: true
+
+analysis:
+  produced_answer_regex: "(?i)(?:\\\\boxed\\{|(?:Final\\s+)?Answer\\s*:\\s*)(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  gold_answer_regex: "(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  think_end_token_id: 151668
+  hard_question_limit: 20

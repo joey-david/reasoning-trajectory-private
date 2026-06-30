@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Reasoning Trajectory Explorer</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.dataset.protocol = location.protocol.slice(0, -1);</script>
+  <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="file-protocol-warning" role="alert">
+    <strong>This interface must be served over HTTP.</strong>
+    <span>From the repository root, run <code>python3 -m http.server 8765</code>, then open <code>http://localhost:8765/web/index.html</code>.</span>
+  </div>
+
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <strong>Reasoning Trajectory Explorer</strong>
+        <span>Generation and latent-state analysis</span>
+      </div>
+    </div>
+    <div class="run-picker" aria-label="Active run">
+      <label>
+        <span>Model</span>
+        <select id="model" data-testid="model-select"></select>
+      </label>
+      <label>
+        <span>Run</span>
+        <select id="run" data-testid="run-select"></select>
+      </label>
+    </div>
+  </header>
+
+  <nav class="view-nav" aria-label="Workspace">
+    <button type="button" data-view="overview" aria-selected="true" aria-controls="overview-panel" aria-keyshortcuts="o">
+      Overview <kbd aria-hidden="true">O</kbd>
+    </button>
+    <button type="button" data-view="generations" aria-selected="false" aria-controls="generations-panel" aria-keyshortcuts="g">
+      Generations <kbd aria-hidden="true">G</kbd>
+    </button>
+    <button type="button" data-view="trajectories" aria-selected="false" aria-controls="trajectories-panel" aria-keyshortcuts="l">
+      Latent space <kbd aria-hidden="true">L</kbd>
+    </button>
+    <span id="header-run-status" class="nav-status" role="status"></span>
+  </nav>
+
+  <main id="main-content">
+    <div id="app-status" class="app-status" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      Loading run index…
+    </div>
+
+    <section id="overview-panel" class="view-panel" aria-labelledby="overview-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Run summary</p>
+          <h1 id="overview-title">Overview</h1>
+        </div>
+        <div id="artifact-status" class="artifact-status" aria-label="Available artifacts"></div>
+      </div>
+      <div id="run-metrics" class="metric-grid"></div>
+      <section class="content-section" aria-labelledby="question-table-title">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">Question-level comparison</p>
+            <h2 id="question-table-title">Questions</h2>
+          </div>
+          <label class="search-field">
+            <span>Filter questions</span>
+            <input id="overview-search" type="search" placeholder="Question or sample ID" data-testid="overview-search">
+          </label>
+        </div>
+        <div id="question-table" class="table-shell"></div>
+      </section>
+    </section>
+
+    <section id="generations-panel" class="view-panel" aria-labelledby="generations-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Trace inspection</p>
+          <h1 id="generations-title">Generations</h1>
+        </div>
+        <p id="generation-count" class="section-count" role="status"></p>
+      </div>
+
+      <div class="workspace generation-workspace">
+        <aside id="generation-filters" class="control-panel" aria-label="Generation filters">
+          <div class="control-panel-heading">
+            <h2>Filters</h2>
+            <div class="panel-heading-actions">
+              <button class="text-button panel-toggle" type="button" data-toggle-panel="generation-filters" aria-controls="generation-filters" aria-expanded="true">Hide</button>
+              <button id="generation-clear" class="text-button" type="button">Clear</button>
+            </div>
+          </div>
+          <label class="control wide">
+            <span>Search</span>
+            <input id="generation-search" type="search" placeholder="Text, answer, or ID" aria-keyshortcuts="/" data-testid="generation-search">
+          </label>
+          <label class="control wide">
+            <span>Question</span>
+            <select id="generation-question" data-testid="generation-question-select"></select>
+          </label>
+          <label class="control">
+            <span>Sub-run</span>
+            <select id="generation-seed" data-testid="generation-seed-select"></select>
+          </label>
+          <label class="control">
+            <span>Outcome</span>
+            <select id="generation-outcome" data-testid="generation-outcome-select">
+              <option value="">All outcomes</option>
+              <option value="correct">Correct</option>
+              <option value="incorrect">Incorrect</option>
+              <option value="unknown">Not scored</option>
+            </select>
+          </label>
+          <label class="control wide">
+            <span>Step markers</span>
+            <select id="generation-marker" data-testid="generation-marker-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Sort</span>
+            <select id="generation-sort">
+              <option value="question">Question, then sub-run</option>
+              <option value="longest">Longest reasoning first</option>
+              <option value="shortest">Shortest reasoning first</option>
+            </select>
+          </label>
+          <label class="switch-row">
+            <input id="generation-entropy" type="checkbox">
+            <span>Token entropy</span>
+          </label>
+          <p id="entropy-status" class="field-note" role="status"></p>
+          <div id="entropy-legend" class="entropy-legend" hidden>
+            <span>Low</span><span class="entropy-ramp" aria-hidden="true"></span><span>High</span>
+          </div>
+        </aside>
+
+        <div class="results-column">
+          <div id="generation-empty" class="empty-state" hidden></div>
+          <div id="generation-list" class="generation-list" data-testid="generation-list"></div>
+          <button id="generation-more" class="secondary-button load-more" type="button" hidden>Show more</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="trajectories-panel" class="view-panel wide-panel" aria-labelledby="trajectories-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Interactive projection</p>
+          <h1 id="trajectories-title">Latent space</h1>
+        </div>
+        <div class="heading-actions">
+          <button id="copy-view-link" class="secondary-button" type="button">Copy view link</button>
+          <button id="reset-camera" class="secondary-button" type="button">Reset camera</button>
+        </div>
+      </div>
+
+      <div class="workspace trajectory-workspace">
+        <aside id="trajectory-filters" class="control-panel trajectory-controls" aria-label="Projection controls">
+          <div class="control-panel-heading">
+            <h2>Projection</h2>
+            <div class="panel-heading-actions">
+              <button class="text-button panel-toggle" type="button" data-toggle-panel="trajectory-filters" aria-controls="trajectory-filters" aria-expanded="true">Hide</button>
+              <button id="trajectory-clear" class="text-button" type="button">Clear</button>
+            </div>
+          </div>
+          <label class="control wide">
+            <span>Dataset</span>
+            <select id="plot-source" data-testid="plot-source-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Question</span>
+            <select id="plot-question" data-testid="plot-question-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Sub-run</span>
+            <select id="plot-seed" data-testid="plot-seed-select"></select>
+          </label>
+          <label id="plot-selector-control" class="control wide">
+            <span>Step sampling</span>
+            <select id="plot-selector" data-testid="plot-selector-select"></select>
+          </label>
+          <label id="plot-cluster-control" class="control wide">
+            <span>Step cluster</span>
+            <select id="plot-cluster" data-testid="plot-cluster-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Point color</span>
+            <select id="plot-color-mode" data-testid="plot-color-mode-select">
+              <option value="correctness">Correctness + progress</option>
+              <option value="cluster">Step cluster</option>
+            </select>
+          </label>
+          <label class="range-control">
+            <span>Maximum trajectories <output id="plot-max-output">12</output></span>
+            <input id="plot-max-trajectories" type="range" min="1" max="50" value="12" aria-label="Maximum trajectories" data-testid="plot-max-trajectories">
+          </label>
+          <fieldset class="range-group">
+            <legend>Token range</legend>
+            <label>
+              <span>Start <output id="plot-start-output">0%</output></span>
+              <input id="plot-token-start" type="range" min="0" max="100" value="0" aria-label="Token range start" data-testid="plot-token-start">
+            </label>
+            <label>
+              <span>End <output id="plot-end-output">100%</output></span>
+              <input id="plot-token-end" type="range" min="0" max="100" value="100" aria-label="Token range end" data-testid="plot-token-end">
+            </label>
+          </fieldset>
+          <div class="encoding-key" aria-label="Trajectory encoding">
+            <h3>Encoding</h3>
+            <p><span class="line-key correct"></span>Correct</p>
+            <p><span class="line-key incorrect"></span>Incorrect</p>
+            <p><span class="shape-key triangle"></span>Start <span class="shape-key square"></span>End</p>
+          </div>
+        </aside>
+
+        <div class="plot-column">
+          <div class="plot-toolbar">
+            <div>
+              <strong id="plot-title">Projection</strong>
+              <span id="plot-status" role="status" aria-live="polite"></span>
+            </div>
+            <span id="plot-link-status" class="field-note" role="status"></span>
+          </div>
+          <div id="plot-shell" class="plot-shell">
+            <div id="plot-loading" class="plot-loading" hidden>
+              <span class="spinner" aria-hidden="true"></span>
+              Loading projection…
+            </div>
+            <div id="plot3d" data-testid="interactive-plot" aria-label="Interactive three-dimensional trajectory plot"></div>
+          </div>
+          <section id="point-inspector" class="point-inspector" aria-labelledby="point-inspector-title">
+            <div>
+              <p class="eyebrow">Selected point</p>
+              <h2 id="point-inspector-title">Inspect a point</h2>
+            </div>
+            <p class="muted">Select a plotted point to see its token or reasoning-step details.</p>
+          </section>
+          <details class="static-fallbacks">
+            <summary>Static plot fallbacks</summary>
+            <div id="static-plots"></div>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
