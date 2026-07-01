@@ -49,13 +49,13 @@ Run the pipeline on any folder containing a `config.yaml`:
 
 ```bash
 # Optional: pin the exact normalized dataset rows.
-.venv/bin/python scripts/data/prepare_dataset.py runs/<model>/<experiment>
+.venv/bin/python scripts/data/prepare_dataset.py runs/<model>/<run-path>
 
 # Generate or resume sampled traces.
-.venv/bin/python scripts/generation/generate.py runs/<model>/<experiment>
+.venv/bin/python scripts/generation/generate.py runs/<model>/<run-path>
 
 # Analyze completed generation artifacts.
-.venv/bin/python scripts/analysis/analyze.py runs/<model>/<experiment>
+.venv/bin/python scripts/analysis/analyze.py runs/<model>/<run-path>
 ```
 
 Generation is resumable: existing sample, seed, and temperature combinations
@@ -75,7 +75,7 @@ uv pip install --python .venv/bin/python \
 Each experiment is self-contained:
 
 ```text
-runs/<model>/<experiment>/
+runs/<model>/<run-path>/
   config.yaml
   dataset.jsonl             # optional pinned normalized dataset
   generation/
@@ -121,7 +121,7 @@ For dynamic scheduling across remote nodes:
 .venv/bin/python scripts/orchestrate.py --job generation \
   --nodes kaisertrot boldeagle \
   --devices 0,1 1 \
-  --run runs/<model>/<experiment>
+  --run runs/<model>/<run-path>
 ```
 
 Orchestrable jobs live in `src/orchestration/jobs/<name>.py`. Each exports
@@ -135,7 +135,7 @@ Sync configs and pinned datasets to the server, then pull completed artifacts:
 
 ```bash
 ./scripts/remote.sh push
-./scripts/remote.sh pull runs/<model>/<experiment>
+./scripts/remote.sh pull runs/<model>/<run-path>
 ```
 
 Experiment-specific remote sequences and fallback gates are kept in

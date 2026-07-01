@@ -9,8 +9,9 @@ build/
 output/
 logs/
 .tmp/
-runs/*/*/*
-!runs/*/*/config.yaml
+runs/**/*
+!runs/**/
+!runs/**/config.yaml
 *.npz
 *.pkl
 data/**/*.json*
