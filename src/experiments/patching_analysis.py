@@ -244,6 +244,7 @@ def grouped_rate_summary(
     rows: list[dict[str, Any]],
     field: str,
 ) -> dict[str, Any] | None:
+    """Summarize a boolean outcome with question-grouped uncertainty."""
     by_question: defaultdict[str, list[float]] = defaultdict(list)
     for row in rows:
         value = row.get(field)
@@ -263,6 +264,7 @@ def grouped_rate_summary(
 
 
 def reconstruction_summary(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Summarize available subspace reconstruction diagnostics."""
     records = [
         row["reconstruction"]
         for row in rows
@@ -288,6 +290,7 @@ def paired_comparison(
     treatment: tuple[str, str],
     reference: tuple[str, str],
 ) -> dict[str, Any] | None:
+    """Compare two cells after averaging paired effects by question."""
     pair_ids = sorted({pair_id for pair_id, _, _ in by_pair_cell})
     metrics = {}
     pair_count = 0
@@ -330,10 +333,12 @@ def paired_comparison(
 
 
 def present_bool_values(rows: list[dict[str, Any]], field: str) -> list[float]:
+    """Convert present boolean field values to numeric rates."""
     return [float(bool(row[field])) for row in rows if row.get(field) is not None]
 
 
 def fallback_gate_inputs(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Extract prespecified attention-to-MLP fallback contrasts."""
     indexed = {
         (cell["patch_mode"], cell["condition"]): cell
         for cell in cells
@@ -349,6 +354,7 @@ def fallback_gate_inputs(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
         return None
 
     def rate(key: tuple[str, str], field: str) -> float | None:
+        """Read one question-mean cell rate when available."""
         summary = indexed[key]["rates"][field]
         return summary["question_mean"] if summary else None
 
@@ -377,6 +383,7 @@ def fallback_gate_inputs(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def subtract_optional(left: float | None, right: float | None) -> float | None:
+    """Subtract two values when both are present."""
     return left - right if left is not None and right is not None else None
 
 
@@ -385,6 +392,7 @@ def bootstrap_mean_interval(
     *,
     draws: int = 1000,
 ) -> list[float]:
+    """Bootstrap a deterministic 95% interval for a mean."""
     rng = np.random.default_rng(42)
     means = [
         float(np.mean(rng.choice(values, size=len(values), replace=True)))

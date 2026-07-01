@@ -311,6 +311,7 @@ def score_predictions(
     representation: str,
     dimensions: int,
 ) -> dict[str, Any]:
+    """Compute discrimination, calibration, and error metrics for one probe."""
     predicted = probabilities >= 0.5
     observed, fraction = calibration_curve(
         y, probabilities, n_bins=8, strategy="quantile"
@@ -382,6 +383,7 @@ def grouped_bootstrap_auc(
     *,
     draws: int = 500,
 ) -> list[float]:
+    """Bootstrap a 95% ROC-AUC interval by resampling questions."""
     values = grouped_bootstrap_values(
         y,
         groups,
@@ -399,6 +401,7 @@ def grouped_bootstrap_auc_difference(
     *,
     draws: int = 500,
 ) -> tuple[float, list[float]]:
+    """Bootstrap the ROC-AUC difference between two paired probes."""
     point = float(roc_auc_score(y, contender) - roc_auc_score(y, baseline))
     values = grouped_bootstrap_values(
         y,
@@ -419,6 +422,7 @@ def grouped_bootstrap_values(
     *,
     draws: int,
 ) -> np.ndarray:
+    """Evaluate a scorer over deterministic group-bootstrap samples."""
     unique_groups = np.unique(groups)
     by_group = {group: np.flatnonzero(groups == group) for group in unique_groups}
     rng = np.random.default_rng(42)

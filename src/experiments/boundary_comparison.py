@@ -243,6 +243,7 @@ def boundary_metrics(
     quality_sample: tuple[np.ndarray, np.ndarray, np.ndarray],
     window: int,
 ) -> dict[str, float]:
+    """Score one boundary set against symbolic, latent, and cluster criteria."""
     silhouette, calinski_harabasz = segment_cluster_quality(indices, quality_sample)
     return {
         "symbolic_recall": overlap_fraction(symbolic, indices, window),
@@ -300,6 +301,7 @@ def latent_boundary_signals(
 
 
 def overlap_fraction(source: np.ndarray, target: np.ndarray, window: int) -> float:
+    """Return the fraction of source indices near any target index."""
     if not len(source):
         return float("nan")
     if not len(target):
@@ -355,6 +357,7 @@ def segment_cluster_quality(
     boundaries: np.ndarray,
     quality_sample: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> tuple[float, float]:
+    """Measure how well boundaries partition a bounded sample of latent states."""
     positions, sampled, distances = quality_sample
     labels = np.searchsorted(np.sort(boundaries), positions, side="right")
     unique = np.unique(labels)
@@ -367,6 +370,7 @@ def segment_cluster_quality(
 
 
 def format_compliance(text: str, condition: str) -> float:
+    """Measure compliance with the requested reasoning format."""
     if condition == "numbered":
         return float(bool(re.search(r"(?m)^\s*Step\s+1\s*:", text)))
     paragraphs = paragraph_spans(text)
@@ -387,6 +391,7 @@ def format_compliance(text: str, condition: str) -> float:
 
 
 def mean_finite(values: list[float]) -> float:
+    """Return the mean of finite values or NaN when none exist."""
     finite = np.asarray([value for value in values if np.isfinite(value)])
     return float(np.mean(finite)) if len(finite) else float("nan")
 
@@ -395,6 +400,7 @@ def summarize_condition(
     run_path: Path,
     rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """Summarize completion, accuracy, and length for one H1 condition."""
     lengths = np.asarray(
         [len(row.get("generated_token_ids", [])) for row in rows],
         dtype=np.int32,
@@ -415,6 +421,7 @@ def summarize_condition(
 
 
 def expected_trajectories(run_path: Path) -> int | None:
+    """Infer the configured trajectory count when the run schema permits it."""
     config = load_config(run_path)
     if "replay" in config:
         maximum = int(config["replay"].get("max_trajectories", 0))
@@ -496,6 +503,7 @@ def grouped_bootstrap_interval(
     *,
     draws: int = 1000,
 ) -> list[float] | None:
+    """Bootstrap a 95% interval over already grouped values."""
     if not len(values):
         return None
     rng = np.random.default_rng(42)
@@ -551,6 +559,7 @@ def matched_interval_effects(
 def load_interval_trace_metrics(
     run_path: Path,
 ) -> dict[tuple[str, int], dict[str, float]]:
+    """Load mean final-layer interval metrics for each trace."""
     path = (
         run_path / "analysis" / "experiments" / "h2_localized_updates" / "updates.jsonl"
     )

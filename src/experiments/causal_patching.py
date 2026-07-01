@@ -415,6 +415,7 @@ def validate_causal_patching_setup(
 def summarize_reconstruction(
     diagnostics: list[dict[str, float]],
 ) -> dict[str, Any] | None:
+    """Summarize subspace reconstruction diagnostics across pairs."""
     if not diagnostics:
         return None
     fields = diagnostics[0]
@@ -630,6 +631,7 @@ def load_activation_vector(
     layer: int,
     cache: dict[tuple[str, int, str, int, int], torch.Tensor],
 ) -> torch.Tensor:
+    """Load and cache one component activation at a captured state."""
     cache_key = (key[0], key[1], component, layer, state_index)
     if cache_key not in cache:
         row = rows[key]
@@ -660,6 +662,7 @@ def select_control_donor(
     rows: dict[tuple[str, int], dict[str, Any]],
     target_row: dict[str, Any],
 ) -> tuple[dict[str, Any], int]:
+    """Select the donor point required by an H3 condition."""
     if condition == "equivalent":
         donor = pair["donor"]
         donor_row = rows[(str(donor["sample_id"]), int(donor["seed"]))]
@@ -717,6 +720,7 @@ def resolve_patch_modes(
     patch_cfg: dict[str, Any],
     override: str | None,
 ) -> tuple[str, ...]:
+    """Resolve and validate the requested full or subspace patch modes."""
     if override and override != "both":
         modes = (override,)
     elif override == "both":
@@ -730,6 +734,7 @@ def resolve_patch_modes(
 
 
 def resolve_patch_target(patch_cfg: dict[str, Any]) -> tuple[str, int]:
+    """Resolve the configured component and layer for patching."""
     if patch_cfg.get("alignment", "symbolic_step_end") != "symbolic_step_end":
         raise ValueError("H3 patch alignment must be symbolic_step_end")
     component = patch_cfg.get("component")
@@ -746,6 +751,7 @@ def resolve_patch_target(patch_cfg: dict[str, Any]) -> tuple[str, int]:
 
 
 def validate_patch_target(component: str, layer: int) -> tuple[str, int]:
+    """Validate and return a supported component-layer target."""
     if component not in {"mlp_output", "attention_output"}:
         raise ValueError(f"Unsupported H3 patch component: {component!r}")
     return component, layer
@@ -757,6 +763,7 @@ def load_projection_subspace(
     component: str,
     layer: int,
 ) -> ProjectionSubspace:
+    """Load and validate a component-matched linear projection."""
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)
     if checkpoint.get("component") != component:
         raise ValueError(
@@ -809,6 +816,7 @@ def validate_pair_rows(
     pairs: list[dict[str, Any]],
     rows: dict[tuple[str, int], dict[str, Any]],
 ) -> None:
+    """Validate pair diversity and captured completion states."""
     for pair in pairs:
         if not pair.get("path_evidence"):
             raise ValueError(f"Pair {pair['pair_id']} lacks path-diversity evidence")
@@ -828,6 +836,7 @@ def validate_pair_rows(
 def load_completed_patches(
     path: Path,
 ) -> set[tuple[int, str, str, int]]:
+    """Load the complete cell keys already persisted for resumption."""
     if not path.exists():
         return set()
     rows = load_samples(path.resolve())
@@ -867,6 +876,7 @@ def output_degeneration_reasons(token_ids: list[int], text: str) -> list[str]:
 
 
 def longest_identical_run(values: list[int]) -> int:
+    """Return the longest contiguous run of one token ID."""
     longest = 0
     current = 0
     previous = None
@@ -889,6 +899,7 @@ class FirstForwardComponentPatch:
         vector: torch.Tensor,
         expected_sequence_length: int,
     ) -> None:
+        """Resolve the target module and retain the one-shot patch state."""
         decoder_layers = get_decoder_layers(model)
         resolved = resolve_layer_indices([layer], len(decoder_layers))[0]
         attribute = "mlp" if component == "mlp_output" else "self_attn"
@@ -899,10 +910,12 @@ class FirstForwardComponentPatch:
         self.applied = False
 
     def __enter__(self) -> FirstForwardComponentPatch:
+        """Register the component hook for the next model forward pass."""
         self.handle = self.module.register_forward_hook(self._hook)
         return self
 
     def _hook(self, _module, _inputs, output):
+        """Replace the final prefill position once and preserve output shape."""
         if self.applied:
             return output
         hidden = output[0] if isinstance(output, tuple) else output
@@ -923,5 +936,6 @@ class FirstForwardComponentPatch:
         return patched
 
     def __exit__(self, exc_type, exc, tb) -> None:
+        """Remove the registered hook when generation leaves the context."""
         if self.handle is not None:
             self.handle.remove()

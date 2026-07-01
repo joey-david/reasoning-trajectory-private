@@ -288,6 +288,7 @@ def fit_contrastive_projection(
 
 
 def project_vectors(vectors: np.ndarray, weight: torch.Tensor) -> np.ndarray:
+    """Project and row-normalize update vectors."""
     projected = vectors @ weight.numpy().T
     norms = np.linalg.norm(projected, axis=1, keepdims=True)
     return projected / np.maximum(norms, 1e-8)
@@ -297,6 +298,7 @@ def pair_scores(
     vectors: np.ndarray,
     pairs: list[tuple[int, int, int]],
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Return cosine scores and labels for indexed vector pairs."""
     normalized = vectors / np.maximum(
         np.linalg.norm(vectors, axis=1, keepdims=True), 1e-8
     )
@@ -312,6 +314,7 @@ def pair_records(
     pairs: list[tuple[int, int, int]],
     records: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    """Convert indexed pairs into auditable JSON records."""
     return [
         {
             "left": int(left),
@@ -331,6 +334,7 @@ def pair_records(
 
 
 def pair_summary(pairs: list[tuple[int, int, int]]) -> dict[str, int]:
+    """Count total, positive, and negative pairs."""
     counts = Counter(label for _, _, label in pairs)
     return {
         "total": len(pairs),
@@ -340,5 +344,6 @@ def pair_summary(pairs: list[tuple[int, int, int]]) -> dict[str, int]:
 
 
 def lexical_jaccard(left: set[str], right: set[str]) -> float:
+    """Return Jaccard overlap between two lexical-item sets."""
     union = left | right
     return len(left & right) / len(union) if union else 0.0

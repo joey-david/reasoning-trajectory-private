@@ -273,6 +273,7 @@ def build_report(
     spike_z: float,
     window: int,
 ) -> dict[str, Any]:
+    """Build the H2 report from trace, update, and layer statistics."""
     operator_counts = Counter(record["operator"] for record in update_records)
     signatures = Counter(record["operation_signature"] for record in update_records)
     layers: dict[str, Any] = {}
@@ -343,6 +344,7 @@ def build_report(
 
 
 def mean_or_none(values: Any) -> float | None:
+    """Return a numeric mean or None for an empty collection."""
     array = np.asarray(values, dtype=np.float64)
     return float(np.mean(array)) if array.size else None
 
@@ -351,6 +353,7 @@ def record_mean(
     records: list[dict[str, float | int | None]],
     field: str,
 ) -> float | None:
+    """Average one populated field across interval records."""
     return mean_or_none(
         [record[field] for record in records if record.get(field) is not None]
     )
