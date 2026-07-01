@@ -15,7 +15,10 @@ runs/**/*
 *.npz
 *.pkl
 data/**/*.json*
-lit/
+lit/literature/
+lit/reasoning-trajectory-sun-et-al
+lit/experiments_plan.md
+lit/hypotheses.md
 
 # Environment
 .env
