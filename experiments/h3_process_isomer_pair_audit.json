@@ -1,0 +1,49 @@
+{
+  "source": "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates",
+  "activation_run": null,
+  "generation_run": "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k",
+  "criteria": {
+    "exact_graph_signature": true,
+    "same_question": true,
+    "graph_changing_history_only": true,
+    "per_sample": 10,
+    "min_path_edits": 2,
+    "min_normalized_path_distance": 0.2,
+    "max_pairs_per_question": 3,
+    "max_trajectory_reuse": 3,
+    "max_target_remaining_tokens": 896,
+    "require_target_correct": true
+  },
+  "yield": {
+    "source_updates": 17602,
+    "eligible_updates": 13852,
+    "graph_states": 5723,
+    "path_distinct_candidates": 25,
+    "accepted_pairs": 24,
+    "accepted_questions": 12,
+    "accepted_trajectories": 32
+  },
+  "path_distance": {
+    "minimum": 0.2857142857142857,
+    "mean": 0.7056547619047618,
+    "maximum": 1.0
+  },
+  "target_source_tail": {
+    "minimum_tokens": 9,
+    "median_tokens": 637.0,
+    "maximum_tokens": 891,
+    "source_answer_present": 24,
+    "source_answer_correct": 24
+  },
+  "rejections": {
+    "different_question": 133,
+    "duplicate_pair_history": 96,
+    "empty_graph_state": 35,
+    "identical_symbolic_history": 2071,
+    "no_correct_target": 2,
+    "question_pair_cap": 1,
+    "same_trajectory": 30782,
+    "target_tail_exceeds_budget": 202,
+    "unsupported_endpoint_operator": 3715
+  }
+}

@@ -8,9 +8,9 @@ host="${SSH_SERVER:-lamgate}"
 remote_root="${REMOTE_REPO_ROOT:-/home/lamsade/jdavid/reasoning}"
 
 discover_runs() {
-  find runs -mindepth 3 -maxdepth 3 -name config.yaml -print \
-    | sed 's#/config.yaml$##' \
-    | sort
+  find runs -mindepth 3 -name config.yaml -print |
+    sed 's#/config.yaml$##' |
+    sort
 }
 
 pull_run() {
@@ -29,8 +29,8 @@ push)
     --exclude .git/ \
     --exclude .venv/ \
     --exclude .tmp/ \
-    --exclude 'runs/*/*/generation/' \
-    --exclude 'runs/*/*/analysis/' \
+    --exclude 'runs/**/generation/hidden_states' \
+    --exclude 'runs/**/analysis/' \
     --exclude '__pycache__' \
     ./ "$host:$remote_root/"
   ;;

@@ -9,7 +9,7 @@ model:
   trust_remote_code: false
 
 replay:
-  source_run: runs/SmolLM3-3B/gsm_symb_prefixed_frontier_300
+  source_run: runs/SmolLM3-3B/frontier_identification/gsm_symb_prefixed_frontier_300
   per_sample: 5
   max_trajectories: 1500
 

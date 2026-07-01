@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.experiments.replay_capture import replay_capture_run
+from src.experiments.replay_capture import rebuild_replay_index, replay_capture_run
 
 
 def main() -> int:
@@ -15,8 +15,16 @@ def main() -> int:
         description="Teacher-force existing generations and capture activations."
     )
     parser.add_argument("run_path", type=Path)
+    parser.add_argument(
+        "--rebuild-index",
+        action="store_true",
+        help="Rebuild JSON metadata from completed NPZ artifacts without inference.",
+    )
     args = parser.parse_args()
-    replay_capture_run(args.run_path)
+    if args.rebuild_index:
+        print(f"rebuilt {rebuild_replay_index(args.run_path)} rows")
+    else:
+        replay_capture_run(args.run_path)
     return 0
 
 

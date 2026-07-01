@@ -571,16 +571,19 @@ def capture_selected_activations(
 
     base_model = get_base_model(model)
 
-    with SelectedLayerCapture(
-        decoder_layers=decoder_layers,
-        requested_layers=layer_indices,
-        resolved_layers=resolved_layers,
-    ) as residual_capture, SelectedComponentCapture(
-        decoder_layers=decoder_layers,
-        requested_layers=layer_indices,
-        resolved_layers=resolved_layers,
-        components=components,
-    ) as component_capture:
+    with (
+        SelectedLayerCapture(
+            decoder_layers=decoder_layers,
+            requested_layers=layer_indices,
+            resolved_layers=resolved_layers,
+        ) as residual_capture,
+        SelectedComponentCapture(
+            decoder_layers=decoder_layers,
+            requested_layers=layer_indices,
+            resolved_layers=resolved_layers,
+            components=components,
+        ) as component_capture,
+    ):
         _ = base_model(
             input_ids=full_seq,
             attention_mask=attention_mask,
@@ -607,9 +610,9 @@ def capture_selected_activations(
     component_states = {
         component: torch.stack(
             [
-                component_capture.outputs[component][layer][
-                    0, start:stop, :
-                ].float().cpu()
+                component_capture.outputs[component][layer][0, start:stop, :]
+                .float()
+                .cpu()
                 for layer in layer_indices
             ],
             dim=1,
@@ -760,13 +763,19 @@ def project_hidden_state(
     Returns:
         Float32 logits shaped ``[batch, vocabulary_size]``.
     """
-    h = hidden_state.float()
+    h = hidden_state
 
     if final_norm is not None:
-        h = h.to(module_device(final_norm))
+        # Safely extract the dtype of the norm layer's parameters
+        norm_dtype = next(final_norm.parameters()).dtype
+        h = h.to(device=module_device(final_norm), dtype=norm_dtype)
         h = final_norm(h)
 
-    h = h.to(module_device(lm_head))
+    # Safely extract the dtype of the lm_head's parameters
+    head_dtype = next(lm_head.parameters()).dtype
+    h = h.to(device=module_device(lm_head), dtype=head_dtype)
+
+    # Project and immediately cast back to float32 for downstream analysis
     logits = lm_head(h).float()
 
     if not torch.isfinite(logits).all():
@@ -879,18 +888,14 @@ class SelectedComponentCapture:
         for requested, resolved in zip(self.requested_layers, self.resolved_layers):
             layer = self.decoder_layers[resolved]
             for component in self.components:
-                attribute = (
-                    "mlp" if component == "mlp_output" else "self_attn"
-                )
+                attribute = "mlp" if component == "mlp_output" else "self_attn"
                 module = getattr(layer, attribute, None)
                 if module is None:
                     raise TypeError(
                         f"{type(layer).__name__} has no {attribute!r} module"
                     )
                 self.handles.append(
-                    module.register_forward_hook(
-                        self._make_hook(component, requested)
-                    )
+                    module.register_forward_hook(self._make_hook(component, requested))
                 )
         return self
 

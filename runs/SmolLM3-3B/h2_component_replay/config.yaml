@@ -9,7 +9,7 @@ model:
   trust_remote_code: false
 
 replay:
-  source_run: runs/SmolLM3-3B/gsm_symb_pure_mixed_latents_10k
+  source_run: runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k
   per_sample: 3
   max_trajectories: 174
 

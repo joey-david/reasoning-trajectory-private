@@ -3,12 +3,52 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from src.analysis.common import read_generation_rows
+
+
+@dataclass(slots=True)
+class IntervalDynamics:
+    """Summarize how an activation path evolves across one token interval."""
+
+    token_count: int
+    integrated_vector_norm: float
+    mean_vector_norm: float
+    path_length: float
+    mean_derivative_magnitude: float
+    net_displacement: float
+    net_to_path_ratio: float
+    cumulative_state_cosine_distance: float
+    cumulative_derivative_cosine_distance: float
+    peak_share: float
+    effective_width_tokens: float
+    effective_width_fraction: float
+    temporal_centroid: float
+    net_vector: np.ndarray
+
+    def scalar_record(self) -> dict[str, float | int]:
+        return {
+            "interval_tokens": self.token_count,
+            "integrated_vector_norm": self.integrated_vector_norm,
+            "mean_vector_norm": self.mean_vector_norm,
+            "path_length": self.path_length,
+            "mean_derivative_magnitude": self.mean_derivative_magnitude,
+            "net_displacement": self.net_displacement,
+            "net_to_path_ratio": self.net_to_path_ratio,
+            "cumulative_state_cosine_distance": (self.cumulative_state_cosine_distance),
+            "cumulative_derivative_cosine_distance": (
+                self.cumulative_derivative_cosine_distance
+            ),
+            "peak_share": self.peak_share,
+            "effective_width_tokens": self.effective_width_tokens,
+            "effective_width_fraction": self.effective_width_fraction,
+            "temporal_centroid": self.temporal_centroid,
+        }
 
 
 def balanced_generation_rows(
@@ -98,3 +138,114 @@ def prefix_checkpoints(length: int) -> dict[int, int]:
         percent: min(max(int(np.ceil(length * percent / 100)) - 1, 0), length - 1)
         for percent in (25, 50, 75)
     }
+
+
+def update_phase_bounds(
+    token_start: int,
+    token_end: int,
+    state_count: int,
+) -> tuple[int, int]:
+    """Map a textual token interval to pre-update and completed-state indices.
+
+    Stored state ``t`` predicts generated token ``t``. A textual interval
+    ending at token ``token_end`` is therefore fully represented at state
+    ``token_end + 1``.
+    """
+    if state_count < 2:
+        raise ValueError("Interval dynamics require at least two states")
+    start = min(max(int(token_start), 0), state_count - 2)
+    end = min(max(int(token_end) + 1, start + 1), state_count - 1)
+    return start, end
+
+
+def interval_dynamics(
+    states: np.ndarray,
+    start: int,
+    end: int,
+) -> IntervalDynamics:
+    """Integrate activation movement from ``start`` through completed ``end``."""
+    values = np.asarray(states, dtype=np.float32)
+    if not 0 <= start < end < len(values):
+        raise ValueError(f"Invalid interval [{start}, {end}] for {len(values)} states")
+    step_deltas = values[start + 1 : end + 1] - values[start:end]
+    interval_values = values[start + 1 : end + 1]
+    vector_norms = np.linalg.norm(interval_values, axis=1)
+    magnitudes = np.linalg.norm(step_deltas, axis=1)
+    path_length = float(magnitudes.sum())
+    net_vector = values[end] - values[start]
+    net_displacement = float(np.linalg.norm(net_vector))
+    squared_mass = float(np.square(magnitudes).sum())
+    width = path_length * path_length / squared_mass if squared_mass > 0.0 else 0.0
+    weights = (
+        magnitudes / path_length if path_length > 0.0 else np.zeros_like(magnitudes)
+    )
+    positions = np.linspace(0.0, 1.0, len(magnitudes), dtype=np.float32)
+    return IntervalDynamics(
+        token_count=len(magnitudes),
+        integrated_vector_norm=float(vector_norms.sum()),
+        mean_vector_norm=float(vector_norms.mean()),
+        path_length=path_length,
+        mean_derivative_magnitude=float(magnitudes.mean()),
+        net_displacement=net_displacement,
+        net_to_path_ratio=net_displacement / max(path_length, 1e-8),
+        cumulative_state_cosine_distance=cumulative_cosine_distance(
+            values[start : end + 1]
+        ),
+        cumulative_derivative_cosine_distance=cumulative_cosine_distance(step_deltas),
+        peak_share=float(magnitudes.max() / max(path_length, 1e-8)),
+        effective_width_tokens=width,
+        effective_width_fraction=width / len(magnitudes),
+        temporal_centroid=float(np.sum(weights * positions)),
+        net_vector=net_vector,
+    )
+
+
+def cumulative_cosine_distance(vectors: np.ndarray) -> float:
+    """Sum adjacent cosine distances over a vector sequence."""
+    values = np.asarray(vectors, dtype=np.float32)
+    if len(values) < 2:
+        return 0.0
+    left = values[:-1]
+    right = values[1:]
+    denominator = np.linalg.norm(left, axis=1) * np.linalg.norm(right, axis=1)
+    cosine = np.sum(left * right, axis=1) / np.maximum(denominator, 1e-8)
+    return float(np.sum(1.0 - np.clip(cosine, -1.0, 1.0)))
+
+
+def matched_control_dynamics(
+    states: np.ndarray,
+    *,
+    duration: int,
+    excluded: list[tuple[int, int]],
+    max_windows: int = 31,
+) -> list[IntervalDynamics]:
+    """Sample same-duration non-update windows as a conservative null."""
+    last_start = len(states) - duration - 1
+    if duration < 1 or last_start < 0:
+        return []
+    candidates = [
+        start
+        for start in range(last_start + 1)
+        if not any(
+            start < excluded_end and start + duration > excluded_start
+            for excluded_start, excluded_end in excluded
+        )
+    ]
+    if not candidates:
+        return []
+    if len(candidates) > max_windows:
+        indices = np.linspace(0, len(candidates) - 1, max_windows, dtype=int)
+        candidates = [candidates[int(index)] for index in indices]
+    return [interval_dynamics(states, start, start + duration) for start in candidates]
+
+
+def control_percentile(
+    value: float,
+    controls: list[IntervalDynamics],
+    field: str,
+) -> float | None:
+    """Rank an interval metric against its same-length control windows."""
+    if not controls:
+        return None
+    control_values = np.asarray([getattr(control, field) for control in controls])
+    return float(np.mean(control_values <= value))

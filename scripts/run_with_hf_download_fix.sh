@@ -20,8 +20,8 @@ if (($#)); then
 fi
 
 exec python scripts/generation/generate.py \
-  runs/SmolLM3-3B/gsm_symbolic_p1_screen \
-  runs/SmolLM3-3B/mbppplus_codegen_screen \
+  runs/SmolLM3-3B/frontier_identification/gsm_symbolic_p1_screen \
+  runs/SmolLM3-3B/frontier_identification/mbppplus_codegen_screen \
   runs/Qwen3-4B/polymath_medium_numeric_screen \
   runs/Qwen3-4B/mbppplus_codegen_screen \
   runs/DeepSeek-R1-Distill-Qwen-7B/polymath_medium_numeric_screen \

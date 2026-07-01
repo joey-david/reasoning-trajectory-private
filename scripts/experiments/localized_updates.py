@@ -11,7 +11,7 @@ from src.experiments.localized_updates import run_localized_update_analysis
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run H2 spike localization.")
+    parser = argparse.ArgumentParser(description="Run H2 interval dynamics analysis.")
     parser.add_argument("run_path", type=Path)
     parser.add_argument("--per-sample", type=int, default=10)
     parser.add_argument("--spike-z", type=float, default=3.0)

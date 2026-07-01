@@ -27,7 +27,50 @@ def run_structural_contrast(
     """Run H4 from H2's verified update records and transition vectors."""
     records = load_samples((h2_dir / "updates.jsonl").resolve())
     with np.load(h2_dir / f"layer{layer}_update_vectors.npz") as data:
-        vectors = data["delta_vectors"].astype(np.float32)
+        vector_key = (
+            "net_update_vectors" if "net_update_vectors" in data else "delta_vectors"
+        )
+        vectors = data[vector_key].astype(np.float32)
+    out_dir = h2_dir.parent / "h4_structural_contrast"
+    return fit_structural_projection(
+        records=records,
+        vectors=vectors,
+        out_dir=out_dir,
+        projection_filename=f"layer{layer}_projection.pt",
+        source=h2_dir.as_posix(),
+        layer=layer,
+        component="residual",
+        update_vector=(
+            "net displacement across the verified symbolic interval"
+            if vector_key == "net_update_vectors"
+            else "legacy single-token endpoint delta"
+        ),
+        max_updates=max_updates,
+        max_pairs=max_pairs,
+        epochs=epochs,
+        projection_dim=projection_dim,
+        output_prefix="",
+    )
+
+
+def fit_structural_projection(
+    *,
+    records: list[dict[str, Any]],
+    vectors: np.ndarray,
+    out_dir: Path,
+    projection_filename: str,
+    source: str,
+    layer: int,
+    component: str,
+    update_vector: str,
+    max_updates: int = 12000,
+    max_pairs: int = 20000,
+    epochs: int = 12,
+    projection_dim: int = 128,
+    output_prefix: str = "",
+    write_pair_manifests: bool = True,
+) -> Path:
+    """Fit one controlled structural projection from aligned records and vectors."""
     selected = select_structural_updates(records, max_updates=max_updates)
     record_indices = np.asarray(
         [record["feature_row"] for record in selected], dtype=int
@@ -55,30 +98,44 @@ def run_structural_contrast(
     raw_scores, labels = pair_scores(x, test_pairs)
     projected = project_vectors(x, projection)
     projected_scores, _ = pair_scores(projected, test_pairs)
+    singular_values = torch.linalg.svdvals(projection.float())
+    matrix_rank = int(torch.linalg.matrix_rank(projection.float()).item())
+    condition_number = float(
+        singular_values.max() / singular_values.clamp_min(1e-12).min()
+    )
 
-    out_dir = h2_dir.parent / "h4_structural_contrast"
     out_dir.mkdir(parents=True, exist_ok=True)
-    write_jsonl(
-        out_dir / "train_pairs.jsonl",
-        pair_records(train_pairs, selected),
-    )
-    write_jsonl(
-        out_dir / "test_pairs.jsonl",
-        pair_records(test_pairs, selected),
-    )
+    pair_prefix = f"{output_prefix}_" if output_prefix else ""
+    if write_pair_manifests:
+        write_jsonl(
+            out_dir / f"{pair_prefix}train_pairs.jsonl",
+            pair_records(train_pairs, selected),
+        )
+        write_jsonl(
+            out_dir / f"{pair_prefix}test_pairs.jsonl",
+            pair_records(test_pairs, selected),
+        )
     torch.save(
         {
             "weight": projection,
             "input_dim": x.shape[1],
             "projection_dim": projection_dim,
             "layer": layer,
+            "component": component,
+            "source": source,
+            "update_vector": update_vector,
+            "matrix_rank": matrix_rank,
+            "condition_number": condition_number,
         },
-        out_dir / f"layer{layer}_projection.pt",
+        out_dir / projection_filename,
     )
     report = {
         "hypothesis": "H4_contrastive_structural_discovery",
-        "source": h2_dir.as_posix(),
+        "source": source,
+        "component": component,
         "layer": layer,
+        "update_vector": update_vector,
+        "projection_artifact": (out_dir / projection_filename).as_posix(),
         "selection": {
             "updates": len(selected),
             "questions": len(set(groups)),
@@ -96,6 +153,8 @@ def run_structural_contrast(
             "epochs": epochs,
             "projection_dim": projection_dim,
             "losses": losses,
+            "matrix_rank": matrix_rank,
+            "condition_number": condition_number,
         },
         "evaluation": {
             "question_disjoint": True,
@@ -103,7 +162,7 @@ def run_structural_contrast(
             "projected_cosine_auc": float(roc_auc_score(labels, projected_scores)),
         },
     }
-    report_path = out_dir / "report.json"
+    report_path = out_dir / f"{pair_prefix}report.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report_path
 

@@ -1,0 +1,57 @@
+{
+  "hypothesis": "H4_contrastive_structural_discovery",
+  "source": "runs/SmolLM3-3B/h2_component_replay",
+  "component": "attention_output",
+  "layer": 18,
+  "update_vector": "component-output net displacement across symbolic interval",
+  "projection_artifact": "experiments/h3_projections/attention_output_layer18_projection.pt",
+  "selection": {
+    "updates": 3863,
+    "questions": 58,
+    "signature_counts": {
+      "ADD": 1574,
+      "DIVIDE": 274,
+      "MULTIPLY": 1363,
+      "SUBTRACT": 652
+    }
+  },
+  "pairs": {
+    "train": {
+      "total": 5582,
+      "positive": 2791,
+      "negative": 2791
+    },
+    "test": {
+      "total": 2144,
+      "positive": 1072,
+      "negative": 1072
+    },
+    "positive_rule": "same operation, different questions, zero literal overlap",
+    "negative_rule": "different operation within the same question"
+  },
+  "training": {
+    "epochs": 12,
+    "projection_dim": 128,
+    "losses": [
+      0.18843952430920166,
+      0.08476377515630289,
+      0.05970301546833732,
+      0.04620850069279021,
+      0.03790526887909933,
+      0.032322079451246696,
+      0.029185859486460686,
+      0.025826847688718277,
+      0.02300342172384262,
+      0.022052646868608215,
+      0.020905497441576285,
+      0.019634020811116152
+    ],
+    "matrix_rank": 128,
+    "condition_number": 21.9315128326416
+  },
+  "evaluation": {
+    "question_disjoint": true,
+    "raw_cosine_auc": 0.5246392222655379,
+    "projected_cosine_auc": 0.9576386375027847
+  }
+}

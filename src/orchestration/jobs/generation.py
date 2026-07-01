@@ -1,0 +1,91 @@
+"""Generation adapter for the generic GPU task orchestrator."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from src.datasets.loaders import load_run_samples
+from src.models.generation_pipeline import (
+    generate_task,
+    generation_key_for,
+    sample_id_from_sample,
+)
+from src.models.hf_loader import load_hf_model_and_tokenizer
+from src.orchestration.jobs.contract import Task, TaskResult
+from src.runtime.config import RunConfig, load_config
+from src.runtime.run_io import load_generation_index
+
+
+def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
+    """Enumerate incomplete generation rollouts."""
+    config = load_config(run_path)
+    samples = load_run_samples(run_path, config["dataset"])
+    generation_cfg = config["generation"]
+    samples_per_item = int(generation_cfg.get("num_samples_per_item", 1))
+    existing = load_generation_index(run_path)
+    tasks = []
+    complete = 0
+    for sample_index, sample in enumerate(samples):
+        for sample_iter in range(samples_per_item):
+            key = generation_key_for(sample, sample_index, sample_iter, generation_cfg)
+            if key in existing:
+                complete += 1
+            else:
+                tasks.append({"sample_index": sample_index, "sample_iter": sample_iter})
+    tasks.sort(key=lambda task: (task["sample_iter"], task["sample_index"]))
+    return tasks, len(samples) * samples_per_item, complete
+
+
+def setup_worker(run_path: Path) -> GenerationWorker:
+    """Load one generation model replica and its normalized dataset."""
+    config = load_config(run_path)
+    samples = load_run_samples(run_path, config["dataset"])
+    raw = {key: value for key, value in config.raw.items() if key != "_run_path"}
+    raw["model"] = {**raw["model"], "device_map": {"": 0}}
+    worker_config = RunConfig.from_dict(run_path, raw)
+    model, tokenizer = load_hf_model_and_tokenizer(worker_config["model"])
+    return GenerationWorker(
+        run_path=run_path,
+        config=worker_config,
+        samples=samples,
+        model=model,
+        tokenizer=tokenizer,
+    )
+
+
+def log_path(run_path: Path, host: str, gpu: int) -> Path:
+    return run_path / "generation" / "orchestrator_logs" / f"{host}_{gpu}.log"
+
+
+@dataclass(slots=True)
+class GenerationWorker:
+    run_path: Path
+    config: RunConfig
+    samples: list[dict[str, Any]]
+    model: Any
+    tokenizer: Any
+
+    def run_task(self, task: Task, progress: Any) -> TaskResult:
+        sample_index = int(task["sample_index"])
+        sample_iter = int(task["sample_iter"])
+        sample = self.samples[sample_index]
+        samples_per_item = int(self.config["generation"].get("num_samples_per_item", 1))
+        label = (
+            f"item {sample_index + 1}/{len(self.samples)} "
+            f"{sample_id_from_sample(sample)} "
+            f"iter {sample_iter + 1}/{samples_per_item}"
+        )
+        output = generate_task(
+            run_path=self.run_path,
+            config=self.config,
+            model=self.model,
+            tokenizer=self.tokenizer,
+            sample=sample,
+            sample_index=sample_index,
+            sample_iter=sample_iter,
+            progress=progress,
+            progress_label=label,
+        )
+        return TaskResult(units=len(output.generated_token_ids))

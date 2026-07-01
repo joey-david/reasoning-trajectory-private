@@ -101,6 +101,9 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
         row.sample_id,
         row.produced_answer,
         row.produced_text,
+        row.patch_mode,
+        row.condition,
+        row.pair_id,
         questionText(sample.prompt),
       ].some(value => String(value ?? "").toLowerCase().includes(search));
     });
@@ -134,6 +137,11 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
     const sample = run.samples[row.sample_id] ?? {};
     const status = outcome(row);
     const markerHtml = markerStrip(row);
+    const patchMetadata = row.patch_mode
+      ? `<span>pair ${escapeHtml(row.pair_id)}</span><span>${escapeHtml(row.patch_mode)}</span><span>${escapeHtml(row.condition)}</span>`
+      : "";
+    const hasTrajectory = (run.interactive_plots?.length ?? 0)
+      + (run.step_classification_plots?.length ?? 0) > 0;
     return `<article class="generation-card" data-sample-id="${escapeHtml(row.sample_id)}" data-seed="${escapeHtml(row.seed)}">
       <header class="generation-card-header">
         <div class="generation-identity">
@@ -141,13 +149,14 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
           <div class="generation-meta">
             <span class="status-pill ${status}">${status === "unknown" ? "not scored" : status}</span>
             <span>sub-run ${escapeHtml(row.seed)}</span>
+            ${patchMetadata}
             <span>answer <strong>${escapeHtml(row.produced_answer ?? "—")}</strong></span>
             <span>${formatNumber(row.reasoning_length)} reasoning tokens</span>
           </div>
         </div>
         <div class="generation-actions">
           <button class="text-button" type="button" data-action="toggle-output">Expand output</button>
-          <button class="secondary-button" type="button" data-action="open-trajectory">View latent</button>
+          ${hasTrajectory ? `<button class="secondary-button" type="button" data-action="open-trajectory">View latent</button>` : ""}
         </div>
       </header>
       ${markerHtml}

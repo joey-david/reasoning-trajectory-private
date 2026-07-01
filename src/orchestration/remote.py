@@ -1,4 +1,4 @@
-"""Dynamically distribute rollouts to one persistent SSH worker per selected GPU."""
+"""Distribute resumable job tasks to one persistent process per selected GPU."""
 
 from __future__ import annotations
 
@@ -18,15 +18,9 @@ from typing import Any, TextIO
 
 from tqdm.auto import tqdm
 
-from src.runtime.config import RunConfig, load_config
-from src.datasets.loaders import load_run_samples
-from src.models.generation_pipeline import (
-    generate_task,
-    generation_key_for,
-    sample_id_from_sample,
-)
-from src.models.hf_loader import load_hf_model_and_tokenizer
-from src.runtime.run_io import load_generation_index
+from src.orchestration.jobs import load_job
+from src.orchestration.jobs.contract import Task
+from src.runtime.config import load_config
 
 
 PREFIX = "@@ORCHESTRATOR@@"
@@ -37,8 +31,8 @@ def emit(message: dict[str, Any]) -> None:
     print(PREFIX + json.dumps(message, ensure_ascii=False), flush=True)
 
 
-class RemoteProgress:
-    """Forward generation progress while retaining speed during capture."""
+class WorkerProgress:
+    """Forward optional task progress while retaining reported token speed."""
 
     def __init__(self) -> None:
         self.last_speed: float | None = None
@@ -56,55 +50,33 @@ class RemoteProgress:
         """Accept the tqdm postfix API without emitting a duplicate update."""
 
 
-def worker_main(run_path: Path) -> int:
-    """Load one model and execute coordinator tasks until stdin closes."""
+def worker_main(run_path: Path, job_name: str) -> int:
+    """Set up one job worker and execute coordinator tasks until stdin closes."""
     import torch
 
     if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
         raise RuntimeError("Worker must see exactly one CUDA GPU")
 
     config = load_config(run_path)
-    dtype = str(config["model"].get("dtype", "auto")).lower()
+    dtype = str(config.get("model", {}).get("dtype", "auto")).lower()
     if dtype in {"bfloat16", "bf16"} and not torch.cuda.is_bf16_supported():
         raise RuntimeError(f"{torch.cuda.get_device_name(0)} does not support {dtype}")
 
-    samples = load_run_samples(run_path, config["dataset"])
-    raw = {key: value for key, value in config.raw.items() if key != "_run_path"}
-    raw["model"] = {**raw["model"], "device_map": {"": 0}}
-    config = RunConfig.from_dict(run_path, raw)
-    model, tokenizer = load_hf_model_and_tokenizer(config["model"])
-    samples_per_item = int(config["generation"].get("num_samples_per_item", 1))
+    worker = load_job(job_name).setup_worker(run_path)
     emit({"type": "ready"})
 
     for line in sys.stdin:
         task = json.loads(line)
         if task["type"] == "stop":
             return 0
-        sample_index = int(task["sample_index"])
-        sample_iter = int(task["sample_iter"])
-        sample = samples[sample_index]
         started = time.monotonic()
         try:
-            label = (
-                f"item {sample_index + 1}/{len(samples)} "
-                f"{sample_id_from_sample(sample)} "
-                f"iter {sample_iter + 1}/{samples_per_item}"
-            )
-            output = generate_task(
-                run_path=run_path,
-                config=config,
-                model=model,
-                tokenizer=tokenizer,
-                sample=sample,
-                sample_index=sample_index,
-                sample_iter=sample_iter,
-                progress=RemoteProgress(),
-                progress_label=label,
-            )
+            result = worker.run_task(task, WorkerProgress())
             emit(
                 {
                     "type": "done",
-                    "tokens": len(output.generated_token_ids),
+                    "units": result.units,
+                    "unit": result.unit,
                     "elapsed": time.monotonic() - started,
                 }
             )
@@ -134,26 +106,6 @@ def parse_workers(nodes: list[str], devices: list[str]) -> list[tuple[str, int]]
     return workers
 
 
-def pending_tasks(run_path: Path) -> tuple[list[dict[str, int]], int, int]:
-    """Return unfinished tasks, total rollouts, and completed rollouts."""
-    config = load_config(run_path)
-    samples = load_run_samples(run_path, config["dataset"])
-    generation_cfg = config["generation"]
-    samples_per_item = int(generation_cfg.get("num_samples_per_item", 1))
-    existing = load_generation_index(run_path)
-    tasks = []
-    complete = 0
-    for sample_index, sample in enumerate(samples):
-        for sample_iter in range(samples_per_item):
-            key = generation_key_for(sample, sample_index, sample_iter, generation_cfg)
-            if key in existing:
-                complete += 1
-            else:
-                tasks.append({"sample_index": sample_index, "sample_iter": sample_iter})
-    tasks.sort(key=lambda task: (task["sample_iter"], task["sample_index"]))
-    return tasks, len(samples) * samples_per_item, complete
-
-
 def receive(process: subprocess.Popen[str], log: TextIO) -> dict[str, Any]:
     """Read the next protocol message while logging ordinary worker stdout."""
     assert process.stdout is not None
@@ -165,17 +117,26 @@ def receive(process: subprocess.Popen[str], log: TextIO) -> dict[str, Any]:
     raise RuntimeError(f"Worker exited with status {process.wait()}")
 
 
-def worker_command(host: str, gpu: int, run_path: Path, root: Path) -> list[str]:
-    """Build the SSH command for one selected physical GPU."""
+def worker_command(
+    host: str,
+    gpu: int,
+    run_path: Path,
+    root: Path,
+    job_name: str,
+) -> list[str]:
+    """Build a local or SSH command for one selected physical GPU."""
     worker = f"{host}:{gpu}"
-    remote = (
+    command = (
         f"cd {shlex.quote(root.as_posix())} && "
         f"export CUDA_VISIBLE_DEVICES={gpu} && "
         "exec bash scripts/run_with_hf_download_fix.sh "
-        f".venv/bin/python -u scripts/generation/orchestrate.py "
+        f".venv/bin/python -u scripts/orchestrate.py "
         f"--run {shlex.quote(run_path.as_posix())} "
+        f"--job {shlex.quote(job_name)} "
         f"--worker-id {shlex.quote(worker)}"
     )
+    if host == "local":
+        return ["bash", "-lc", command]
     return [
         "ssh",
         "-o",
@@ -183,29 +144,30 @@ def worker_command(host: str, gpu: int, run_path: Path, root: Path) -> list[str]
         "-o",
         "ServerAliveInterval=30",
         host,
-        remote,
+        command,
     ]
 
 
 def run_worker(
     worker: tuple[str, int],
+    job_name: str,
     run_path: Path,
     root: Path,
-    tasks: Queue[dict[str, int]],
+    tasks: Queue[Task],
     total_bar: Any,
     worker_bar: Any,
     lock: RLock,
     stop: Event,
     processes: list[subprocess.Popen[str]],
 ) -> None:
-    """Load one remote model and consume tasks until the shared queue is empty."""
+    """Load one persistent worker and consume tasks until the queue is empty."""
     host, gpu = worker
     name = f"{host}:{gpu}"
-    log_path = run_path / "generation" / "orchestrator_logs" / f"{host}_{gpu}.log"
+    log_path = load_job(job_name).log_path(run_path, host, gpu)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
-            worker_command(host, gpu, run_path, root),
+            worker_command(host, gpu, run_path, root, job_name),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=log,
@@ -233,11 +195,12 @@ def run_worker(
                             f"{name:<20} {event['text']}", refresh=True
                         )
                     elif event["type"] == "done":
-                        speed = event["tokens"] / max(event["elapsed"], 1e-9)
+                        speed = event["units"] / max(event["elapsed"], 1e-9)
                         with lock:
                             total_bar.update(1)
                             worker_bar.set_description_str(
-                                f"{name:<20} done | {speed:.1f} tok/s overall",
+                                f"{name:<20} done | {speed:.1f} "
+                                f"{event['unit']}/s overall",
                                 refresh=True,
                             )
                         break
@@ -262,21 +225,22 @@ def orchestrate(
     workers: list[tuple[str, int]],
     run_path: Path,
     remote_root: Path,
+    job_name: str = "generation",
 ) -> None:
     """Run the dynamic queue with one fixed tqdm line per selected GPU."""
-    pending, total, complete = pending_tasks(run_path)
+    pending, total, complete = load_job(job_name).pending_tasks(run_path)
     if not pending:
-        print(f"All {total} rollouts are already complete.")
+        print(f"All {total} tasks are already complete.")
         return
 
-    tasks: Queue[dict[str, int]] = Queue()
+    tasks: Queue[Task] = Queue()
     for task in pending:
         tasks.put(task)
     total_bar = tqdm(
         total=total,
         initial=complete,
         desc="total",
-        unit="rollout",
+        unit="task",
         position=0,
         dynamic_ncols=True,
     )
@@ -298,6 +262,7 @@ def orchestrate(
         pool.submit(
             run_worker,
             worker,
+            job_name,
             run_path,
             remote_root,
             tasks,
@@ -332,11 +297,12 @@ def main() -> int:
     parser.add_argument("--nodes", nargs="+")
     parser.add_argument("--devices", nargs="+")
     parser.add_argument("--run", type=Path, required=True)
+    parser.add_argument("--job", default="generation")
     parser.add_argument("--worker-id", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     if args.worker_id:
-        return worker_main(args.run)
+        return worker_main(args.run, args.job)
     if not args.nodes or not args.devices:
         parser.error("--nodes and --devices are required")
 
@@ -344,5 +310,10 @@ def main() -> int:
     run_path = args.run
     if run_path.is_absolute():
         run_path = run_path.relative_to(root)
-    orchestrate(parse_workers(args.nodes, args.devices), run_path, root)
+    orchestrate(
+        parse_workers(args.nodes, args.devices),
+        run_path,
+        root,
+        job_name=args.job,
+    )
     return 0

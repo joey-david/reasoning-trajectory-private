@@ -95,17 +95,26 @@ async function loadRun(route) {
       run.step_markers ? fetchJson(run.step_markers).catch(() => null) : null,
       run.hard_questions ? fetchJsonl(run.hard_questions).catch(() => []) : [],
     ]);
-    state.rows = rows;
+    state.rows = normalizeRows(rows, run.generation_format);
     state.markers = markers;
     state.hardQuestions = hardQuestions;
     $("app-status").hidden = true;
-    $("header-run-status").textContent = `${formatNumber(rows.length)} trajectories · ${formatNumber(Object.keys(run.samples ?? {}).length)} questions`;
+    $("header-run-status").textContent = `${formatNumber(state.rows.length)} trajectories · ${formatNumber(Object.keys(run.samples ?? {}).length)} questions`;
     renderOverview();
     showView(["overview", "generations", "trajectories"].includes(route.view) ? route.view : "overview");
     setQuery({ model: run.model, run: run.run, view: state.view });
   } catch (error) {
     showSetupError(error);
   }
+}
+
+function normalizeRows(rows, generationFormat) {
+  if (generationFormat !== "causal_patching") return rows;
+  return rows.map(row => ({
+    ...row,
+    sample_id: row.target?.sample_id ?? row.target_question,
+    reasoning_length: row.generated_token_ids?.length ?? 0,
+  }));
 }
 
 function showView(view, updateUrl = true) {

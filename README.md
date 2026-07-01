@@ -28,7 +28,7 @@ src/
   prompting/            # prompt construction
   models/               # model loading and generation
   runtime/              # configs, paths, and artifact I/O
-  orchestration/        # generation runners and remote scheduling
+  orchestration/        # persistent GPU workers and task scheduling
   analysis/             # trajectory analysis
   experiments/          # symbolic updates, probes, contrastive learning, patching
 web/                    # static results interface
@@ -118,17 +118,27 @@ model:
 For dynamic scheduling across remote nodes:
 
 ```bash
-.venv/bin/python scripts/generation/orchestrate.py \
+.venv/bin/python scripts/orchestrate.py --job generation \
   --nodes kaisertrot boldeagle \
   --devices 0,1 1 \
   --run runs/<model>/<experiment>
 ```
 
+Orchestrable jobs live in `src/orchestration/jobs/<name>.py`. Each exports
+`pending_tasks`, `setup_worker`, and `log_path`; its persistent worker implements
+`run_task(...) -> TaskResult`. Tasks must be JSON-serializable and outputs must
+be resumable with locked writes.
+
+Use `--nodes local --devices 0,1` to schedule across GPUs on the current host.
+
 Sync configs and pinned datasets to the server, then pull completed artifacts:
 
 ```bash
-bash scripts/remote.sh push
-bash scripts/remote.sh pull runs/<model>/<experiment>
+./scripts/remote.sh push
+./scripts/remote.sh pull runs/<model>/<experiment>
 ```
+
+Experiment-specific remote sequences and fallback gates are kept in
+[experiments_plan.md](experiments_plan.md).
 
 Remote generation is never required for local analysis.

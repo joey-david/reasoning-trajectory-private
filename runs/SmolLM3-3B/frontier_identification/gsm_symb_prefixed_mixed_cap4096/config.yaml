@@ -10,20 +10,26 @@ model:
 
 dataset:
   source: jsonl
-  path: runs/SmolLM3-3B/gsm_symb_prefixed_mixed/dataset.jsonl
+  path: runs/SmolLM3-3B/frontier_identification/gsm_symb_prefixed_mixed_cap4096/dataset.jsonl
   adapter: plain_question
-  sample_limit: 14
+  sample_limit: 10
   sample_offset: 0
   shuffle_seed: null
 
 generation:
-  max_new_tokens: 8192
+  max_new_tokens: 4096
   num_samples_per_item: 10
-  base_seed: 4130100
+  base_seed: 5130100
   temperature: 0.6
   top_p: 0.95
   top_k: 20
   forced_prefix: "<think> Okay, let's see"
+  cap_fallback:
+    prefix: |-
+      </think> Given what I've assessed, the answer is
+      Answer:
+    min_new_tokens: 3
+    max_new_tokens: 4
 
 capture:
   enabled: true
@@ -46,7 +52,7 @@ analysis:
   produced_answer_regex: "(?i)(?:\\\\boxed\\{|(?:Final\\s+)?Answer\\s*:\\s*)(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
   gold_answer_regex: "####\\s*(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
   think_end_token_id: 128003
-  hard_question_limit: 14
+  hard_question_limit: 10
   max_plot_points: 5000
   max_interactive_points: 6000
   step_classification:

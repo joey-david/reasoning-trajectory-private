@@ -33,6 +33,16 @@ from src.experiments.common import (
 from src.experiments.symbolic import extract_symbolic_updates
 from src.runtime.artifact_store import load_hidden_states_npz
 from src.runtime.config import load_config
+from src.runtime.data import load_samples
+
+
+INTERVAL_EFFECT_FIELDS = (
+    "path_length_control_percentile",
+    "net_displacement_control_percentile",
+    "peak_share",
+    "effective_width_fraction",
+    "net_to_path_ratio",
+)
 
 
 def run_boundary_comparison(
@@ -160,6 +170,10 @@ def run_boundary_comparison(
         )
     out_dir = run_paths[0] / "analysis" / "experiments" / "h1_boundaries"
     out_dir.mkdir(parents=True, exist_ok=True)
+    condition_summary = {
+        condition: summarize_condition(run_path, rows)
+        for condition, (run_path, rows, _) in condition_rows.items()
+    }
     report = {
         "hypothesis": "H1_text_boundaries_vs_natural_latent_boundaries",
         "runs": {
@@ -175,6 +189,9 @@ def run_boundary_comparison(
             condition: float(np.mean(values))
             for condition, values in compliance.items()
         },
+        "condition_summary": condition_summary,
+        "matched_behavior_effects": matched_behavior_effects(condition_rows),
+        "matched_interval_effects": matched_interval_effects(condition_rows),
         "results": results,
         "traces": trace_records,
     }
@@ -372,3 +389,191 @@ def format_compliance(text: str, condition: str) -> float:
 def mean_finite(values: list[float]) -> float:
     finite = np.asarray([value for value in values if np.isfinite(value)])
     return float(np.mean(finite)) if len(finite) else float("nan")
+
+
+def summarize_condition(
+    run_path: Path,
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    lengths = np.asarray(
+        [len(row.get("generated_token_ids", [])) for row in rows],
+        dtype=np.int32,
+    )
+    scored = [
+        bool(row["is_correct"]) for row in rows if row.get("is_correct") is not None
+    ]
+    expected = expected_trajectories(run_path)
+    return {
+        "trajectories": len(rows),
+        "expected_trajectories": expected,
+        "completion_fraction": len(rows) / expected if expected else None,
+        "questions": len({str(row["sample_id"]) for row in rows}),
+        "accuracy": float(np.mean(scored)) if scored else None,
+        "mean_tokens": float(lengths.mean()) if len(lengths) else None,
+        "median_tokens": float(np.median(lengths)) if len(lengths) else None,
+    }
+
+
+def expected_trajectories(run_path: Path) -> int | None:
+    config = load_config(run_path)
+    if "replay" in config:
+        maximum = int(config["replay"].get("max_trajectories", 0))
+        return maximum or None
+    dataset_path = run_path / "dataset.jsonl"
+    if "generation" in config and dataset_path.exists():
+        rows = sum(1 for line in dataset_path.open() if line.strip())
+        return rows * int(config["generation"].get("num_samples_per_item", 1))
+    return None
+
+
+def matched_behavior_effects(
+    condition_rows: dict[
+        str,
+        tuple[Path, list[dict[str, Any]], list[list[TokenSpan]]],
+    ],
+) -> list[dict[str, Any]]:
+    """Compare prompted conditions with freeform using matched question/seed rows."""
+    if "freeform" not in condition_rows:
+        return []
+    baseline = {
+        (str(row["sample_id"]), int(row["seed"])): row
+        for row in condition_rows["freeform"][1]
+    }
+    effects: list[dict[str, Any]] = []
+    for condition, (_, rows, _) in condition_rows.items():
+        if condition == "freeform":
+            continue
+        prompted = {(str(row["sample_id"]), int(row["seed"])): row for row in rows}
+        keys = sorted(set(baseline) & set(prompted))
+        groups = sorted({sample_id for sample_id, _ in keys})
+        if not keys:
+            continue
+        accuracy_by_group: dict[str, list[float]] = defaultdict(list)
+        token_ratio_by_group: dict[str, list[float]] = defaultdict(list)
+        for key in keys:
+            base_row = baseline[key]
+            prompted_row = prompted[key]
+            if (
+                base_row.get("is_correct") is not None
+                and prompted_row.get("is_correct") is not None
+            ):
+                accuracy_by_group[key[0]].append(
+                    float(bool(prompted_row["is_correct"]))
+                    - float(bool(base_row["is_correct"]))
+                )
+            base_tokens = max(len(base_row.get("generated_token_ids", [])), 1)
+            token_ratio_by_group[key[0]].append(
+                len(prompted_row.get("generated_token_ids", [])) / base_tokens
+            )
+        accuracy_values = np.asarray(
+            [
+                np.mean(accuracy_by_group[group])
+                for group in groups
+                if accuracy_by_group[group]
+            ]
+        )
+        token_values = np.asarray(
+            [np.mean(token_ratio_by_group[group]) for group in groups]
+        )
+        effects.append(
+            {
+                "condition": condition,
+                "matched_trajectories": len(keys),
+                "matched_questions": len(groups),
+                "accuracy_difference": (
+                    float(accuracy_values.mean()) if len(accuracy_values) else None
+                ),
+                "accuracy_difference_95ci": grouped_bootstrap_interval(accuracy_values),
+                "token_ratio": float(token_values.mean()),
+                "token_ratio_95ci": grouped_bootstrap_interval(token_values),
+            }
+        )
+    return effects
+
+
+def grouped_bootstrap_interval(
+    values: np.ndarray,
+    *,
+    draws: int = 1000,
+) -> list[float] | None:
+    if not len(values):
+        return None
+    rng = np.random.default_rng(42)
+    means = [
+        float(np.mean(rng.choice(values, size=len(values), replace=True)))
+        for _ in range(draws)
+    ]
+    return np.quantile(means, [0.025, 0.975]).tolist()
+
+
+def matched_interval_effects(
+    condition_rows: dict[
+        str,
+        tuple[Path, list[dict[str, Any]], list[list[TokenSpan]]],
+    ],
+) -> list[dict[str, Any]]:
+    """Compare question-balanced H2 interval metrics with matched freeform rows."""
+    if "freeform" not in condition_rows:
+        return []
+    baseline = load_interval_trace_metrics(condition_rows["freeform"][0])
+    effects = []
+    for condition, (run_path, _, _) in condition_rows.items():
+        if condition == "freeform":
+            continue
+        prompted = load_interval_trace_metrics(run_path)
+        keys = sorted(set(baseline) & set(prompted))
+        if not keys:
+            continue
+        metrics = {}
+        for field in INTERVAL_EFFECT_FIELDS:
+            differences: defaultdict[str, list[float]] = defaultdict(list)
+            for key in keys:
+                differences[key[0]].append(prompted[key][field] - baseline[key][field])
+            question_values = np.asarray(
+                [np.mean(values) for values in differences.values()],
+                dtype=np.float64,
+            )
+            metrics[field] = {
+                "question_mean_difference": float(question_values.mean()),
+                "question_bootstrap_95ci": grouped_bootstrap_interval(question_values),
+            }
+        effects.append(
+            {
+                "condition": condition,
+                "matched_trajectories": len(keys),
+                "matched_questions": len({key[0] for key in keys}),
+                "metrics": metrics,
+            }
+        )
+    return effects
+
+
+def load_interval_trace_metrics(
+    run_path: Path,
+) -> dict[tuple[str, int], dict[str, float]]:
+    path = (
+        run_path / "analysis" / "experiments" / "h2_localized_updates" / "updates.jsonl"
+    )
+    if not path.exists():
+        return {}
+    values: defaultdict[
+        tuple[str, int],
+        defaultdict[str, list[float]],
+    ] = defaultdict(lambda: defaultdict(list))
+    for row in load_samples(path.resolve()):
+        if int(row["layer"]) != -1:
+            continue
+        key = (str(row["sample_id"]), int(row["seed"]))
+        for field in INTERVAL_EFFECT_FIELDS:
+            value = row.get(field)
+            if value is not None:
+                values[key][field].append(float(value))
+    return {
+        key: {
+            field: float(np.mean(fields[field]))
+            for field in INTERVAL_EFFECT_FIELDS
+            if fields[field]
+        }
+        for key, fields in values.items()
+        if all(fields[field] for field in INTERVAL_EFFECT_FIELDS)
+    }

@@ -6,24 +6,27 @@ import json
 from pathlib import Path
 
 from src.analysis.common import read_sample_records
+from src.runtime.config import load_config
 
 
 def write_manifest(runs_root: Path, out_path: Path) -> None:
     """Write web-visible artifacts for every generated run below a root.
 
     Args:
-        runs_root: Root containing ``model/run/config.yaml`` folders.
+        runs_root: Root containing model run folders at any nested depth.
         out_path: Destination JSON manifest used by ``web/index.html``.
 
     Returns:
         None.
     """
     runs = []
-    for config in sorted(runs_root.glob("*/*/config.yaml")):
+    for config in sorted(runs_root.glob("*/**/config.yaml")):
         run = config.parent
-        gen = run / "generation" / "generations.jsonl"
-        if not gen.exists():
+        relative = run.relative_to(runs_root)
+        generation_artifact = discover_generation_artifact(run)
+        if generation_artifact is None:
             continue
+        gen, generation_format, samples = generation_artifact
         plots = load_json(run / "analysis" / "plots" / "index.json", [])
         interactive_plots = load_json(
             run / "analysis" / "plots" / "interactive_index.json", []
@@ -36,10 +39,11 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
         hard_questions = run / "analysis" / "hard_questions.jsonl"
         runs.append(
             {
-                "model": run.parent.name,
-                "run": run.name,
+                "model": relative.parts[0],
+                "run": "/".join(relative.parts[1:]),
                 "generations": web_path(gen),
-                "samples": read_sample_records(run),
+                "generation_format": generation_format,
+                "samples": samples,
                 "plots": add_web_paths(run, plots),
                 "interactive_plots": add_web_paths(run, interactive_plots),
                 "step_classification_plots": add_web_paths(
@@ -60,6 +64,21 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
     out_path.write_text(
         json.dumps({"runs": runs}, ensure_ascii=False), encoding="utf-8"
     )
+
+
+def discover_generation_artifact(
+    run: Path,
+) -> tuple[Path, str, dict[str, dict]] | None:
+    """Return the browser-facing row artifact, format, and sample records."""
+    generations = run / "generation" / "generations.jsonl"
+    if generations.exists():
+        return generations, "generation", read_sample_records(run)
+
+    continuations = run / "patching" / "continuations.jsonl"
+    if not continuations.exists():
+        return None
+    activation_run = Path(load_config(run)["patching"]["activation_run"])
+    return continuations, "causal_patching", read_sample_records(activation_run)
 
 
 def load_json(path: Path, default):

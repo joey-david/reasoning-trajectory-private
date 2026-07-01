@@ -27,17 +27,19 @@ from src.experiments.common import (
     latent_deltas,
     prefix_checkpoints,
     robust_spike_indices,
+    update_phase_bounds,
 )
+from src.experiments.symbolic import extract_symbolic_updates
 from src.runtime.artifact_store import load_hidden_states_npz
 
 
 REPRESENTATIONS = (
     "token_state",
     "sentence_mean",
-    "step_mean",
-    "step_mean_variance",
-    "step_direction",
-    "latent_segments",
+    "sentence_mean_variance",
+    "symbolic_update_mean_variance",
+    "latent_spikes",
+    "latent_waves",
 )
 
 
@@ -67,13 +69,21 @@ def run_correctness_prediction(
             {"mode": "sentence", "group_size": 1},
             token_spans=spans,
         )
+        updates = extract_symbolic_updates(
+            str(row.get("produced_text", "")),
+            spans,
+            token_count=count,
+        )
         checkpoints = prefix_checkpoints(count)
         for layer_col, layer in enumerate(layers):
             layers_seen.add(layer)
             layer_states = states[:count, layer_col].astype(np.float32)
             for percent, checkpoint in checkpoints.items():
                 representation_features = prefix_representations(
-                    layer_states, segments, checkpoint
+                    layer_states,
+                    segments,
+                    updates,
+                    checkpoint,
                 )
                 for name, vector in representation_features.items():
                     features[(layer, percent, name)].append(vector)
@@ -147,6 +157,10 @@ def run_correctness_prediction(
             "split": "GroupKFold by sample_id",
             "folds": effective_folds,
             "probe": "StandardScaler + L2 logistic regression",
+            "matched_comparison": (
+                "completed boundaries only; all segmentation comparisons use "
+                "mean-plus-variance vectors with identical dimensionality"
+            ),
         },
         "results": results,
         "comparisons": comparisons,
@@ -159,6 +173,7 @@ def run_correctness_prediction(
 def prefix_representations(
     states: np.ndarray,
     segments: list[Any],
+    updates: list[Any],
     checkpoint: int,
 ) -> dict[str, np.ndarray]:
     """Build fixed-width representations from one partial trace."""
@@ -168,34 +183,94 @@ def prefix_representations(
     for segment in segments:
         if segment.token_start > checkpoint:
             break
+        if segment.token_end > checkpoint:
+            break
         start = min(max(segment.token_start, 0), checkpoint)
         end = min(max(segment.token_end, start), checkpoint)
         sentence_means.append(states[start : end + 1].mean(axis=0))
     if not sentence_means:
         sentence_means = [prefix.mean(axis=0)]
-    step_matrix = np.stack(sentence_means)
-    step_mean = step_matrix.mean(axis=0)
-    step_variance = step_matrix.var(axis=0)
-    if len(step_matrix) > 1:
-        step_direction = np.diff(step_matrix, axis=0).mean(axis=0)
-    else:
-        step_direction = np.zeros(states.shape[1], dtype=np.float32)
+    sentence_matrix = np.stack(sentence_means)
+    sentence_mean = sentence_matrix.mean(axis=0)
+    sentence_variance = sentence_matrix.var(axis=0)
+
+    update_vectors = []
+    for update in updates:
+        phase_start, phase_end = update_phase_bounds(
+            update.token_start,
+            update.token_end,
+            len(states),
+        )
+        if phase_end <= checkpoint:
+            update_vectors.append(states[phase_end] - states[phase_start])
+    if not update_vectors:
+        update_vectors = [np.zeros(states.shape[1], dtype=np.float32)]
+    update_matrix = np.stack(update_vectors)
+    update_mean = update_matrix.mean(axis=0)
+    update_variance = update_matrix.var(axis=0)
 
     deltas = latent_deltas(prefix)
     magnitudes = np.linalg.norm(deltas, axis=1)
     spikes = robust_spike_indices(magnitudes)
-    update_vectors = deltas[spikes] if len(spikes) else deltas[[-1]]
-    latent_mean = update_vectors.mean(axis=0)
-    latent_variance = update_vectors.var(axis=0)
+    spike_vectors = deltas[spikes] if len(spikes) else deltas[[-1]]
+    spike_mean = spike_vectors.mean(axis=0)
+    spike_variance = spike_vectors.var(axis=0)
+
+    wave_intervals = sustained_change_intervals(magnitudes)
+    wave_vectors = np.stack(
+        [prefix[end] - prefix[max(start - 1, 0)] for start, end in wave_intervals]
+    )
+    wave_mean = wave_vectors.mean(axis=0)
+    wave_variance = wave_vectors.var(axis=0)
 
     return {
         "token_state": prefix[-1],
         "sentence_mean": sentence_means[-1],
-        "step_mean": step_mean,
-        "step_mean_variance": np.concatenate([step_mean, step_variance]),
-        "step_direction": step_direction,
-        "latent_segments": np.concatenate([latent_mean, latent_variance]),
+        "sentence_mean_variance": np.concatenate([sentence_mean, sentence_variance]),
+        "symbolic_update_mean_variance": np.concatenate([update_mean, update_variance]),
+        "latent_spikes": np.concatenate([spike_mean, spike_variance]),
+        "latent_waves": np.concatenate([wave_mean, wave_variance]),
     }
+
+
+def sustained_change_intervals(
+    magnitudes: np.ndarray,
+    *,
+    smooth_width: int = 7,
+    z_threshold: float = 1.0,
+    min_tokens: int = 3,
+    merge_gap: int = 2,
+) -> list[tuple[int, int]]:
+    """Find contiguous regions of elevated smoothed derivative magnitude."""
+    values = np.asarray(magnitudes, dtype=np.float32)
+    if len(values) <= min_tokens:
+        return [(1, max(len(values) - 1, 1))]
+    width = min(smooth_width, len(values))
+    kernel = np.ones(width, dtype=np.float32) / width
+    smoothed = np.convolve(values, kernel, mode="same")
+    core = smoothed[1:]
+    median = float(np.median(core))
+    mad = float(np.median(np.abs(core - median)))
+    scale = max(1.4826 * mad, float(np.std(core)) * 0.1, 1e-8)
+    active = smoothed >= median + z_threshold * scale
+    intervals: list[tuple[int, int]] = []
+    start = None
+    for index in range(1, len(active)):
+        if active[index] and start is None:
+            start = index
+        if start is not None and (not active[index] or index == len(active) - 1):
+            end = index if active[index] else index - 1
+            if end - start + 1 >= min_tokens:
+                if intervals and start - intervals[-1][1] - 1 <= merge_gap:
+                    intervals[-1] = (intervals[-1][0], end)
+                else:
+                    intervals.append((start, end))
+            start = None
+    if intervals:
+        return intervals
+    peak = int(np.argmax(smoothed[1:])) + 1
+    half = max(min_tokens // 2, 1)
+    return [(max(peak - half, 1), min(peak + half, len(values) - 1))]
 
 
 def grouped_oof_probabilities(
@@ -270,10 +345,14 @@ def segmentation_comparisons(
     comparisons: list[dict[str, Any]] = []
     for layer in layers:
         for checkpoint in (25, 50, 75):
-            baseline_key = f"layer{layer}_{checkpoint}_sentence_mean"
+            baseline_key = f"layer{layer}_{checkpoint}_sentence_mean_variance"
             if baseline_key not in predictions:
                 continue
-            for representation in ("step_mean_variance", "latent_segments"):
+            for representation in (
+                "symbolic_update_mean_variance",
+                "latent_spikes",
+                "latent_waves",
+            ):
                 contender_key = f"layer{layer}_{checkpoint}_{representation}"
                 if contender_key not in predictions:
                     continue
@@ -288,7 +367,7 @@ def segmentation_comparisons(
                         "layer": layer,
                         "checkpoint_percent": checkpoint,
                         "representation": representation,
-                        "baseline": "sentence_mean",
+                        "baseline": "sentence_mean_variance",
                         "roc_auc_difference": point,
                         "roc_auc_difference_95ci": interval,
                     }
