@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import unittest
+from unittest.mock import patch
 from collections import Counter
 
 import numpy as np
@@ -17,8 +18,11 @@ from src.experiments.causal_patching import (
     output_degeneration_reasons,
     select_control_donor,
 )
+from src.experiments.boundary_interventions import position_matched_boundaries
 from src.experiments.common import interval_dynamics, robust_spike_indices
 from src.experiments.correctness_prediction import prefix_representations
+from src.experiments.gold_answers import capture_gold_answer
+from src.experiments.thought_units import apply_gold_answer_scores
 from src.experiments.patching_analysis import (
     analyze_causal_patching,
     validate_h3_smoke,
@@ -26,6 +30,13 @@ from src.experiments.patching_analysis import (
 from src.experiments.process_isomers import (
     deduplicate_pair_candidates,
     sequence_edit_distance,
+)
+from src.experiments.sentence_lattice import (
+    boundary_f1,
+    object_update_costs,
+    optimal_partition,
+    partition_cost,
+    squared_error_costs,
 )
 from src.experiments.symbolic import extract_symbolic_updates
 from src.prompting.templates import build_prompt
@@ -117,6 +128,130 @@ class ExperimentPrimitiveTests(unittest.TestCase):
         self.assertAlmostEqual(wave_metrics.peak_share, 0.25)
         self.assertAlmostEqual(peak_metrics.effective_width_tokens, 1.0)
         self.assertAlmostEqual(peak_metrics.peak_share, 1.0)
+
+    def test_sentence_partition_finds_piecewise_constant_change(self):
+        values = np.asarray([0.0, 0.0, 4.0, 4.0])[:, None]
+        costs = squared_error_costs(values)
+        boundaries = optimal_partition(costs, segments=2)
+        self.assertEqual(boundaries.tolist(), [1])
+        self.assertAlmostEqual(partition_cost(costs, boundaries), 0.0)
+
+    def test_object_partition_prefers_one_update_per_segment(self):
+        costs = object_update_costs(np.asarray([0, 1, 0, 1]))
+        boundaries = optimal_partition(costs, segments=2)
+        self.assertEqual(partition_cost(costs, boundaries), 0.0)
+
+    def test_boundary_f1_matches_each_expected_boundary_once(self):
+        self.assertAlmostEqual(
+            boundary_f1(
+                np.asarray([2, 3]),
+                np.asarray([3]),
+                tolerance=1,
+            ),
+            2.0 / 3.0,
+        )
+
+    def test_position_matched_boundaries_are_distinct(self):
+        selected = position_matched_boundaries(
+            np.asarray([1, 4, 7, 9]),
+            sentence_count=12,
+            target_positions=[0.3, 0.7],
+        )
+        self.assertEqual(selected.tolist(), [4, 7])
+
+    def test_gold_answer_capture_persists_aligned_manifest_and_states(self):
+        class FakeTokenizer:
+            bos_token_id = 1
+            eos_token_id = 2
+
+            def __call__(self, text, **_kwargs):
+                self.text = text
+                return {"input_ids": [7, 8]}
+
+        captured = torch.arange(12, dtype=torch.float32).reshape(2, 1, 6)
+        with tempfile.TemporaryDirectory() as directory:
+            run_path = Path(directory)
+            with patch(
+                "src.experiments.gold_answers.capture_selected_activations",
+                return_value=(captured, {}),
+            ) as capture:
+                record = capture_gold_answer(
+                    run_path=run_path,
+                    model=object(),
+                    tokenizer=FakeTokenizer(),
+                    sample={
+                        "id": "sample",
+                        "gold_answer": "worked solution",
+                    },
+                    layers=[-1],
+                    storage_dtype="float16",
+                    max_tokens=10,
+                )
+            states, layers = load_hidden_states_npz(
+                run_path / record["hidden_states_file"]
+            )
+            manifest = json.loads(
+                (run_path / "gold_answers" / "manifest.jsonl").read_text()
+            )
+        capture.assert_called_once()
+        self.assertEqual(capture.call_args.kwargs["full_seq_ids"], [1, 7, 8])
+        self.assertEqual(capture.call_args.kwargs["prompt_len"], 1)
+        np.testing.assert_allclose(states, captured.numpy())
+        self.assertEqual(layers, [-1])
+        self.assertEqual(manifest["sample_id"], "sample")
+
+    def test_gold_answer_scores_replace_cross_rollout_proxy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            gold_run = root / "gold"
+            hidden_path = gold_run / "gold_answers" / "hidden_states" / "a.npz"
+            save_hidden_states_npz(
+                path=hidden_path,
+                hidden_states=np.asarray(
+                    [[[1.0, 0.0, 0.0]], [[1.0, 0.0, 0.0]]]
+                ),
+                layer_indices=[-1],
+                storage_dtype="float32",
+            )
+            (gold_run / "gold_answers" / "manifest.jsonl").write_text(
+                json.dumps(
+                    {
+                        "sample_id": "a",
+                        "hidden_states_file": (
+                            "gold_answers/hidden_states/a.npz"
+                        ),
+                    }
+                )
+                + "\n"
+            )
+            (gold_run / "gold_answers" / "metadata.json").write_text(
+                json.dumps({"alignment": "test alignment"})
+            )
+            cache = {
+                "offsets": np.asarray([0, 3]),
+                "raw": np.asarray(
+                    [
+                        [1.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0],
+                        [1.0, 0.0, 0.0],
+                    ]
+                ),
+                "answer_score": np.asarray([0.0, 0.1, 0.2]),
+                "records": [
+                    {
+                        "sample_id": "a",
+                        "seed": 1,
+                        "train": False,
+                    }
+                ],
+            }
+            updated, information = apply_gold_answer_scores(
+                cache,
+                gold_run,
+                selected_indices=[0],
+            )
+        self.assertEqual(information["status"], "gold_solution_alignment")
+        self.assertGreater(updated["answer_score"][0], updated["answer_score"][1])
 
     def test_completion_alignment_is_derived_from_token_end(self):
         point = {"token_end": 7, "state_index": 3}

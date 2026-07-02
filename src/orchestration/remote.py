@@ -62,6 +62,12 @@ def worker_main(run_path: Path, job_name: str) -> int:
     if dtype in {"bfloat16", "bf16"} and not torch.cuda.is_bf16_supported():
         raise RuntimeError(f"{torch.cuda.get_device_name(0)} does not support {dtype}")
 
+    emit(
+        {
+            "type": "loading",
+            "text": f"loading {config.get('model', {}).get('name', 'worker')}",
+        }
+    )
     worker = load_job(job_name).setup_worker(run_path)
     emit({"type": "ready"})
 
@@ -177,8 +183,26 @@ def run_worker(
         with lock:
             processes.append(process)
         try:
-            if receive(process, log).get("type") != "ready":
-                raise RuntimeError(f"{name} failed during model loading")
+            try:
+                while True:
+                    startup = receive(process, log)
+                    if startup.get("type") == "loading":
+                        worker_bar.set_description_str(
+                            f"{name:<20} {startup['text']}",
+                            refresh=True,
+                        )
+                        continue
+                    if startup.get("type") == "ready":
+                        break
+                    raise RuntimeError(f"{name} failed during model loading")
+            except Exception as error:
+                log.write(f"\ncoordinator: startup failed: {error}\n")
+                log.flush()
+                worker_bar.set_description_str(
+                    f"{name:<20} startup failed | see {log_path}",
+                    refresh=True,
+                )
+                return
             worker_bar.set_description_str(f"{name:<20} ready", refresh=True)
             while not stop.is_set():
                 try:
@@ -277,6 +301,12 @@ def orchestrate(
     try:
         for future in as_completed(futures):
             future.result()
+        remaining = tasks.qsize()
+        if remaining:
+            raise RuntimeError(
+                f"{remaining}/{len(pending)} pending tasks remain because no "
+                f"worker could run them; inspect {job_name} orchestrator logs"
+            )
     except BaseException:
         stop.set()
         with lock:

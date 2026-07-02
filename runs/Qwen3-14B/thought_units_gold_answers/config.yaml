@@ -1,0 +1,26 @@
+model:
+  name: Qwen/Qwen3-14B
+  revision: 40c069824f4251a91eefaf281ebe4c544efd3e18
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: true
+
+dataset:
+  source: jsonl
+  path: runs/Qwen3-14B/thought_units_gold_answers/dataset.jsonl
+  adapter: plain_question
+  sample_limit: 58
+  sample_offset: 0
+  shuffle_seed: null
+  require_gold_answer: true
+
+generation:
+  max_new_tokens: 16000
+
+gold_answer_capture:
+  layers: [-1]
+  max_tokens: 16000
+  activation_storage_dtype: int8_scaled

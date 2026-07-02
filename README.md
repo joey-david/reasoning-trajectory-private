@@ -129,6 +129,9 @@ Orchestrable jobs live in `src/orchestration/jobs/<name>.py`. Each exports
 `run_task(...) -> TaskResult`. Tasks must be JSON-serializable and outputs must
 be resumable with locked writes.
 
+Available jobs are `generation`, `gold_answer_capture`,
+`boundary_intervention`, and `causal_patching`.
+
 Use `--nodes local --devices 0,1` to schedule across GPUs on the current host.
 
 Sync configs and pinned datasets to the server, then pull completed artifacts:
