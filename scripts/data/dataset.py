@@ -21,6 +21,14 @@ from src.runtime.data import load_samples, write_jsonl
 
 
 def main() -> int:
+    """Run the command-line JSONL dataset helper.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Small dataset helper.")
     subcommands = parser.add_subparsers(dest="command", required=True)
 

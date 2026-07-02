@@ -18,6 +18,14 @@ from src.runtime.config import load_config
 
 
 def main() -> int:
+    """Run configured post-processing for one run directory.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Analyze one run folder.")
     parser.add_argument("run_path")
     args = parser.parse_args()

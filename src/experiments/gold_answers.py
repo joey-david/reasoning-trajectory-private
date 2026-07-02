@@ -16,7 +16,14 @@ from src.runtime.data import load_samples
 
 
 def completed_gold_answers(path: Path) -> set[str]:
-    """Return sample IDs already present in a gold-answer manifest."""
+    """Return sample IDs already present in a gold-answer manifest.
+
+    Args:
+        path: Filesystem path to read from or write to.
+
+    Returns:
+        The resulting unique values.
+    """
     if not path.exists():
         return set()
     return {
@@ -36,7 +43,20 @@ def capture_gold_answer(
     storage_dtype: str,
     max_tokens: int,
 ) -> dict[str, Any]:
-    """Teacher-force one complete gold solution and persist selected states."""
+    """Teacher-force one complete gold solution and persist selected states.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        model: Loaded model used for inference or transformation.
+        tokenizer: Tokenizer aligned with the loaded model.
+        sample: Normalized sample containing the gold solution.
+        layers: Model layer indices.
+        storage_dtype: NumPy dtype used when persisting activations.
+        max_tokens: Maximum number of tokens to capture or generate.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     sample_id = str(sample.get("id") or sample.get("problem_id"))
     answer = sample.get("gold_answer")
     if answer is None or not str(answer).strip():
@@ -103,7 +123,17 @@ def write_gold_answer_metadata(
     layers: list[int],
     storage_dtype: str,
 ) -> None:
-    """Write the stable gold-answer artifact contract."""
+    """Write the stable gold-answer artifact contract.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        model_name: Model identifier recorded in metadata.
+        layers: Model layer indices.
+        storage_dtype: NumPy dtype used when persisting activations.
+
+    Returns:
+        None.
+    """
     path = run_path / "gold_answers" / "metadata.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {

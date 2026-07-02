@@ -8,7 +8,14 @@ from src.orchestration.jobs.contract import OrchestrationJob
 
 
 def load_job(name: str) -> OrchestrationJob:
-    """Load ``src.orchestration.jobs.<name>`` after validating its contract."""
+    """Load ``src.orchestration.jobs.<name>`` after validating its contract.
+
+    Args:
+        name: Registered orchestration job name.
+
+    Returns:
+        The imported orchestration job module.
+    """
     module_name = name.replace("-", "_")
     if not module_name.isidentifier() or module_name.startswith("_"):
         raise ValueError(f"Invalid orchestration job name: {name!r}")

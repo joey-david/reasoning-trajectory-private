@@ -11,6 +11,14 @@ from src.experiments.process_isomers import write_process_isomer_pairs
 
 
 def main() -> int:
+    """Mine symbolically equivalent trace pairs for H3.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Mine H3 symbolic-state pairs.")
     parser.add_argument("h2_dir", type=Path)
     parser.add_argument("output", type=Path)

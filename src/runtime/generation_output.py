@@ -69,8 +69,11 @@ class TimestepArtifacts:
     def to_dict(self) -> dict[str, Any]:
         """Serialize the token diagnostics into JSON-compatible values.
 
-        Returns:
-            A dictionary containing token identity, positions, and scalar metrics.
+                Returns:
+                    A dictionary containing token identity, positions, and scalar metrics.
+
+        Args:
+            None.
         """
         return {
             "token_id": self.token_id,

@@ -19,7 +19,14 @@ from src.runtime.run_io import load_generation_index
 
 
 def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
-    """Enumerate incomplete generation rollouts."""
+    """Enumerate incomplete generation rollouts.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The computed aligned values described above.
+    """
     config = load_config(run_path)
     samples = load_run_samples(run_path, config["dataset"])
     generation_cfg = config["generation"]
@@ -39,7 +46,14 @@ def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
 
 
 def setup_worker(run_path: Path) -> GenerationWorker:
-    """Load one generation model replica and its normalized dataset."""
+    """Load one generation model replica and its normalized dataset.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        A worker initialized for generation tasks.
+    """
     config = load_config(run_path)
     samples = load_run_samples(run_path, config["dataset"])
     raw = {key: value for key, value in config.raw.items() if key != "_run_path"}
@@ -56,6 +70,16 @@ def setup_worker(run_path: Path) -> GenerationWorker:
 
 
 def log_path(run_path: Path, host: str, gpu: int) -> Path:
+    """Build the per-worker orchestration log path.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        host: Remote worker host name.
+        gpu: GPU index on the worker host.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     return run_path / "generation" / "orchestrator_logs" / f"{host}_{gpu}.log"
 
 
@@ -68,6 +92,15 @@ class GenerationWorker:
     tokenizer: Any
 
     def run_task(self, task: Task, progress: Any) -> TaskResult:
+        """Execute one orchestration task and return its serialized result.
+
+        Args:
+            task: Serialized orchestration task.
+            progress: Callback used to report worker progress.
+
+        Returns:
+            A task result containing its stable key and serialized record.
+        """
         sample_index = int(task["sample_index"])
         sample_iter = int(task["sample_iter"])
         sample = self.samples[sample_index]

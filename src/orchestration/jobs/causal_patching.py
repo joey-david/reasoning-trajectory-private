@@ -26,7 +26,14 @@ from src.runtime.data import load_samples
 
 
 def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
-    """Enumerate incomplete H3 cells using their persisted four-part key."""
+    """Enumerate incomplete H3 cells using their persisted four-part key.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The computed aligned values described above.
+    """
     config = load_config(run_path)
     patch_cfg = config["patching"]
     pairs = load_samples(Path(patch_cfg["pairs"]).resolve())
@@ -58,7 +65,14 @@ def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
 
 
 def setup_worker(run_path: Path) -> CausalPatchingWorker:
-    """Load one H3 model replica, activation index, and projection."""
+    """Load one H3 model replica, activation index, and projection.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        A worker initialized for causal patching.
+    """
     config = load_config(run_path)
     raw = {key: value for key, value in config.raw.items() if key != "_run_path"}
     raw["model"] = {**raw["model"], "device_map": {"": 0}}
@@ -99,6 +113,16 @@ def setup_worker(run_path: Path) -> CausalPatchingWorker:
 
 
 def log_path(run_path: Path, host: str, gpu: int) -> Path:
+    """Build the per-worker orchestration log path.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        host: Remote worker host name.
+        gpu: GPU index on the worker host.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     return run_path / "patching" / "orchestrator_logs" / f"{host}_{gpu}.log"
 
 
@@ -119,6 +143,15 @@ class CausalPatchingWorker:
     )
 
     def run_task(self, task: Task, _progress: Any) -> TaskResult:
+        """Execute one orchestration task and return its serialized result.
+
+        Args:
+            task: Serialized orchestration task.
+            _progress: Unused orchestration progress callback required by the job contract.
+
+        Returns:
+            A task result containing its stable key and serialized record.
+        """
         pair_index = int(task["pair_index"])
         continuation = int(task["continuation"])
         patch_cfg = self.config["patching"]

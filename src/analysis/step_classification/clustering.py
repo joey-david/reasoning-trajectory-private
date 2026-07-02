@@ -84,7 +84,16 @@ def assign_clusters(
     vectors: StepMatrices,
     model: ClusterModel | None,
 ) -> None:
-    """Assign fitted cluster IDs and distances to aligned step records."""
+    """Assign fitted cluster IDs and distances to aligned step records.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        vectors: Feature or activation vectors to process.
+        model: Loaded model used for inference or transformation.
+
+    Returns:
+        None.
+    """
     if model is None:
         return
     features = cluster_features(
@@ -107,7 +116,15 @@ def cluster_metadata(
     records: list[dict[str, Any]],
     model: ClusterModel | None,
 ) -> dict[str, Any]:
-    """Describe fitted feature dimensions and summarize assigned records."""
+    """Describe fitted feature dimensions and summarize assigned records.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        model: Loaded model used for inference or transformation.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     if model is None:
         return {"clusters": [], "feature_columns": []}
     return {
@@ -135,7 +152,18 @@ def cluster_features(
     direction_pca: PCA | None,
     nudge_pca: PCA | None,
 ) -> np.ndarray:
-    """Transform aligned latent and scalar inputs into cluster features."""
+    """Transform aligned latent and scalar inputs into cluster features.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        vectors: Feature or activation vectors to process.
+        mean_pca: Optional PCA fitted to step-mean vectors.
+        direction_pca: Optional PCA fitted to direction vectors.
+        nudge_pca: Optional PCA fitted to nudge vectors.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     scalars = np.asarray(
         [
             [
@@ -183,20 +211,42 @@ def fit_normalized_pca(
 
 
 def transform_normalized(x: np.ndarray, pca: PCA | None) -> np.ndarray:
-    """Normalize rows and apply an optional fitted PCA."""
+    """Normalize rows and apply an optional fitted PCA.
+
+    Args:
+        x: Input feature matrix.
+        pca: Fitted PCA transform, or ``None`` when no reduction is needed.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     if pca is None:
         return np.zeros((x.shape[0], 0), dtype=np.float32)
     return pca.transform(normalized_rows(x))
 
 
 def normalized_rows(x: np.ndarray) -> np.ndarray:
-    """Return row-wise L2-normalized vectors."""
+    """Return row-wise L2-normalized vectors.
+
+    Args:
+        x: Input feature matrix.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     norms = np.linalg.norm(x, axis=1, keepdims=True)
     return np.divide(x, np.where(norms == 0.0, 1.0, norms))
 
 
 def pca_components(pca: PCA | None) -> int:
-    """Return the fitted PCA width, or zero without a transform."""
+    """Return the fitted PCA width, or zero without a transform.
+
+    Args:
+        pca: Fitted PCA transform, or ``None`` when no reduction is needed.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     return int(pca.n_components_) if pca is not None else 0
 
 

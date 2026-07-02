@@ -24,7 +24,19 @@ def run_structural_contrast(
     epochs: int = 12,
     projection_dim: int = 128,
 ) -> Path:
-    """Run H4 from H2's verified update records and transition vectors."""
+    """Run H4 from H2's verified update records and transition vectors.
+
+    Args:
+        h2_dir: Directory containing H2 update-analysis artifacts.
+        layer: Model layer index.
+        max_updates: Maximum number of symbolic updates to retain.
+        max_pairs: Maximum number of pairs to retain.
+        epochs: Number of projection-training epochs.
+        projection_dim: Width of the learned projection space.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     records = load_samples((h2_dir / "updates.jsonl").resolve())
     with np.load(h2_dir / f"layer{layer}_update_vectors.npz") as data:
         vector_key = (
@@ -70,7 +82,27 @@ def fit_structural_projection(
     output_prefix: str = "",
     write_pair_manifests: bool = True,
 ) -> Path:
-    """Fit one controlled structural projection from aligned records and vectors."""
+    """Fit one controlled structural projection from aligned records and vectors.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        vectors: Feature or activation vectors to process.
+        out_dir: Directory in which to write the results.
+        projection_filename: Filename to use for the saved projection.
+        source: Description of the source activation space.
+        layer: Model layer index.
+        component: Activation component name.
+        update_vector: Rule used to aggregate each update interval into a vector.
+        max_updates: Maximum number of symbolic updates to retain.
+        max_pairs: Maximum number of pairs to retain.
+        epochs: Number of projection-training epochs.
+        projection_dim: Width of the learned projection space.
+        output_prefix: Prefix for report and artifact filenames.
+        write_pair_manifests: Whether to persist positive and negative pair records.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     selected = select_structural_updates(records, max_updates=max_updates)
     record_indices = np.asarray(
         [record["feature_row"] for record in selected], dtype=int
@@ -172,7 +204,15 @@ def select_structural_updates(
     *,
     max_updates: int,
 ) -> list[dict[str, Any]]:
-    """Retain common atomic arithmetic operations and cap classes evenly."""
+    """Retain common atomic arithmetic operations and cap classes evenly.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        max_updates: Maximum number of symbolic updates to retain.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     allowed = {"ADD", "SUBTRACT", "MULTIPLY", "DIVIDE"}
     by_signature: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for record in records:
@@ -201,7 +241,17 @@ def mine_controlled_pairs(
     max_pairs: int,
     seed: int,
 ) -> list[tuple[int, int, int]]:
-    """Mine positive and hard-negative pairs without quadratic enumeration."""
+    """Mine positive and hard-negative pairs without quadratic enumeration.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        eligible: Indices of records eligible for controlled pair mining.
+        max_pairs: Maximum number of pairs to retain.
+        seed: Random seed for reproducible sampling or generation.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     rng = np.random.default_rng(seed)
     indices = [int(index) for index in eligible]
     by_signature: defaultdict[str, list[int]] = defaultdict(list)
@@ -258,7 +308,17 @@ def fit_contrastive_projection(
     projection_dim: int,
     epochs: int,
 ) -> tuple[torch.Tensor, list[float]]:
-    """Fit a bias-free linear projection with cosine contrastive loss."""
+    """Fit a bias-free linear projection with cosine contrastive loss.
+
+    Args:
+        vectors: Feature or activation vectors to process.
+        pairs: Matched treatment/control or process-isomer pairs.
+        projection_dim: Width of the learned projection space.
+        epochs: Number of projection-training epochs.
+
+    Returns:
+        The computed aligned values described above.
+    """
     torch.manual_seed(42)
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     x = torch.from_numpy(vectors).to(device)
@@ -288,7 +348,15 @@ def fit_contrastive_projection(
 
 
 def project_vectors(vectors: np.ndarray, weight: torch.Tensor) -> np.ndarray:
-    """Project and row-normalize update vectors."""
+    """Project and row-normalize update vectors.
+
+    Args:
+        vectors: Feature or activation vectors to process.
+        weight: Learned linear projection matrix.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     projected = vectors @ weight.numpy().T
     norms = np.linalg.norm(projected, axis=1, keepdims=True)
     return projected / np.maximum(norms, 1e-8)
@@ -298,7 +366,15 @@ def pair_scores(
     vectors: np.ndarray,
     pairs: list[tuple[int, int, int]],
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return cosine scores and labels for indexed vector pairs."""
+    """Return cosine scores and labels for indexed vector pairs.
+
+    Args:
+        vectors: Feature or activation vectors to process.
+        pairs: Matched treatment/control or process-isomer pairs.
+
+    Returns:
+        The computed aligned values described above.
+    """
     normalized = vectors / np.maximum(
         np.linalg.norm(vectors, axis=1, keepdims=True), 1e-8
     )
@@ -314,7 +390,15 @@ def pair_records(
     pairs: list[tuple[int, int, int]],
     records: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Convert indexed pairs into auditable JSON records."""
+    """Convert indexed pairs into auditable JSON records.
+
+    Args:
+        pairs: Matched treatment/control or process-isomer pairs.
+        records: Aligned records to analyze or annotate.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     return [
         {
             "left": int(left),
@@ -334,7 +418,14 @@ def pair_records(
 
 
 def pair_summary(pairs: list[tuple[int, int, int]]) -> dict[str, int]:
-    """Count total, positive, and negative pairs."""
+    """Count total, positive, and negative pairs.
+
+    Args:
+        pairs: Matched treatment/control or process-isomer pairs.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     counts = Counter(label for _, _, label in pairs)
     return {
         "total": len(pairs),
@@ -344,6 +435,14 @@ def pair_summary(pairs: list[tuple[int, int, int]]) -> dict[str, int]:
 
 
 def lexical_jaccard(left: set[str], right: set[str]) -> float:
-    """Return Jaccard overlap between two lexical-item sets."""
+    """Return Jaccard overlap between two lexical-item sets.
+
+    Args:
+        left: Left operand or comparison input.
+        right: Right operand or comparison input.
+
+    Returns:
+        The computed scalar metric.
+    """
     union = left | right
     return len(left & right) / len(union) if union else 0.0

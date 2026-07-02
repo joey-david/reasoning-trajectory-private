@@ -11,6 +11,14 @@ from src.experiments.boundary_comparison import run_boundary_comparison
 
 
 def main() -> int:
+    """Run the H1 text-versus-latent boundary comparison.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Run H1 boundary comparison.")
     parser.add_argument("run_paths", nargs="+", type=Path)
     parser.add_argument("--per-sample", type=int, default=5)

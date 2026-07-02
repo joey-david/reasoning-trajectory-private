@@ -110,7 +110,16 @@ def project_all_with_fitted_pca(
     *,
     chunk_size: int = 4096,
 ) -> np.ndarray:
-    """Fit a shared PCA basis on a bounded sample, then transform every point."""
+    """Fit a shared PCA basis on a bounded sample, then transform every point.
+
+    Args:
+        items: Trajectory items whose point arrays need projection.
+        fit_x: Bounded activation sample used to fit PCA.
+        chunk_size: Maximum number of rows transformed at once.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     pca = PCA(n_components=3).fit(fit_x)
     chunks = (
         np.stack([item[0] for item in items[start : start + chunk_size]])
@@ -182,7 +191,16 @@ def token_span(
     trajectory_id: int,
     token_idx: int,
 ) -> TokenSpan:
-    """Return a safely bounded character span for one plotted token."""
+    """Return a safely bounded character span for one plotted token.
+
+    Args:
+        token_spans: Decoded character spans aligned with generated tokens.
+        trajectory_id: Trajectory owning the requested token.
+        token_idx: Zero-based token index within the trajectory.
+
+    Returns:
+        The requested token span, clamped to available data.
+    """
     if token_spans is None or not 0 <= trajectory_id < len(token_spans):
         return None
     spans = token_spans[trajectory_id]

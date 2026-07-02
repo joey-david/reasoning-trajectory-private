@@ -11,6 +11,14 @@ from src.experiments.thought_units import run_prompt_transfer, run_thought_units
 
 
 def main() -> int:
+    """Run sentence-lattice objective-relative segmentation.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(
         description="Run sentence-lattice objective-relative segmentation."
     )

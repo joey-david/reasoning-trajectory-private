@@ -29,6 +29,7 @@ def save_generation_output(
         hidden_states: Optional ``[tokens, layers, hidden]`` tensor or array.
         storage_dtype: Hidden-state encoding, such as ``float16`` or
             ``int8_scaled``.
+        component_states: Optional named attention or MLP activation tensors.
 
     Returns:
         The same output object, updated with its hidden-state path when saved.
@@ -87,6 +88,7 @@ def generation_metadata(
     Args:
         output: Generation providing model, layer, and convention metadata.
         storage_dtype: Encoding used for persisted activations.
+        components: Optional activation component names stored with the run.
 
     Returns:
         JSON-compatible schema and activation metadata.
@@ -160,6 +162,8 @@ def save_hidden_states_npz(
         hidden_states: Tensor or array shaped ``[tokens, layers, hidden]``.
         layer_indices: Decoder-layer IDs corresponding to the layer axis.
         storage_dtype: ``float16``, ``float32``, or symmetric ``int8_scaled``.
+        component_states: Optional named component tensors stored beside the
+            residual states.
 
     Returns:
         None.
@@ -211,7 +215,15 @@ def load_component_states_npz(
     path: str | Path,
     component: str,
 ) -> tuple[np.ndarray, list[int]]:
-    """Load and dequantize one captured decoder component."""
+    """Load and dequantize one captured decoder component.
+
+    Args:
+        path: Filesystem path to read from or write to.
+        component: Activation component name.
+
+    Returns:
+        The computed aligned values described above.
+    """
     prefix = f"component_{component}"
     with np.load(path) as data:
         layer_indices = data["layer_indices"].astype(int).tolist()
@@ -232,7 +244,17 @@ def store_array(
     values: np.ndarray,
     storage_dtype: str,
 ) -> None:
-    """Encode one activation tensor under a stable NPZ key prefix."""
+    """Encode one activation tensor under a stable NPZ key prefix.
+
+    Args:
+        arrays: Mutable artifact array mapping.
+        name: Base key under which to store the array and any scale.
+        values: Values to summarize or transform.
+        storage_dtype: NumPy dtype used when persisting activations.
+
+    Returns:
+        None.
+    """
     if storage_dtype == "float16":
         arrays[name] = values.astype(np.float16)
     elif storage_dtype == "float32":

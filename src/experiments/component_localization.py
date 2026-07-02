@@ -40,7 +40,15 @@ def run_component_localization(
     replay_run: Path,
     h2_dir: Path,
 ) -> Path:
-    """Integrate component dynamics across each verified symbolic interval."""
+    """Integrate component dynamics across each verified symbolic interval.
+
+    Args:
+        replay_run: Run directory containing teacher-forced replay artifacts.
+        h2_dir: Directory containing H2 update-analysis artifacts.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     updates = load_samples((h2_dir / "updates.jsonl").resolve())
     by_trace: defaultdict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
     for update in updates:
@@ -74,6 +82,8 @@ def run_component_localization(
             for layer_col, layer in enumerate(layers):
                 component_states = states[:, layer_col].astype(np.float32)
                 controls_by_duration = {}
+                # Reuse same-duration null windows within a trace/component/layer
+                # so update intervals are compared against an identical baseline.
                 for update, (phase_start, phase_end) in zip(
                     trace_updates, phase_bounds
                 ):
@@ -182,6 +192,15 @@ def load_component(
     artifact: Path,
     component: str,
 ) -> tuple[np.ndarray, list[int]] | None:
+    """Load residual or component activations from an artifact.
+
+    Args:
+        artifact: NPZ activation artifact to load.
+        component: Activation component name.
+
+    Returns:
+        The computed aligned values described above.
+    """
     try:
         if component == "residual":
             return load_hidden_states_npz(artifact)
@@ -195,6 +214,16 @@ def summarize_component(
     layer: int,
     values: dict[str, list[float]],
 ) -> dict[str, Any]:
+    """Aggregate interval-localization metrics for one component layer.
+
+    Args:
+        component: Activation component name.
+        layer: Model layer index.
+        values: Values to summarize or transform.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     path_percentile = mean_or_none(values.get("path_length_control_percentile", []))
     cosine_percentile = mean_or_none(
         values.get("cumulative_state_cosine_distance_control_percentile", [])
@@ -240,6 +269,14 @@ def summarize_component(
 
 
 def component_interpretation(results: list[dict[str, Any]]) -> str:
+    """Classify the strongest component-localization pattern.
+
+    Args:
+        results: Ranked component-layer summaries.
+
+    Returns:
+        The resulting text or classification label.
+    """
     if not results:
         return "insufficient_data"
     strongest = results[0]
@@ -264,7 +301,17 @@ def grouped_component_metrics(
     layer: int,
     draws: int = 1000,
 ) -> dict[str, dict[str, Any]]:
-    """Balance component metrics over questions and bootstrap their means."""
+    """Balance component metrics over questions and bootstrap their means.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        component: Activation component name.
+        layer: Model layer index.
+        draws: Number of bootstrap resamples.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     fields = (
         "integrated_vector_norm_control_percentile",
         "path_length_control_percentile",

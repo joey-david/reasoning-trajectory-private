@@ -15,6 +15,14 @@ from src.analysis.dataset_screening import (
 
 
 def main() -> int:
+    """Update the screening CSV from completed run summaries.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(
         description="Update the model/dataset screening CSV from completed runs."
     )

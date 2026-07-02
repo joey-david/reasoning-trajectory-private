@@ -11,6 +11,14 @@ from src.experiments.correctness_prediction import run_correctness_prediction
 
 
 def main() -> int:
+    """Run grouped H5 correctness-prediction probes.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Run H5 grouped correctness probes.")
     parser.add_argument("run_path", type=Path)
     parser.add_argument("--per-sample", type=int, default=10)

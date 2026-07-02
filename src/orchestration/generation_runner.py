@@ -10,12 +10,28 @@ from src.datasets.loaders import load_run_samples
 
 
 def generate_runs(run_paths: list[Path]) -> None:
+    """Generate each configured run sequentially.
+
+    Args:
+        run_paths: Run directories to process.
+
+    Returns:
+        None.
+    """
     for index, run_path in enumerate(run_paths, start=1):
         print(f"[{index}/{len(run_paths)}] generating {run_path}", flush=True)
         generate_one_run(run_path)
 
 
 def generate_one_run(run_path: Path) -> None:
+    """Generate one run locally or across configured replica devices.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        None.
+    """
     config = load_config(run_path)
     samples = load_run_samples(run_path, config["dataset"])
     devices = replica_devices(config["model"].get("device_map"))
@@ -29,6 +45,14 @@ def generate_one_run(run_path: Path) -> None:
 
 
 def replica_devices(device_map: Any) -> list[int]:
+    """Parse explicit replica GPU indices from a device map.
+
+    Args:
+        device_map: Model device placement configuration.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     if not isinstance(device_map, dict):
         return []
     placement = device_map.get("")
@@ -49,6 +73,17 @@ def generate_parallel(
     samples: list[dict[str, Any]],
     devices: list[int],
 ) -> None:
+    """Split samples across one generation process per GPU.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        config: Run or operation configuration.
+        samples: Normalized samples assigned to generation.
+        devices: CUDA device indices receiving one shard each.
+
+    Returns:
+        None.
+    """
     ranges = contiguous_ranges(len(samples), len(devices))
     raw_config = {key: value for key, value in config.items() if key != "_run_path"}
     with ProcessPoolExecutor(
@@ -78,6 +113,18 @@ def generate_shard(
     sample_index_offset: int,
     device: int,
 ) -> None:
+    """Generate one contiguous sample shard on a single GPU.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        config: Run or operation configuration.
+        samples: Normalized samples assigned to generation.
+        sample_index_offset: Global index of the shard first sample.
+        device: CUDA device index assigned to the shard.
+
+    Returns:
+        None.
+    """
     from src.runtime.config import RunConfig
     from src.models.generation_pipeline import generate_run
 
@@ -97,6 +144,15 @@ def generate_shard(
 
 
 def contiguous_ranges(total: int, parts: int) -> list[tuple[int, int]]:
+    """Partition a sequence into balanced contiguous ranges.
+
+    Args:
+        total: Total number of items to partition.
+        parts: Number of contiguous partitions.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     return [
         (total * rank // parts, total * (rank + 1) // parts)
         for rank in range(parts)

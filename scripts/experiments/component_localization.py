@@ -11,6 +11,14 @@ from src.experiments.component_localization import run_component_localization
 
 
 def main() -> int:
+    """Analyze H2 localization across captured components.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Analyze H2 component replay.")
     parser.add_argument("replay_run", type=Path)
     parser.add_argument("h2_dir", type=Path)

@@ -51,13 +51,24 @@ def run_boundary_comparison(
     per_sample: int = 5,
     window: int = 2,
 ) -> Path:
-    """Run H1 after the matched freeform and prompted runs are available."""
+    """Run H1 after the matched freeform and prompted runs are available.
+
+    Args:
+        run_paths: Run directories to process.
+        per_sample: Maximum number of trajectories retained per sample.
+        window: Token tolerance or neighborhood width.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     if len(run_paths) < 2:
         raise ValueError("H1 requires one freeform and at least one prompted run")
     condition_rows: dict[
         str, tuple[Path, list[dict[str, Any]], list[list[TokenSpan]]]
     ] = {}
     matched_ids: set[str] | None = None
+    # Build every condition independently, then restrict freeform to questions
+    # represented in the prompted runs so condition effects remain matched.
     for index, run_path in enumerate(run_paths):
         config = load_config(run_path)
         condition = str(
@@ -129,6 +140,8 @@ def run_boundary_comparison(
                         for name, values in signals.items()
                     },
                 }
+                # Every candidate family is scored against the same symbolic
+                # endpoints, magnitude spikes, and segment-quality sample.
                 for boundary_name, (indices, signal_values) in candidates.items():
                     metrics = boundary_metrics(
                         indices=np.asarray(indices, dtype=np.int32),
@@ -205,7 +218,16 @@ def text_boundary_indices(
     token_spans: list[TokenSpan],
     token_count: int,
 ) -> dict[str, np.ndarray]:
-    """Return starts of numbered steps and ends of sentences/paragraphs."""
+    """Return starts of numbered steps and ends of sentences/paragraphs.
+
+    Args:
+        text: Generated text to inspect.
+        token_spans: Decoded character spans aligned with generated tokens.
+        token_count: Number of generated tokens.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     char_boundaries = {
         "numbered": [
             match.start() for match in re.finditer(r"(?m)^\s*Step\s+\d+\s*:", text)
@@ -243,7 +265,21 @@ def boundary_metrics(
     quality_sample: tuple[np.ndarray, np.ndarray, np.ndarray],
     window: int,
 ) -> dict[str, float]:
-    """Score one boundary set against symbolic, latent, and cluster criteria."""
+    """Score one boundary set against symbolic, latent, and cluster criteria.
+
+    Args:
+        indices: Token or record indices to process.
+        symbolic: Symbolic update completion indices.
+        spikes: Detected latent spike indices.
+        magnitudes: Per-token activation-change magnitudes.
+        signal_values: Named per-token latent signal arrays.
+        states: Token-aligned hidden-state vectors.
+        quality_sample: Subsampled states used for clustering diagnostics.
+        window: Token tolerance or neighborhood width.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     silhouette, calinski_harabasz = segment_cluster_quality(indices, quality_sample)
     return {
         "symbolic_recall": overlap_fraction(symbolic, indices, window),
@@ -269,7 +305,16 @@ def latent_boundary_signals(
     states: np.ndarray,
     layer_col: int,
 ) -> dict[str, np.ndarray]:
-    """Compute all H1 latent and token-diagnostic boundary scores."""
+    """Compute all H1 latent and token-diagnostic boundary scores.
+
+    Args:
+        row: Generation or analysis record to process.
+        states: Token-aligned hidden-state vectors.
+        layer_col: Column selecting the layer-specific activation artifact.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     deltas = latent_deltas(states)
     magnitude = np.linalg.norm(deltas, axis=1)
     curvature = np.zeros(len(states), dtype=np.float32)
@@ -301,7 +346,16 @@ def latent_boundary_signals(
 
 
 def overlap_fraction(source: np.ndarray, target: np.ndarray, window: int) -> float:
-    """Return the fraction of source indices near any target index."""
+    """Return the fraction of source indices near any target index.
+
+    Args:
+        source: Boundary indices whose matches are counted.
+        target: Target value or index.
+        window: Token tolerance or neighborhood width.
+
+    Returns:
+        The computed scalar metric.
+    """
     if not len(source):
         return float("nan")
     if not len(target):
@@ -312,7 +366,15 @@ def overlap_fraction(source: np.ndarray, target: np.ndarray, window: int) -> flo
 
 
 def segment_separation(states: np.ndarray, boundaries: np.ndarray) -> float:
-    """Compare adjacent segment-mean distance with within-segment variance."""
+    """Compare adjacent segment-mean distance with within-segment variance.
+
+    Args:
+        states: Token-aligned hidden-state vectors.
+        boundaries: Sentence or token boundary indices.
+
+    Returns:
+        The computed scalar metric.
+    """
     cuts = [
         0,
         *[int(index) for index in boundaries if 0 < index < len(states)],
@@ -341,7 +403,15 @@ def segment_quality_sample(
     *,
     max_tokens: int = 120,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Precompute one bounded token sample and its pairwise distances."""
+    """Precompute one bounded token sample and its pairwise distances.
+
+    Args:
+        states: Token-aligned hidden-state vectors.
+        max_tokens: Maximum number of tokens to capture or generate.
+
+    Returns:
+        The computed aligned values described above.
+    """
     positions = np.linspace(
         0,
         len(states) - 1,
@@ -357,7 +427,15 @@ def segment_cluster_quality(
     boundaries: np.ndarray,
     quality_sample: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> tuple[float, float]:
-    """Measure how well boundaries partition a bounded sample of latent states."""
+    """Measure how well boundaries partition a bounded sample of latent states.
+
+    Args:
+        boundaries: Sentence or token boundary indices.
+        quality_sample: Subsampled states used for clustering diagnostics.
+
+    Returns:
+        The computed aligned values described above.
+    """
     positions, sampled, distances = quality_sample
     labels = np.searchsorted(np.sort(boundaries), positions, side="right")
     unique = np.unique(labels)
@@ -370,7 +448,15 @@ def segment_cluster_quality(
 
 
 def format_compliance(text: str, condition: str) -> float:
-    """Measure compliance with the requested reasoning format."""
+    """Measure compliance with the requested reasoning format.
+
+    Args:
+        text: Generated text to inspect.
+        condition: Intervention or prompt condition name.
+
+    Returns:
+        The computed scalar metric.
+    """
     if condition == "numbered":
         return float(bool(re.search(r"(?m)^\s*Step\s+1\s*:", text)))
     paragraphs = paragraph_spans(text)
@@ -391,7 +477,14 @@ def format_compliance(text: str, condition: str) -> float:
 
 
 def mean_finite(values: list[float]) -> float:
-    """Return the mean of finite values or NaN when none exist."""
+    """Return the mean of finite values or NaN when none exist.
+
+    Args:
+        values: Values to summarize or transform.
+
+    Returns:
+        The computed scalar metric.
+    """
     finite = np.asarray([value for value in values if np.isfinite(value)])
     return float(np.mean(finite)) if len(finite) else float("nan")
 
@@ -400,7 +493,15 @@ def summarize_condition(
     run_path: Path,
     rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Summarize completion, accuracy, and length for one H1 condition."""
+    """Summarize completion, accuracy, and length for one H1 condition.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        rows: Generation or analysis records to process.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     lengths = np.asarray(
         [len(row.get("generated_token_ids", [])) for row in rows],
         dtype=np.int32,
@@ -421,7 +522,14 @@ def summarize_condition(
 
 
 def expected_trajectories(run_path: Path) -> int | None:
-    """Infer the configured trajectory count when the run schema permits it."""
+    """Infer the configured trajectory count when the run schema permits it.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     config = load_config(run_path)
     if "replay" in config:
         maximum = int(config["replay"].get("max_trajectories", 0))
@@ -439,7 +547,14 @@ def matched_behavior_effects(
         tuple[Path, list[dict[str, Any]], list[list[TokenSpan]]],
     ],
 ) -> list[dict[str, Any]]:
-    """Compare prompted conditions with freeform using matched question/seed rows."""
+    """Compare prompted conditions with freeform using matched question/seed rows.
+
+    Args:
+        condition_rows: Rows grouped by prompting condition.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     if "freeform" not in condition_rows:
         return []
     baseline = {
@@ -503,7 +618,15 @@ def grouped_bootstrap_interval(
     *,
     draws: int = 1000,
 ) -> list[float] | None:
-    """Bootstrap a 95% interval over already grouped values."""
+    """Bootstrap a 95% interval over already grouped values.
+
+    Args:
+        values: Values to summarize or transform.
+        draws: Number of bootstrap resamples.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     if not len(values):
         return None
     rng = np.random.default_rng(42)
@@ -520,7 +643,14 @@ def matched_interval_effects(
         tuple[Path, list[dict[str, Any]], list[list[TokenSpan]]],
     ],
 ) -> list[dict[str, Any]]:
-    """Compare question-balanced H2 interval metrics with matched freeform rows."""
+    """Compare question-balanced H2 interval metrics with matched freeform rows.
+
+    Args:
+        condition_rows: Rows grouped by prompting condition.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     if "freeform" not in condition_rows:
         return []
     baseline = load_interval_trace_metrics(condition_rows["freeform"][0])
@@ -559,7 +689,14 @@ def matched_interval_effects(
 def load_interval_trace_metrics(
     run_path: Path,
 ) -> dict[tuple[str, int], dict[str, float]]:
-    """Load mean final-layer interval metrics for each trace."""
+    """Load mean final-layer interval metrics for each trace.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     path = (
         run_path / "analysis" / "experiments" / "h2_localized_updates" / "updates.jsonl"
     )

@@ -14,6 +14,14 @@ from src.experiments.causal_patching import (
 
 
 def main() -> int:
+    """Run or validate H3 causal patching.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Run H3 causal patching.")
     parser.add_argument("run_path", type=Path)
     parser.add_argument(

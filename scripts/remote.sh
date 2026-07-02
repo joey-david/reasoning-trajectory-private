@@ -7,12 +7,16 @@ shift
 host="${SSH_SERVER:-lamgate}"
 remote_root="${REMOTE_REPO_ROOT:-/home/lamsade/jdavid/reasoning}"
 
+# Inputs: none; scans the local runs directory.
+# Returns: sorted run paths on standard output and find's pipeline status.
 discover_runs() {
   find runs -mindepth 3 -name config.yaml -print |
     sed 's#/config.yaml$##' |
     sort
 }
 
+# Inputs: one run path relative to the repository root.
+# Returns: rsync's status, or success after reporting a missing remote run.
 pull_run() {
   local run_path="$1"
   if ssh "$host" "test -d '$remote_root/$run_path'"; then

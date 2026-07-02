@@ -15,6 +15,14 @@ from src.datasets.loaders import load_run_samples
 
 
 def main() -> int:
+    """Export low-pass-rate samples from a completed run.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(
         description="Export mixed-success samples below a pass-rate threshold."
     )

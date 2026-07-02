@@ -48,6 +48,14 @@ class SymbolicUpdate:
     lexical_items: tuple[str, ...]
 
     def to_record(self) -> dict[str, Any]:
+        """Serialize the dataclass as a JSON-compatible record.
+
+        Args:
+            None.
+
+        Returns:
+            The resulting keyed records or metrics.
+        """
         return {
             "char_start": self.char_start,
             "char_end": self.char_end,
@@ -68,9 +76,20 @@ def extract_symbolic_updates(
     *,
     token_count: int | None = None,
 ) -> list[SymbolicUpdate]:
-    """Extract valid arithmetic relations, bindings, and terminal answers."""
+    """Extract valid arithmetic relations, bindings, and terminal answers.
+
+    Args:
+        text: Generated text to inspect.
+        token_spans: Decoded character spans aligned with generated tokens.
+        token_count: Number of generated tokens.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     candidates: list[tuple[int, int, str, str, float, str, tuple[str, ...]]] = []
 
+    # Equations enter the graph only when the restricted evaluator verifies the
+    # textual right-hand value; regex shape alone is not symbolic evidence.
     for match in _EQUATION_RE.finditer(text):
         expression = normalize_expression(match.group("lhs"))
         value = parse_number(match.group("rhs"))
@@ -126,6 +145,8 @@ def extract_symbolic_updates(
     updates: list[SymbolicUpdate] = []
     seen_relations: set[tuple[str, float]] = set()
     graph_entries: list[str] = []
+    # Completion order defines graph state. Repeated relations and explicit
+    # checking language are VERIFY events and therefore do not mutate it.
     for start, end, operator, expression, value, signature, lexical in sorted(
         candidates, key=lambda item: (item[1], item[0])
     ):
@@ -163,7 +184,14 @@ def extract_symbolic_updates(
 
 
 def safe_arithmetic_eval(expression: str) -> float | None:
-    """Evaluate a numeric arithmetic expression through a restricted AST."""
+    """Evaluate a numeric arithmetic expression through a restricted AST.
+
+    Args:
+        expression: Arithmetic expression to parse or normalize.
+
+    Returns:
+        The computed scalar metric, or ``None`` when unavailable.
+    """
     try:
         tree = ast.parse(expression, mode="eval")
         value = _eval_node(tree.body)
@@ -173,6 +201,14 @@ def safe_arithmetic_eval(expression: str) -> float | None:
 
 
 def _eval_node(node: ast.AST) -> float:
+    """Evaluate a restricted arithmetic AST recursively.
+
+    Args:
+        node: Arithmetic AST node to evaluate.
+
+    Returns:
+        The computed scalar metric.
+    """
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return float(node.value)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
@@ -195,10 +231,26 @@ def _eval_node(node: ast.AST) -> float:
 
 
 def normalize_expression(expression: str) -> str:
+    """Normalize common arithmetic glyphs and separators.
+
+    Args:
+        expression: Arithmetic expression to parse or normalize.
+
+    Returns:
+        The resulting text or classification label.
+    """
     return expression.replace(",", "").replace("×", "*").replace("÷", "/").strip()
 
 
 def canonical_expression(expression: str) -> str:
+    """Convert an arithmetic expression to a canonical AST string.
+
+    Args:
+        expression: Arithmetic expression to parse or normalize.
+
+    Returns:
+        The resulting text or classification label.
+    """
     normalized = normalize_expression(expression)
     try:
         return ast.dump(
@@ -209,6 +261,14 @@ def canonical_expression(expression: str) -> str:
 
 
 def operation_signature(expression: str) -> str:
+    """Describe the arithmetic operators used by an expression.
+
+    Args:
+        expression: Arithmetic expression to parse or normalize.
+
+    Returns:
+        The resulting text or classification label.
+    """
     try:
         tree = ast.parse(normalize_expression(expression), mode="eval")
     except SyntaxError:
@@ -228,7 +288,16 @@ def operation_signature(expression: str) -> str:
 
 
 def symbolic_relation_atom(operator: str, expression: str, value: float) -> str:
-    """Canonicalize a graph relation while ignoring superficial formatting."""
+    """Canonicalize a graph relation while ignoring superficial formatting.
+
+    Args:
+        operator: Symbolic update taxonomy label.
+        expression: Arithmetic expression to parse or normalize.
+        value: Value to rank, parse, or transform.
+
+    Returns:
+        The resulting text or classification label.
+    """
     if operator in {"BIND", "EXTRACT"}:
         return f"{operator}:{round(value, 8):g}"
     lhs = expression.rsplit("=", 1)[0]
@@ -236,7 +305,14 @@ def symbolic_relation_atom(operator: str, expression: str, value: float) -> str:
 
 
 def lexical_items(text: str) -> tuple[str, ...]:
-    """Return literals and variable names, excluding the shared operator syntax."""
+    """Return literals and variable names, excluding the shared operator syntax.
+
+    Args:
+        text: Generated text to inspect.
+
+    Returns:
+        The computed aligned values described above.
+    """
     words = {word.lower() for word in _WORD_RE.findall(text)}
     numbers = {number.replace(",", "") for number in _NUMBER_RE.findall(text)}
     return tuple(sorted(words | numbers))
@@ -249,6 +325,18 @@ def aligned_token_range(
     text_length: int,
     count: int | None,
 ) -> tuple[int, int] | None:
+    """Map a character interval to tokens with a proportional fallback.
+
+    Args:
+        spans: Token spans used for character alignment.
+        char_start: Inclusive character offset.
+        char_end: Exclusive character offset.
+        text_length: Character length of the decoded generation.
+        count: Optional number of generated tokens.
+
+    Returns:
+        The computed aligned values described above.
+    """
     exact = token_range_for_chars(spans, char_start, char_end)
     if exact is not None:
         return exact
@@ -260,7 +348,14 @@ def aligned_token_range(
 
 
 def deduplicate_updates(updates: list[SymbolicUpdate]) -> list[SymbolicUpdate]:
-    """Prefer terminal-answer labels when multiple patterns cover one token."""
+    """Prefer terminal-answer labels when multiple patterns cover one token.
+
+    Args:
+        updates: Symbolic solution-object updates.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     by_endpoint: dict[tuple[int, str, float], SymbolicUpdate] = {}
     priority = {"OPERATE": 0, "BIND": 1, "VERIFY": 2, "EXTRACT": 3}
     for update in updates:
@@ -272,4 +367,12 @@ def deduplicate_updates(updates: list[SymbolicUpdate]) -> list[SymbolicUpdate]:
 
 
 def parse_number(value: str) -> float:
+    """Parse a comma-separated numeric literal.
+
+    Args:
+        value: Value to rank, parse, or transform.
+
+    Returns:
+        The computed scalar metric.
+    """
     return float(value.replace(",", ""))

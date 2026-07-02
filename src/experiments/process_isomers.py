@@ -33,7 +33,27 @@ def write_process_isomer_pairs(
     max_target_remaining_tokens: int | None = None,
     require_target_correct: bool = False,
 ) -> Path:
-    """Write exact-state pairs whose ordered symbolic derivations differ."""
+    """Write exact-state pairs whose ordered symbolic derivations differ.
+
+    Args:
+        h2_dir: Directory containing H2 update-analysis artifacts.
+        output_path: Destination path for the generated artifact.
+        activation_run: Run directory containing captured activations.
+        generation_run: Run directory containing generated traces.
+        audit_path: Optional destination for pair-mining audit records.
+        per_sample: Maximum number of trajectories retained per sample.
+        max_pairs: Maximum number of pairs to retain.
+        min_pairs: Minimum acceptable number of mined pairs.
+        min_path_edits: Minimum symbolic-history edit distance between paired traces.
+        min_normalized_path_distance: Minimum normalized symbolic-history distance.
+        max_pairs_per_question: Maximum pairs retained for one question.
+        max_trajectory_reuse: Maximum times one trajectory may appear in pairs.
+        max_target_remaining_tokens: Maximum continuation length after a target patch point.
+        require_target_correct: Whether target traces must end with a correct answer.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     updates = load_unique_updates(h2_dir)
     available = available_trace_lengths(activation_run)
     generation_rows = generation_trace_metadata(generation_run)
@@ -59,6 +79,8 @@ def write_process_isomer_pairs(
 
     by_state: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     eligible_updates = 0
+    # Histories retain only graph-changing transitions. This makes path
+    # distance reflect symbolic derivations rather than repeated prose.
     for trace_key, trace_updates in by_trajectory.items():
         trace_updates.sort(key=lambda update: int(update["update_index"]))
         history: list[str] = []
@@ -90,6 +112,8 @@ def write_process_isomer_pairs(
             eligible_updates += 1
 
     candidates = []
+    # Exact graph signatures define state equivalence; history distance then
+    # enforces that equivalent states were reached by genuinely different paths.
     for state_updates in by_state.values():
         for left, right in combinations(state_updates, 2):
             left_key = (str(left["sample_id"]), int(left["seed"]))
@@ -194,6 +218,8 @@ def write_process_isomer_pairs(
     trajectory_reuse: Counter[tuple[str, int]] = Counter()
     question_pairs: Counter[str] = Counter()
     pairs: list[dict[str, Any]] = []
+    # Greedy caps spread the strongest candidates across questions and traces,
+    # avoiding a manifest dominated by one unusually prolific trajectory.
     for candidate in candidates:
         donor = candidate["donor"]
         target = candidate["target"]
@@ -330,7 +356,15 @@ def deduplicate_pair_candidates(
     candidates: list[dict[str, Any]],
     rejection_counts: Counter[str],
 ) -> list[dict[str, Any]]:
-    """Collapse repeated visits with the same trace histories and graph state."""
+    """Collapse repeated visits with the same trace histories and graph state.
+
+    Args:
+        candidates: Ranked candidate process-isomer pairs.
+        rejection_counts: Mutable counters for candidate rejection reasons.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     unique_candidates: dict[tuple[Any, ...], dict[str, Any]] = {}
     for candidate in candidates:
         donor = candidate["donor"]
@@ -367,7 +401,14 @@ def deduplicate_pair_candidates(
 
 
 def load_unique_updates(h2_dir: Path) -> list[dict[str, Any]]:
-    """Deduplicate update rows if an H2 artifact contains multiple layers."""
+    """Deduplicate update rows if an H2 artifact contains multiple layers.
+
+    Args:
+        h2_dir: Directory containing H2 update-analysis artifacts.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     unique = {}
     for update in load_samples((h2_dir / "updates.jsonl").resolve()):
         key = (
@@ -382,6 +423,14 @@ def load_unique_updates(h2_dir: Path) -> list[dict[str, Any]]:
 def available_trace_lengths(
     activation_run: Path | None,
 ) -> dict[tuple[str, int], int] | None:
+    """Index captured trace lengths by sample and seed.
+
+    Args:
+        activation_run: Run directory containing captured activations.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     if activation_run is None:
         return None
     return {
@@ -394,6 +443,14 @@ def available_trace_lengths(
 def generation_trace_metadata(
     generation_run: Path | None,
 ) -> dict[tuple[str, int], dict[str, Any]] | None:
+    """Index generation length and answer metadata by sample and seed.
+
+    Args:
+        generation_run: Run directory containing generated traces.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     if generation_run is None:
         return None
     return {
@@ -407,7 +464,15 @@ def generation_trace_metadata(
 
 
 def structural_step_signature(update: dict[str, Any], previous_graph: str) -> str:
-    """Describe one graph transition without using surface phrasing."""
+    """Describe one graph transition without using surface phrasing.
+
+    Args:
+        update: Symbolic update record to transform.
+        previous_graph: Canonical graph state before the update.
+
+    Returns:
+        The resulting text or classification label.
+    """
     previous = set(filter(None, previous_graph.split("|")))
     current = set(filter(None, str(update["graph_signature"]).split("|")))
     added = sorted(current - previous)
@@ -425,7 +490,15 @@ def structural_step_signature(update: dict[str, Any], previous_graph: str) -> st
 
 
 def sequence_edit_distance(left: tuple[str, ...], right: tuple[str, ...]) -> int:
-    """Return Levenshtein distance between two ordered symbolic histories."""
+    """Return Levenshtein distance between two ordered symbolic histories.
+
+    Args:
+        left: Left operand or comparison input.
+        right: Right operand or comparison input.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     previous = list(range(len(right) + 1))
     for left_index, left_item in enumerate(left, start=1):
         current = [left_index]
@@ -442,11 +515,27 @@ def sequence_edit_distance(left: tuple[str, ...], right: tuple[str, ...]) -> int
 
 
 def history_hash(history: list[str]) -> str:
+    """Create a stable short digest for a symbolic update history.
+
+    Args:
+        history: Ordered symbolic-history signatures.
+
+    Returns:
+        The resulting text or classification label.
+    """
     payload = "\n".join(history).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
 def patch_point(update: dict[str, Any]) -> dict[str, Any]:
+    """Extract the fields needed to patch at a symbolic update.
+
+    Args:
+        update: Symbolic update record to transform.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     return {
         "sample_id": update["sample_id"],
         "seed": update["seed"],

@@ -18,7 +18,15 @@ def build_token_spans(
     run_path: Path,
     rows: list[dict[str, Any]],
 ) -> list[list[TokenSpan]]:
-    """Map generated token indices to exact decoded-text character spans."""
+    """Map generated token indices to exact decoded-text character spans.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        rows: Generation or analysis records to process.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     model_cfg = load_config(run_path).get("model", {})
     if model_cfg.get("backend", "hf") != "hf":
         return [[] for _ in rows]
@@ -31,7 +39,15 @@ def build_token_spans(
 
 
 def token_spans_for_row(tokenizer: Any, row: dict[str, Any]) -> list[TokenSpan]:
-    """Align one decoded generation with its stored token IDs."""
+    """Align one decoded generation with its stored token IDs.
+
+    Args:
+        tokenizer: Tokenizer aligned with the loaded model.
+        row: Generation or analysis record to process.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     generated_ids = [int(token_id) for token_id in row.get("generated_token_ids", [])]
     text = row.get("produced_text", "")
     if not generated_ids or not text:
@@ -67,7 +83,16 @@ def token_range_for_chars(
     char_start: int,
     char_end: int,
 ) -> tuple[int, int] | None:
-    """Return the inclusive token range overlapping a character span."""
+    """Return the inclusive token range overlapping a character span.
+
+    Args:
+        spans: Token spans used for character alignment.
+        char_start: Inclusive character offset.
+        char_end: Exclusive character offset.
+
+    Returns:
+        The computed aligned values described above.
+    """
     indices = [
         token_idx
         for token_idx, span in enumerate(spans)

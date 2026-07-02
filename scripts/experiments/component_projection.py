@@ -11,6 +11,14 @@ from src.experiments.component_projection import run_component_projection
 
 
 def main() -> int:
+    """Train an H4 projection in a selected component space.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(
         description="Train an H4 projection in an H3 component space."
     )

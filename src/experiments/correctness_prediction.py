@@ -49,7 +49,16 @@ def run_correctness_prediction(
     per_sample: int = 10,
     folds: int = 5,
 ) -> Path:
-    """Run H5 with question-disjoint out-of-fold predictions."""
+    """Run H5 with question-disjoint out-of-fold predictions.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        per_sample: Maximum number of trajectories retained per sample.
+        folds: Number of grouped cross-validation folds.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     rows = balanced_generation_rows(run_path, per_sample=per_sample)
     token_spans = build_token_spans(run_path, rows)
     features: defaultdict[tuple[int, int, str], list[np.ndarray]] = defaultdict(list)
@@ -176,7 +185,17 @@ def prefix_representations(
     updates: list[Any],
     checkpoint: int,
 ) -> dict[str, np.ndarray]:
-    """Build fixed-width representations from one partial trace."""
+    """Build fixed-width representations from one partial trace.
+
+    Args:
+        states: Token-aligned hidden-state vectors.
+        segments: Contiguous sentence or token segments.
+        updates: Symbolic solution-object updates.
+        checkpoint: Prefix checkpoint percentage.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     checkpoint = min(max(int(checkpoint), 1), len(states) - 1)
     prefix = states[: checkpoint + 1]
     sentence_means: list[np.ndarray] = []
@@ -241,7 +260,18 @@ def sustained_change_intervals(
     min_tokens: int = 3,
     merge_gap: int = 2,
 ) -> list[tuple[int, int]]:
-    """Find contiguous regions of elevated smoothed derivative magnitude."""
+    """Find contiguous regions of elevated smoothed derivative magnitude.
+
+    Args:
+        magnitudes: Per-token activation-change magnitudes.
+        smooth_width: Moving-average width for sustained-change detection.
+        z_threshold: Robust z-score threshold for selecting changes.
+        min_tokens: Minimum duration of a sustained-change interval.
+        merge_gap: Maximum gap merged between neighboring intervals.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     values = np.asarray(magnitudes, dtype=np.float32)
     if len(values) <= min_tokens:
         return [(1, max(len(values) - 1, 1))]
@@ -280,7 +310,17 @@ def grouped_oof_probabilities(
     *,
     folds: int,
 ) -> np.ndarray:
-    """Fit identical L2 probes and return question-disjoint predictions."""
+    """Fit identical L2 probes and return question-disjoint predictions.
+
+    Args:
+        x: Input feature matrix.
+        y: Target labels aligned with the feature rows.
+        groups: Group labels used to prevent cross-question leakage.
+        folds: Number of grouped cross-validation folds.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     probabilities = np.full(len(y), np.nan, dtype=np.float64)
     splitter = GroupKFold(n_splits=folds)
     for train, test in splitter.split(x, y, groups):
@@ -311,7 +351,20 @@ def score_predictions(
     representation: str,
     dimensions: int,
 ) -> dict[str, Any]:
-    """Compute discrimination, calibration, and error metrics for one probe."""
+    """Compute discrimination, calibration, and error metrics for one probe.
+
+    Args:
+        y: Target labels aligned with the feature rows.
+        probabilities: Predicted probabilities aligned with the labels.
+        groups: Group labels used to prevent cross-question leakage.
+        layer: Model layer index.
+        checkpoint: Prefix checkpoint percentage.
+        representation: Name of the evaluated prefix representation.
+        dimensions: Feature width of the evaluated representation.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     predicted = probabilities >= 0.5
     observed, fraction = calibration_curve(
         y, probabilities, n_bins=8, strategy="quantile"
@@ -342,7 +395,17 @@ def segmentation_comparisons(
     predictions: dict[str, np.ndarray],
     layers: list[int],
 ) -> list[dict[str, Any]]:
-    """Compare segmentation probes against the sentence baseline by group."""
+    """Compare segmentation probes against the sentence baseline by group.
+
+    Args:
+        y: Target labels aligned with the feature rows.
+        groups: Group labels used to prevent cross-question leakage.
+        predictions: Predicted probabilities keyed by layer and representation.
+        layers: Model layer indices.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     comparisons: list[dict[str, Any]] = []
     for layer in layers:
         for checkpoint in (25, 50, 75):
@@ -383,7 +446,17 @@ def grouped_bootstrap_auc(
     *,
     draws: int = 500,
 ) -> list[float]:
-    """Bootstrap a 95% ROC-AUC interval by resampling questions."""
+    """Bootstrap a 95% ROC-AUC interval by resampling questions.
+
+    Args:
+        y: Target labels aligned with the feature rows.
+        probabilities: Predicted probabilities aligned with the labels.
+        groups: Group labels used to prevent cross-question leakage.
+        draws: Number of bootstrap resamples.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     values = grouped_bootstrap_values(
         y,
         groups,
@@ -401,7 +474,18 @@ def grouped_bootstrap_auc_difference(
     *,
     draws: int = 500,
 ) -> tuple[float, list[float]]:
-    """Bootstrap the ROC-AUC difference between two paired probes."""
+    """Bootstrap the ROC-AUC difference between two paired probes.
+
+    Args:
+        y: Target labels aligned with the feature rows.
+        contender: Probabilities from the candidate representation.
+        baseline: Probabilities from the baseline representation.
+        groups: Group labels used to prevent cross-question leakage.
+        draws: Number of bootstrap resamples.
+
+    Returns:
+        The computed aligned values described above.
+    """
     point = float(roc_auc_score(y, contender) - roc_auc_score(y, baseline))
     values = grouped_bootstrap_values(
         y,
@@ -422,7 +506,17 @@ def grouped_bootstrap_values(
     *,
     draws: int,
 ) -> np.ndarray:
-    """Evaluate a scorer over deterministic group-bootstrap samples."""
+    """Evaluate a scorer over deterministic group-bootstrap samples.
+
+    Args:
+        y: Target labels aligned with the feature rows.
+        groups: Group labels used to prevent cross-question leakage.
+        scorer: Callback computing a metric from resampled labels and groups.
+        draws: Number of bootstrap resamples.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     unique_groups = np.unique(groups)
     by_group = {group: np.flatnonzero(groups == group) for group in unique_groups}
     rng = np.random.default_rng(42)

@@ -34,7 +34,14 @@ from src.runtime.data import load_samples, write_jsonl
 
 
 def prepare_boundary_manifest(run_path: Path) -> Path:
-    """Select two position-matched points from each independent boundary family."""
+    """Select two position-matched points from each independent boundary family.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     config = load_config(run_path)
     intervention_cfg = config["boundary_intervention"]
     source_run = Path(intervention_cfg["source_run"])
@@ -109,7 +116,16 @@ def position_matched_boundaries(
     sentence_count: int,
     target_positions: list[float],
 ) -> np.ndarray:
-    """Choose distinct available boundaries nearest requested trace positions."""
+    """Choose distinct available boundaries nearest requested trace positions.
+
+    Args:
+        boundaries: Sentence or token boundary indices.
+        sentence_count: Number of sentences in the trace.
+        target_positions: Normalized target positions to match with controls.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     available = [int(value) for value in np.asarray(boundaries, dtype=int)]
     if len(available) < len(target_positions):
         raise ValueError(
@@ -128,7 +144,14 @@ def position_matched_boundaries(
 
 
 def completed_interventions(path: Path) -> set[tuple[int, str, int]]:
-    """Load persisted point, condition, and continuation keys."""
+    """Load persisted point, condition, and continuation keys.
+
+    Args:
+        path: Filesystem path to read from or write to.
+
+    Returns:
+        The resulting unique values.
+    """
     if not path.exists():
         return set()
     return {
@@ -157,7 +180,26 @@ def generate_boundary_continuation(
     intervention_cfg: dict[str, Any],
     analysis_cfg: dict[str, Any],
 ) -> dict[str, Any]:
-    """Continue one stored prefix with a baseline or zeroed component output."""
+    """Continue one stored prefix with a baseline or zeroed component output.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        model: Loaded model used for inference or transformation.
+        tokenizer: Tokenizer aligned with the loaded model.
+        source_run: Source run directory containing the original artifacts.
+        rows: Generation or analysis records to process.
+        point: Boundary intervention specification.
+        condition: Intervention or prompt condition name.
+        continuation: Continuation replicate index.
+        seed: Random seed for reproducible sampling or generation.
+        component: Activation component name.
+        layer: Model layer index.
+        intervention_cfg: Boundary intervention generation configuration.
+        analysis_cfg: Answer extraction and scoring configuration.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     key = (str(point["sample_id"]), int(point["seed"]))
     row = rows[key]
     sample = load_source_sample(source_run, key[0])
@@ -260,7 +302,14 @@ def generate_boundary_continuation(
 def load_intervention_rows(
     source_run: Path,
 ) -> dict[tuple[str, int], dict[str, Any]]:
-    """Index source generations by sample and seed."""
+    """Index source generations by sample and seed.
+
+    Args:
+        source_run: Source run directory containing the original artifacts.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     return {
         (str(row["sample_id"]), int(row["seed"])): row
         for row in read_generation_rows(source_run)
@@ -268,7 +317,16 @@ def load_intervention_rows(
 
 
 def analyze_boundary_interventions(run_path: Path) -> Path:
-    """Summarize complete baseline/zero pairs and make partial coverage explicit."""
+    """Summarize complete baseline/zero pairs and make partial coverage explicit.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
+    from src.experiments.objective_causality import objective_specificity
+
     config = load_config(run_path)
     intervention_cfg = config["boundary_intervention"]
     manifest = load_samples(Path(intervention_cfg["manifest"]).resolve())
@@ -286,6 +344,9 @@ def analyze_boundary_interventions(run_path: Path) -> Path:
     families = sorted({str(point["family"]) for point in manifest})
     current_partitions = load_partitions(Path(intervention_cfg["partitions"]))
     partition_match = {}
+    # Manifests are immutable run inputs. Compare them with current partitions
+    # explicitly because post-hoc rescoring can otherwise silently relabel the
+    # intervention being analyzed.
     for family in families:
         method = str(intervention_cfg["families"][family])
         points = [point for point in manifest if str(point["family"]) == family]
@@ -355,6 +416,12 @@ def analyze_boundary_interventions(run_path: Path) -> Path:
             family_pairs,
             random_pairs,
         )
+        if family in {"answer", "object", "correctness", "compression"}:
+            family_reports[family]["objective_specificity"] = objective_specificity(
+                family_pairs,
+                random_pairs,
+                family,
+            )
     completed_questions = {str(pair[0]["sample_id"]) for pair in pairs}
     report = {
         "experiment": "sentence_boundary_attention_output_ablation",
@@ -415,7 +482,16 @@ def paired_intervention_summary(
     include_positions: bool = True,
     include_complete_sensitivity: bool = True,
 ) -> dict[str, Any]:
-    """Compute question-balanced paired effects for one boundary family."""
+    """Compute question-balanced paired effects for one boundary family.
+
+    Args:
+        pairs: Matched treatment/control or process-isomer pairs.
+        include_positions: Whether to include position-stratified effects.
+        include_complete_sensitivity: Whether to report complete-continuation sensitivity.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     metrics: dict[str, list[float]] = {
         "accuracy_delta": [],
         "valid_answer_delta": [],
@@ -506,6 +582,8 @@ def paired_intervention_summary(
             for position in positions
         }
     if include_complete_sensitivity:
+        # Long truncated continuations make fallback answer extraction
+        # unreliable, so retain the full estimate but report this strict slice.
         completed = [
             pair
             for pair in pairs
@@ -528,7 +606,15 @@ def compare_pair_families(
         tuple[str, float], tuple[dict[str, Any], dict[str, Any]]
     ],
 ) -> dict[str, Any]:
-    """Compare target-boundary effects with position-matched random effects."""
+    """Compare target-boundary effects with position-matched random effects.
+
+    Args:
+        target_pairs: Target-family matched pairs.
+        control_pairs: Control-family matched pairs.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     keys = sorted(target_pairs.keys() & control_pairs.keys())
     groups = [sample_id for sample_id, _position in keys]
 
@@ -536,6 +622,15 @@ def compare_pair_families(
         pair: tuple[dict[str, Any], dict[str, Any]],
         field: str,
     ) -> float:
+        """Measure the binary outcome change from baseline to zeroing.
+
+        Args:
+            pair: Matched pair to evaluate or intervene on.
+            field: Record field to read or summarize.
+
+        Returns:
+            The computed scalar metric.
+        """
         baseline, zero = pair
         return float(bool(zero[field]) - bool(baseline[field]))
 
@@ -604,7 +699,14 @@ def compare_pair_families(
 def pair_common_prefix_fraction(
     pair: tuple[dict[str, Any], dict[str, Any]],
 ) -> float:
-    """Measure the unchanged prefix shared by one baseline/ablation pair."""
+    """Measure the unchanged prefix shared by one baseline/ablation pair.
+
+    Args:
+        pair: Matched pair to evaluate or intervene on.
+
+    Returns:
+        The computed scalar metric.
+    """
     baseline_ids = [int(token) for token in pair[0]["generated_token_ids"]]
     zero_ids = [int(token) for token in pair[1]["generated_token_ids"]]
     common = 0
@@ -616,7 +718,15 @@ def pair_common_prefix_fraction(
 
 
 def question_balanced_mean(values: list[float], groups: list[str]) -> float:
-    """Average within questions before averaging across questions."""
+    """Average within questions before averaging across questions.
+
+    Args:
+        values: Values to summarize or transform.
+        groups: Group labels used to prevent cross-question leakage.
+
+    Returns:
+        The computed scalar metric.
+    """
     if not values:
         return float("nan")
     grouped: defaultdict[str, list[float]] = defaultdict(list)
@@ -631,7 +741,16 @@ def grouped_mean_interval(
     *,
     repetitions: int = 2000,
 ) -> dict[str, Any]:
-    """Return a deterministic question-bootstrap interval for a paired metric."""
+    """Return a deterministic question-bootstrap interval for a paired metric.
+
+    Args:
+        values: Values to summarize or transform.
+        groups: Group labels used to prevent cross-question leakage.
+        repetitions: Number of grouped resampling repetitions.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     if not values:
         return {"mean": float("nan"), "question_bootstrap_95ci": [float("nan")] * 2}
     grouped: defaultdict[str, list[float]] = defaultdict(list)

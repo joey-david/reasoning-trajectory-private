@@ -13,6 +13,14 @@ from src.datasets.loaders import load_normalized_dataset
 
 
 def main() -> int:
+    """Normalize and pin the configured dataset for a run.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("run_path")
     parser.add_argument("--out", default=None)

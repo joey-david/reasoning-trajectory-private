@@ -27,7 +27,22 @@ def run_component_projection(
     epochs: int = 12,
     projection_dim: int = 128,
 ) -> Path:
-    """Extract interval net vectors and fit a component-matched H4 projection."""
+    """Extract interval net vectors and fit a component-matched H4 projection.
+
+    Args:
+        replay_run: Run directory containing teacher-forced replay artifacts.
+        h2_dir: Directory containing H2 update-analysis artifacts.
+        out_dir: Directory in which to write the results.
+        component: Activation component name.
+        layer: Model layer index.
+        max_updates: Maximum number of symbolic updates to retain.
+        max_pairs: Maximum number of pairs to retain.
+        epochs: Number of projection-training epochs.
+        projection_dim: Width of the learned projection space.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     if component not in {"attention_output", "mlp_output"}:
         raise ValueError(f"Unsupported component projection: {component!r}")
 

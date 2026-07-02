@@ -11,6 +11,14 @@ from src.experiments.structural_contrast import run_structural_contrast
 
 
 def main() -> int:
+    """Train and evaluate the H4 structural projection.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Run H4 contrastive projection.")
     parser.add_argument("h2_dir", type=Path)
     parser.add_argument("--layer", type=int, default=-1)

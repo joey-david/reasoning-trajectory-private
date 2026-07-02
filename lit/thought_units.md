@@ -9,15 +9,15 @@ of sentences is simultaneously privileged for answer information, symbolic
 updates, correctness prediction, latent-trajectory compression, and causal
 influence.
 
-Let \(S\) partition a trace at sentence boundaries and let
-\(\mathcal{U}=\{U_{\mathrm{answer}},U_{\mathrm{object}},
-U_{\mathrm{correctness}},U_{\mathrm{compression}},U_{\mathrm{causal}}\}\).
+Let $S$ partition a trace at sentence boundaries and let
+$\mathcal{U}=\{U*{\mathrm{answer}},U*{\mathrm{object}},
+U*{\mathrm{correctness}},U*{\mathrm{compression}},U\_{\mathrm{causal}}\}$.
 The empirical no-free-lunch claim is:
 
-\[
+$$
 \nexists S^\star \text{ that is near-optimal for every } U\in\mathcal{U}
 \text{ across tasks, prompts, and models.}
-\]
+$$
 
 Evidence should take the form of **rank reversals, cross-objective regret, and
 transfer failure**, not merely weak performance by one heuristic.
@@ -73,7 +73,7 @@ Evaluate each candidate against five objectives:
 - **Answer information:** HSIC or cross-validated probe dependence on the gold
   answer from a fixed-dimensional segment representation.
 - **Object updates:** coverage of exactly one symbolic graph update, or boundary
-  alignment with \(G_k\rightarrow G_{k+1}\).
+  alignment with $G*k\rightarrow G*{k+1}$.
 - **Correctness:** improvement in held-out final-correctness prediction from a
   segment-prefix representation.
 - **Latent-trajectory compression:** reconstruction error for token activations
@@ -86,7 +86,7 @@ The implemented local objectives are exact fixed-segment dynamic programs:
 answer/correctness/compression minimize within-segment squared error in their
 respective curves or representations, while the object objective penalizes
 segments containing anything other than one verified symbolic update.
-Normalized utility is \(0\) for matched random boundaries and \(1\) for that
+Normalized utility is $0$ for matched random boundaries and $1$ for that
 objective's oracle; negative values are worse than random.
 
 Compare textual sentence boundaries, answer-information peaks, Gram-state
@@ -144,62 +144,62 @@ a diagnostic.
 
 ## Results and Running Notes
 
-The primary \(20\%\) boundary-budget matrix shows clear rank reversals:
+The primary $20\%$ boundary-budget matrix shows clear rank reversals:
 
-| Segmenter | Answer | Object | Correctness | Compression |
-| --- | ---: | ---: | ---: | ---: |
-| Fixed windows | 0.004 | 0.379 | 0.307 | 0.215 |
-| Answer peaks | **0.734** | -0.285 | -0.320 | 0.292 |
-| Gram transitions | -0.010 | -3.370 | -0.161 | -0.484 |
-| Answer oracle | **1.000** | -0.411 | -0.306 | 0.401 |
-| Object oracle | -0.046 | **1.000** | -0.174 | -0.267 |
-| Correctness oracle | -0.001 | -0.482 | **1.000** | -0.114 |
-| Compression oracle | 0.415 | -0.297 | -0.044 | **1.000** |
+| Segmenter          |    Answer |    Object | Correctness | Compression |
+| ------------------ | --------: | --------: | ----------: | ----------: |
+| Fixed windows      |     0.004 |     0.379 |       0.307 |       0.215 |
+| Answer peaks       | **0.734** |    -0.285 |      -0.320 |       0.292 |
+| Gram transitions   |    -0.010 |    -3.370 |      -0.161 |      -0.484 |
+| Answer oracle      | **1.000** |    -0.411 |      -0.306 |       0.401 |
+| Object oracle      |    -0.046 | **1.000** |      -0.174 |      -0.267 |
+| Correctness oracle |    -0.001 |    -0.482 |   **1.000** |      -0.114 |
+| Compression oracle |     0.415 |    -0.297 |      -0.044 |   **1.000** |
 
-Exact SmolLM oracle-boundary Jaccard is \(0.10\)–\(0.27\); one-sentence
-tolerance raises F1 only to \(0.34\)–\(0.55\). Fixed windows are the best
-maximin method, but their worst utility is only \(0.004\), nowhere near a
-joint optimum. The same qualitative reversals survive \(10\%\), \(20\%\), and
-\(30\%\) budgets.
+Exact SmolLM oracle-boundary Jaccard is $0.10$–$0.27$; one-sentence
+tolerance raises F1 only to $0.34$–$0.55$. Fixed windows are the best
+maximin method, but their worst utility is only $0.004$, nowhere near a
+joint optimum. The same qualitative reversals survive $10\%$, $20\%$, and
+$30\%$ budgets.
 
-Qwen3-14B independently reproduces the result. Its answer peaks score \(0.626\)
-on answer but \(-0.603\) on objects; its object oracle scores \(1.000\) on
-objects but \(-0.128\) on answer and \(-0.211\) on correctness. Oracle Jaccard
-is \(0.09\)–\(0.17\), and the best maximin utility is only \(0.030\). Qwen is
+Qwen3-14B independently reproduces the result. Its answer peaks score $0.626$
+on answer but $-0.603$ on objects; its object oracle scores $1.000$ on
+objects but $-0.128$ on answer and $-0.211$ on correctness. Oracle Jaccard
+is $0.09$–$0.17$, and the best maximin utility is only $0.030$. Qwen is
 225/232 correct, so its held-out correctness AUC is undefined and correctness
 claims should rest on SmolLM rather than this ceiling-limited run.
 
 The strong adversary does recover its training ontology. In PCA-whitened
-space, held-out diagonal ROC-AUC is \(0.889\) answer, \(0.884\) object,
-\(0.786\) correctness, and \(0.861\) compression. Transfer is poor or
+space, held-out diagonal ROC-AUC is $0.889$ answer, $0.884$ object,
+$0.786$ correctness, and $0.861$ compression. Transfer is poor or
 anticorrelated. Qwen gives the same pattern: diagonal AUC is
-\(0.830/0.878/0.774/0.844\), while mean cross-objective performance is only
-\(56\%\)–\(75\%\) of in-domain AUC in PCA space. This supports “learnable
+$0.830/0.878/0.774/0.844$, while mean cross-objective performance is only
+$56\%$–$75\%$ of in-domain AUC in PCA space. This supports “learnable
 ontology” rather than “no latent structure.”
 
 The Yu-style five-state accumulated-Gram abstraction is strongly
-position-ordered: cluster mean positions span \(0.03,0.16,0.36,0.56,0.74\),
-with only \(3.1\%\) of sentence transitions changing state. On this much finer
+position-ordered: cluster mean positions span $0.03,0.16,0.36,0.56,0.74$,
+with only $3.1\%$ of sentence transitions changing state. On this much finer
 sentence lattice, its matched-budget boundaries are worse than random on
 answer, object, and compression. This does not refute its use on prompted
 coarse steps; it shows that the abstraction is not a general sentence boundary
 rule here.
 
 The BOS-only gold-solution target is not sharply peaked. Score-position
-correlation is \(0.049\) for SmolLM and \(0.277\) for Qwen; the IQR peak rate is
+correlation is $0.049$ for SmolLM and $0.277$ for Qwen; the IQR peak rate is
 effectively zero for both. The old proxy and new curves correlate
-\(0.564/0.785\), but their top-boundary Jaccard is only \(0.378/0.372\).
+$0.564/0.785$, but their top-boundary Jaccard is only $0.378/0.372$.
 Target construction therefore changes which boundaries count as peaks. This
 supports target relativity, but the capture limitation prevents a direct
 claim against Qian-style prompt-conditioned MI peaks.
 
 Parser audit: all 580 traces align exactly to tokens; 84,338 sentences produce
-83,758 candidate boundaries. Short fragments are \(3.3\%\) of sentences and
-standalone list markers \(0.7\%\). They remain unmerged in the primary result.
+83,758 candidate boundaries. Short fragments are $3.3\%$ of sentences and
+standalone list markers $0.7\%$. They remain unmerged in the primary result.
 A secondary lattice merges all one- and two-token fragments, reducing the
 lattice to 81,554 sentences. The result is stable: oracle Jaccard remains
-\(0.11\)–\(0.26\); answer peaks score \(0.741\) on answer but \(-0.376\) on
-objects and \(-0.099\) on correctness; no method is near-optimal across all
+$0.11$–$0.26$; answer peaks score $0.741$ on answer but $-0.376$ on
+objects and $-0.099$ on correctness; no method is near-optimal across all
 objectives.
 
 Prompt pilots reproduce the major oracle disagreements for freeform, numbered,
@@ -210,39 +210,39 @@ all-correct held-out split, so no correctness result is reported.
 The stronger prompt-transfer test excludes those 12 questions from training,
 leaving 46 source questions and 66,818 boundaries in the shared H4 space.
 In-domain ontology transfer survives prompt changes: answer/object/correctness/
-compression AUC is respectively \(0.640/0.730/0.752/0.659\) on freeform,
-\(0.611/0.738/0.753/0.653\) on numbered, and
-\(0.645/0.711/0.722/0.639\) on sentence-separated traces. Cross-ontology scores
-remain much weaker, commonly \(0.35\)–\(0.59\). Prompt variation therefore does
+compression AUC is respectively $0.640/0.730/0.752/0.659$ on freeform,
+$0.611/0.738/0.753/0.653$ on numbered, and
+$0.645/0.711/0.722/0.639$ on sentence-separated traces. Cross-ontology scores
+remain much weaker, commonly $0.35$–$0.59$. Prompt variation therefore does
 not erase the learned ontology, but neither does it make one ontology recover
 the others.
 
 Qwen also replicates the earlier latent-structure pattern. Across 3,711
 symbolic updates, path length is elevated (78th matched-window percentile),
-but peak share is only \(0.131\), effective width is \(0.983\), and net/path
-ratio is \(0.110\): updates are distributed rather than point-like. Operation
-identity rises from raw cosine AUC \(0.433\) to \(0.995\) after a supervised
+but peak share is only $0.131$, effective width is $0.983$, and net/path
+ratio is $0.110$: updates are distributed rather than point-like. Operation
+identity rises from raw cosine AUC $0.433$ to $0.995$ after a supervised
 projection. Structure is highly decodable, but not naturally organized as
 universal boundaries in the raw space.
 
 The causal run is complete: 1,160 rows give 580 paired interventions over all
 58 questions. Zeroing layer-18 attention output changes the extracted answer
-in \(32.9\%\) of all pairs, confirming broad behavioral sensitivity. However,
+in $32.9\%$ of all pairs, confirming broad behavioral sensitivity. However,
 183 pairs have at least one unfinished 10k-token continuation; numeric fallback
 extraction makes their apparent correctness unreliable. Among the 397 complete
-pairs, answer changes fall to \(9.3\%\). With the same completion filter applied
+pairs, answer changes fall to $9.3\%$. With the same completion filter applied
 to each position-matched random control, answer-boundary accuracy specificity
-is \(-0.011\), 95% CI \([-0.076,0.054]\); compression and correctness are also
-near zero, while object specificity is \(-0.073\), CI
-\([-0.159,0.000]\). The object direction is consistent with greater causal
-importance, but remains weak (two-sided question-level sign-flip \(p=0.157\);
-one-sided \(p=0.078\)) and is driven by only six nonzero question effects.
+is $-0.011$, 95% CI $[-0.076,0.054]$; compression and correctness are also
+near zero, while object specificity is $-0.073$, CI
+$[-0.159,0.000]$. The object direction is consistent with greater causal
+importance, but remains weak (two-sided question-level sign-flip $p=0.157$;
+one-sided $p=0.078$) and is driven by only six nonzero question effects.
 The other families are indistinguishable from random.
 
 The answer manifest also predates gold-solution rescoring: only 53/116 answer
 points remain in the current answer oracle. The 28 completed, random-matched
-points in that overlap have exploratory specificity \(+0.038\), CI
-\([0.000,0.115]\), but this is a small post-hoc subset. A confirmatory rerun
+points in that overlap have exploratory specificity $+0.038$, CI
+$[0.000,0.115]$, but this is a small post-hoc subset. A confirmatory rerun
 must rebuild the manifest from the current partition and reject unfinished
 continuations during scoring.
 
@@ -251,10 +251,10 @@ continuations during scoring.
 **Claim:** Transitions between sentences that peak for one target do not
 consistently peak for another.
 
-**Experiment:** For the boundary after sentence \(i\), compute
-\(\Delta\mu_i=\mu_{i+1}-\mu_i\), target-score changes such as
-\(\Delta\mathrm{HSIC}_i\), and
-\(1-\cos(\Delta\mu_{i-1},\Delta\mu_i)\). Estimate transition scores for the
+**Experiment:** For the boundary after sentence $i$, compute
+$\Delta\mu*i=\mu*{i+1}-\mu*i$, target-score changes such as
+$\Delta\mathrm{HSIC}\_i$, and
+$1-\cos(\Delta\mu*{i-1},\Delta\mu_i)$. Estimate transition scores for the
 gold answer, symbolic operation, and final correctness, then compare peak sets
 under matched boundary budgets.
 
@@ -335,10 +335,10 @@ yield a transferable, general-purpose segmentation.
 
 **Current evidence:** PCA is the strongest general detector space. The H4
 operation projection improves object-boundary decoding over Gram space
-(\(0.783\) versus \(0.671\) AUC) but is weaker than PCA (\(0.884\)) and does
+($0.783$ versus $0.671$ AUC) but is weaker than PCA ($0.884$) and does
 not yield broadly coherent partitions. On Qwen, operation identity itself is
-almost perfectly decodable after projection (AUC \(0.995\)), while
-operation-space object-boundary AUC \(0.813\) still trails PCA \(0.878\).
+almost perfectly decodable after projection (AUC $0.995$), while
+operation-space object-boundary AUC $0.813$ still trails PCA $0.878$.
 
 ## Interpretation and Failure Mode
 
@@ -351,20 +351,20 @@ questions becomes a positive candidate canonical segmentation rather than a
 failed experiment.
 
 Existing results motivate both outcomes: symbolic updates are distributed;
-operation type moves from raw cosine AUC \(0.394\) to \(0.957\) after supervised
+operation type moves from raw cosine AUC $0.394$ to $0.957$ after supervised
 projection; and sentence summaries outperform proposed symbolic and
 sustained-change segments for correctness prediction
 ([current results](hypotheses_summary.md)).
 
 ## Related Work
 
-- Yu et al., *Explainable Chain-of-Thought Reasoning: An Empirical Analysis on
-  State-Aware Reasoning Dynamics* ([arXiv:2509.00190](https://arxiv.org/abs/2509.00190)).
+- Yu et al., _Explainable Chain-of-Thought Reasoning: An Empirical Analysis on
+  State-Aware Reasoning Dynamics_ ([arXiv:2509.00190](https://arxiv.org/abs/2509.00190)).
   It embeds text-defined CoT steps through accumulated Gram spectra, clusters
   them into latent states, and models transitions as a Markov chain. We test
   whether those transitions remain useful across objectives.
-- Qian et al., *Demystifying Reasoning Dynamics with Mutual Information:
-  Thinking Tokens are Information Peaks in LLM Reasoning*
+- Qian et al., _Demystifying Reasoning Dynamics with Mutual Information:
+  Thinking Tokens are Information Peaks in LLM Reasoning_
   ([arXiv:2506.02867](https://arxiv.org/abs/2506.02867)). It estimates
   dependence between intermediate representations and the gold answer with
   HSIC and identifies answer-relative information peaks. We test whether such
@@ -376,45 +376,44 @@ For the SmolLM3-3B pass, every item below operates on sentences or consecutive
 sentence windows; prompted-step and token-level variants remain deferred.
 
 - [x] Capture teacher-forced gold-solution states and compare their linear-HSIC
-  curves with the cross-rollout proxy.
+      curves with the cross-rollout proxy.
 - [ ] Capture prompt-conditioned gold-answer states and reproduce Gaussian
-  HSIC before claiming an MI-peaks replication.
+      HSIC before claiming an MI-peaks replication.
 - [x] Add accumulated Gram-spectrum states on sentences.
 - [x] Add exact fixed-budget dynamic-programming oracles for object, answer,
-  correctness, and compression objectives.
+      correctness, and compression objectives.
 - [x] Add nonlinear supervised change-point adversaries with held-out-question
-  objective transfer.
+      objective transfer.
 - [x] Produce the segmenter × objective matrix and Pareto/regret plots.
 - [x] Repeat coherence and separation tests in raw, PCA-whitened,
-  Gram-spectrum, and H4 operation-supervised spaces.
+      Gram-spectrum, and H4 operation-supervised spaces.
 - [x] Match boundary budgets, split by question, and sweep 10/20/30% budgets.
 - [x] Run small freeform, numbered, and sentence-separated prompt pilots and a
-  question-disjoint H4 detector-transfer test.
+      question-disjoint H4 detector-transfer test.
 - [x] Add a short-fragment parser-robustness condition without replacing the
-  primary fixed parser.
+      primary fixed parser.
 - [x] Run causal interventions at independently selected boundary families
-  (1,160/1,160 rows).
+      (1,160/1,160 rows).
 - [ ] Rebuild causal points from the current gold-solution partition and use
-  strict completion-aware scoring.
+      strict completion-aware scoring.
 - [x] Replicate the sentence-lattice matrix on Qwen3-14B.
 - [ ] Test detector transfer across models and segmentation transfer across
-  task families.
+      task families.
 - [ ] Attempt token-level units only after the sentence-lattice result survives
-  the missing controls above.
+      the missing controls above.
 
 ## Remote Confirmation Runs
 
 Pulled run status:
 
-| Run | Status |
-| --- | ---: |
-| `SmolLM3-3B/thought_units_gold_answers` | 58/58 |
-| `Qwen3-14B/thought_units_gsm_symbolic` | 232/232 |
-| `Qwen3-14B/thought_units_gold_answers` | 58/58 |
+| Run                                               |      Status |
+| ------------------------------------------------- | ----------: |
+| `SmolLM3-3B/thought_units_gold_answers`           |       58/58 |
+| `Qwen3-14B/thought_units_gsm_symbolic`            |     232/232 |
+| `Qwen3-14B/thought_units_gold_answers`            |       58/58 |
 | `SmolLM3-3B/thought_units_boundary_interventions` | 1,160/1,160 |
 
 The causal queue uses two position-matched points from each answer, object,
 correctness, compression, and random partition on all 58 questions. Each point
-gets a deterministic baseline and a zero-ablation of attention output at layer
-18. It tests boundary-family causal specificity without process-isomer or
+gets a deterministic baseline and a zero-ablation of attention output at layer 18. It tests boundary-family causal specificity without process-isomer or
 single-spike assumptions. All listed queues are complete.

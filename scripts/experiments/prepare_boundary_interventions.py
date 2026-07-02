@@ -7,16 +7,35 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.experiments.boundary_interventions import prepare_boundary_manifest
+from src.experiments.boundary_interventions import (
+    analyze_boundary_interventions,
+    prepare_boundary_manifest,
+)
 
 
 def main() -> int:
+    """Prepare sentence-boundary intervention tasks.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(
-        description="Prepare objective-family sentence-boundary interventions."
+        description="Prepare or analyze objective-family boundary interventions."
     )
     parser.add_argument("run_path", type=Path)
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Analyze completed continuations instead of rebuilding the manifest.",
+    )
     args = parser.parse_args()
-    print(prepare_boundary_manifest(args.run_path))
+    operation = (
+        analyze_boundary_interventions if args.analyze else prepare_boundary_manifest
+    )
+    print(operation(args.run_path))
     return 0
 
 

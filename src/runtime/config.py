@@ -47,16 +47,22 @@ class RunConfig(Mapping[str, Any]):
     def __iter__(self) -> Iterator[str]:
         """Iterate over configuration keys.
 
-        Returns:
-            An iterator over the keys in the raw configuration.
+                Returns:
+                    An iterator over the keys in the raw configuration.
+
+        Args:
+            None.
         """
         return iter(self.raw)
 
     def __len__(self) -> int:
         """Return the number of raw configuration entries.
 
-        Returns:
-            The number of keys in the configuration mapping.
+                Returns:
+                    The number of keys in the configuration mapping.
+
+        Args:
+            None.
         """
         return len(self.raw)
 

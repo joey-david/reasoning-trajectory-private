@@ -18,7 +18,14 @@ from src.runtime.config import RunConfig, load_config
 
 
 def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
-    """Enumerate unique questions whose gold states are not yet persisted."""
+    """Enumerate unique questions whose gold states are not yet persisted.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The computed aligned values described above.
+    """
     config = load_config(run_path)
     samples = load_run_samples(run_path, config["dataset"])
     completed = completed_gold_answers(
@@ -33,7 +40,14 @@ def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
 
 
 def setup_worker(run_path: Path) -> GoldAnswerWorker:
-    """Load one model replica and the run's pinned gold-answer dataset."""
+    """Load one model replica and the run's pinned gold-answer dataset.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        A worker initialized for gold-answer capture.
+    """
     config = load_config(run_path)
     samples = load_run_samples(run_path, config["dataset"])
     raw = {key: value for key, value in config.raw.items() if key != "_run_path"}
@@ -63,7 +77,16 @@ def setup_worker(run_path: Path) -> GoldAnswerWorker:
 
 
 def log_path(run_path: Path, host: str, gpu: int) -> Path:
-    """Return one persistent worker's gold-answer log path."""
+    """Return one persistent worker's gold-answer log path.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        host: Remote worker host name.
+        gpu: GPU index on the worker host.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     return (
         run_path
         / "gold_answers"
@@ -85,7 +108,15 @@ class GoldAnswerWorker:
     storage_dtype: str
 
     def run_task(self, task: Task, _progress: Any) -> TaskResult:
-        """Capture and persist one indexed gold solution."""
+        """Capture and persist one indexed gold solution.
+
+        Args:
+            task: Serialized orchestration task.
+            _progress: Unused orchestration progress callback required by the job contract.
+
+        Returns:
+            A task result containing its stable key and serialized record.
+        """
         record = capture_gold_answer(
             run_path=self.run_path,
             model=self.model,

@@ -30,7 +30,14 @@ from src.runtime.run_io import load_generation_index
 
 
 def replay_capture_run(run_path: Path) -> None:
-    """Capture configured layers/components without regenerating source text."""
+    """Capture configured layers/components without regenerating source text.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        None.
+    """
     config = load_config(run_path)
     replay_cfg = config["replay"]
     capture_cfg = config["capture"]
@@ -105,6 +112,15 @@ def replay_capture_run(run_path: Path) -> None:
 
 
 def load_source_sample(source_run: Path, sample_id: str) -> dict[str, Any]:
+    """Load one per-sample generation record from a source run.
+
+    Args:
+        source_run: Source run directory containing the original artifacts.
+        sample_id: Stable sample identifier.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     path = (
         source_run / "generation" / "samples" / f"{sanitize_filename(sample_id)}.json"
     )
@@ -114,12 +130,27 @@ def load_source_sample(source_run: Path, sample_id: str) -> dict[str, Any]:
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Read nonempty JSONL records from disk.
+
+    Args:
+        path: Filesystem path to read from or write to.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     with path.open("r", encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
 
 
 def selected_replay_rows(replay_cfg: dict[str, Any]) -> list[dict[str, Any]]:
-    """Resolve the exact source rows used by generation and index repair."""
+    """Resolve the exact source rows used by generation and index repair.
+
+    Args:
+        replay_cfg: Replay selection and source-run configuration.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     rows = balanced_generation_rows(
         Path(replay_cfg["source_run"]),
         per_sample=int(replay_cfg.get("per_sample", 10)),
@@ -156,7 +187,14 @@ def selected_replay_rows(replay_cfg: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def rebuild_replay_index(run_path: Path) -> int:
-    """Rebuild replay JSON metadata from source rows and completed NPZ files."""
+    """Rebuild replay JSON metadata from source rows and completed NPZ files.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     config = load_config(run_path)
     replay_cfg = config["replay"]
     capture_cfg = config["capture"]

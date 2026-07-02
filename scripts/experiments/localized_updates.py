@@ -11,6 +11,14 @@ from src.experiments.localized_updates import run_localized_update_analysis
 
 
 def main() -> int:
+    """Analyze H2 interval activation dynamics.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Run H2 interval dynamics analysis.")
     parser.add_argument("run_path", type=Path)
     parser.add_argument("--per-sample", type=int, default=10)

@@ -34,7 +34,17 @@ def run_localized_update_analysis(
     spike_z: float = 3.0,
     window: int = 2,
 ) -> Path:
-    """Run H2 on existing captured states and write reusable update vectors."""
+    """Run H2 on existing captured states and write reusable update vectors.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        per_sample: Maximum number of trajectories retained per sample.
+        spike_z: Robust z-score threshold for latent spikes.
+        window: Token tolerance or neighborhood width.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     rows = balanced_generation_rows(run_path, per_sample=per_sample)
     spans_by_row = build_token_spans(run_path, rows)
     out_dir = run_path / "analysis" / "experiments" / "h2_localized_updates"
@@ -240,7 +250,18 @@ def shifted_null_hit_rate(
     window: int,
     shifts: int = 31,
 ) -> float:
-    """Estimate chance overlap by circularly shifting all update endpoints."""
+    """Estimate chance overlap by circularly shifting all update endpoints.
+
+    Args:
+        endpoints: Symbolic update completion-token indices.
+        spikes: Detected latent spike indices.
+        token_count: Number of generated tokens.
+        window: Token tolerance or neighborhood width.
+        shifts: Circular offsets used to construct the null baseline.
+
+    Returns:
+        The computed scalar metric.
+    """
     if not endpoints or token_count < 2:
         return 0.0
     offsets = np.linspace(1, token_count - 1, min(shifts, token_count - 1), dtype=int)
@@ -273,7 +294,19 @@ def build_report(
     spike_z: float,
     window: int,
 ) -> dict[str, Any]:
-    """Build the H2 report from trace, update, and layer statistics."""
+    """Build the H2 report from trace, update, and layer statistics.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        rows: Generation or analysis records to process.
+        update_records: Per-update interval metric records.
+        layer_stats: Aggregated interval metrics keyed by layer.
+        spike_z: Robust z-score threshold for latent spikes.
+        window: Token tolerance or neighborhood width.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     operator_counts = Counter(record["operator"] for record in update_records)
     signatures = Counter(record["operation_signature"] for record in update_records)
     layers: dict[str, Any] = {}
@@ -344,7 +377,14 @@ def build_report(
 
 
 def mean_or_none(values: Any) -> float | None:
-    """Return a numeric mean or None for an empty collection."""
+    """Return a numeric mean or None for an empty collection.
+
+    Args:
+        values: Values to summarize or transform.
+
+    Returns:
+        The computed scalar metric, or ``None`` when unavailable.
+    """
     array = np.asarray(values, dtype=np.float64)
     return float(np.mean(array)) if array.size else None
 
@@ -353,7 +393,15 @@ def record_mean(
     records: list[dict[str, float | int | None]],
     field: str,
 ) -> float | None:
-    """Average one populated field across interval records."""
+    """Average one populated field across interval records.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        field: Record field to read or summarize.
+
+    Returns:
+        The computed scalar metric, or ``None`` when unavailable.
+    """
     return mean_or_none(
         [record[field] for record in records if record.get(field) is not None]
     )
@@ -364,7 +412,15 @@ def grouped_interval_metrics(
     *,
     draws: int = 1000,
 ) -> dict[str, dict[str, Any]]:
-    """Bootstrap interval metrics over questions rather than update rows."""
+    """Bootstrap interval metrics over questions rather than update rows.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        draws: Number of bootstrap resamples.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     fields = (
         "path_length_control_percentile",
         "net_displacement_control_percentile",
@@ -409,7 +465,14 @@ def grouped_interval_metrics(
 
 
 def h2_interpretation(layers: dict[str, Any]) -> str:
-    """Distinguish elevated update magnitude from genuinely sharp localization."""
+    """Distinguish elevated update magnitude from genuinely sharp localization.
+
+    Args:
+        layers: Model layer indices.
+
+    Returns:
+        The resulting text or classification label.
+    """
     if not layers:
         return "insufficient_data"
     strongest = max(

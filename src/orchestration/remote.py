@@ -27,7 +27,14 @@ PREFIX = "@@ORCHESTRATOR@@"
 
 
 def emit(message: dict[str, Any]) -> None:
-    """Write one worker control message."""
+    """Write one worker control message.
+
+    Args:
+        message: JSON-serializable worker protocol message.
+
+    Returns:
+        None.
+    """
     print(PREFIX + json.dumps(message, ensure_ascii=False), flush=True)
 
 
@@ -35,10 +42,26 @@ class WorkerProgress:
     """Forward optional task progress while retaining reported token speed."""
 
     def __init__(self) -> None:
+        """Initialize the helper state.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
         self.last_speed: float | None = None
 
     def set_description(self, description: str, **_kwargs: Any) -> None:
-        """Forward a tqdm-compatible progress description."""
+        """Forward a tqdm-compatible progress description.
+
+        Args:
+            description: Text to display for the current progress state.
+            _kwargs: Ignored keyword arguments accepted for tqdm compatibility.
+
+        Returns:
+            None.
+        """
         match = re.search(r"(\d+(?:\.\d+)?) tok/s", description)
         if match:
             self.last_speed = float(match.group(1))
@@ -47,11 +70,27 @@ class WorkerProgress:
         emit({"type": "progress", "text": description})
 
     def set_postfix(self, *_args: Any, **_kwargs: Any) -> None:
-        """Accept the tqdm postfix API without emitting a duplicate update."""
+        """Accept the tqdm postfix API without emitting a duplicate update.
+
+        Args:
+            _args: Ignored positional arguments accepted for tqdm compatibility.
+            _kwargs: Ignored keyword arguments accepted for tqdm compatibility.
+
+        Returns:
+            None.
+        """
 
 
 def worker_main(run_path: Path, job_name: str) -> int:
-    """Set up one job worker and execute coordinator tasks until stdin closes."""
+    """Set up one job worker and execute coordinator tasks until stdin closes.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        job_name: Registered orchestration job name.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     import torch
 
     if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
@@ -98,7 +137,15 @@ def worker_main(run_path: Path, job_name: str) -> int:
 
 
 def parse_workers(nodes: list[str], devices: list[str]) -> list[tuple[str, int]]:
-    """Expand one comma-separated GPU selection per SSH node."""
+    """Expand one comma-separated GPU selection per SSH node.
+
+    Args:
+        nodes: Remote host names.
+        devices: Per-host GPU specifications.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     if len(nodes) != len(devices):
         raise ValueError("--devices needs exactly one entry per --nodes host")
     workers = [
@@ -113,7 +160,15 @@ def parse_workers(nodes: list[str], devices: list[str]) -> list[tuple[str, int]]
 
 
 def receive(process: subprocess.Popen[str], log: TextIO) -> dict[str, Any]:
-    """Read the next protocol message while logging ordinary worker stdout."""
+    """Read the next protocol message while logging ordinary worker stdout.
+
+    Args:
+        process: Worker subprocess from which to receive messages.
+        log: Open worker log stream.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     assert process.stdout is not None
     for line in process.stdout:
         if line.startswith(PREFIX):
@@ -130,7 +185,18 @@ def worker_command(
     root: Path,
     job_name: str,
 ) -> list[str]:
-    """Build a local or SSH command for one selected physical GPU."""
+    """Build a local or SSH command for one selected physical GPU.
+
+    Args:
+        host: Remote worker host name.
+        gpu: GPU index on the worker host.
+        run_path: Run directory containing the configuration and artifacts.
+        root: Repository root on the remote hosts.
+        job_name: Registered orchestration job name.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     worker = f"{host}:{gpu}"
     command = (
         f"cd {shlex.quote(root.as_posix())} && "
@@ -166,7 +232,23 @@ def run_worker(
     stop: Event,
     processes: list[subprocess.Popen[str]],
 ) -> None:
-    """Load one persistent worker and consume tasks until the queue is empty."""
+    """Load one persistent worker and consume tasks until the queue is empty.
+
+    Args:
+        worker: Remote host/GPU worker specification.
+        job_name: Registered orchestration job name.
+        run_path: Run directory containing the configuration and artifacts.
+        root: Repository root on the remote hosts.
+        tasks: Serialized tasks assigned to the worker.
+        total_bar: Shared overall progress display.
+        worker_bar: Per-worker progress display.
+        lock: Lock protecting shared progress and process state.
+        stop: Event requesting all workers to stop.
+        processes: Mutable registry of active worker processes.
+
+    Returns:
+        None.
+    """
     host, gpu = worker
     name = f"{host}:{gpu}"
     log_path = load_job(job_name).log_path(run_path, host, gpu)
@@ -184,6 +266,8 @@ def run_worker(
             processes.append(process)
         try:
             try:
+                # Loading messages can be arbitrarily numerous; only `ready`
+                # transitions the protocol into task dispatch.
                 while True:
                     startup = receive(process, log)
                     if startup.get("type") == "loading":
@@ -212,6 +296,8 @@ def run_worker(
                 assert process.stdin is not None
                 process.stdin.write(json.dumps({"type": "task", **task}) + "\n")
                 process.stdin.flush()
+                # One task may emit many progress events but exactly one terminal
+                # done/error event before the next task can be sent.
                 while True:
                     event = receive(process, log)
                     if event["type"] == "progress":
@@ -251,7 +337,17 @@ def orchestrate(
     remote_root: Path,
     job_name: str = "generation",
 ) -> None:
-    """Run the dynamic queue with one fixed tqdm line per selected GPU."""
+    """Run the dynamic queue with one fixed tqdm line per selected GPU.
+
+    Args:
+        workers: Remote host/GPU worker specifications.
+        run_path: Run directory containing the configuration and artifacts.
+        remote_root: Repository root on the remote hosts.
+        job_name: Registered orchestration job name.
+
+    Returns:
+        None.
+    """
     pending, total, complete = load_job(job_name).pending_tasks(run_path)
     if not pending:
         print(f"All {total} tasks are already complete.")
@@ -322,7 +418,14 @@ def orchestrate(
 
 
 def main() -> int:
-    """Run as the lamgate coordinator or as its hidden remote worker mode."""
+    """Run as the lamgate coordinator or as its hidden remote worker mode.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--nodes", nargs="+")
     parser.add_argument("--devices", nargs="+")

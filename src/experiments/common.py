@@ -32,6 +32,14 @@ class IntervalDynamics:
     net_vector: np.ndarray
 
     def scalar_record(self) -> dict[str, float | int]:
+        """Serialize scalar interval-dynamics metrics for reporting.
+
+        Args:
+            None.
+
+        Returns:
+            The resulting keyed records or metrics.
+        """
         return {
             "interval_tokens": self.token_count,
             "integrated_vector_norm": self.integrated_vector_norm,
@@ -58,7 +66,17 @@ def balanced_generation_rows(
     require_hidden_states: bool = True,
     require_scored: bool = True,
 ) -> list[dict[str, Any]]:
-    """Select a deterministic, uniformly capped set without changing raw data."""
+    """Select a deterministic, uniformly capped set without changing raw data.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        per_sample: Maximum number of trajectories retained per sample.
+        require_hidden_states: Whether rows without activation artifacts are excluded.
+        require_scored: Whether rows lacking correctness labels are excluded.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     selected: list[dict[str, Any]] = []
     counts: defaultdict[str, int] = defaultdict(int)
     rows = sorted(
@@ -79,7 +97,14 @@ def balanced_generation_rows(
 
 
 def latent_deltas(states: np.ndarray) -> np.ndarray:
-    """Return token-to-token state changes with a zero vector at token zero."""
+    """Return token-to-token state changes with a zero vector at token zero.
+
+    Args:
+        states: Token-aligned hidden-state vectors.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     states = np.asarray(states, dtype=np.float32)
     deltas = np.zeros_like(states)
     if len(states) > 1:
@@ -93,7 +118,16 @@ def robust_spike_indices(
     z_threshold: float = 3.0,
     min_distance: int = 3,
 ) -> np.ndarray:
-    """Find separated local maxima above a median absolute-deviation threshold."""
+    """Find separated local maxima above a median absolute-deviation threshold.
+
+    Args:
+        magnitudes: Per-token activation-change magnitudes.
+        z_threshold: Robust z-score threshold for selecting changes.
+        min_distance: Minimum token separation between retained peaks.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     values = np.asarray(magnitudes, dtype=np.float32)
     if len(values) < 3:
         return np.empty(0, dtype=np.int32)
@@ -118,14 +152,30 @@ def robust_spike_indices(
 
 
 def nearest_distance(indices: np.ndarray, target: int) -> int | None:
-    """Return the distance from ``target`` to the nearest index."""
+    """Return the distance from ``target`` to the nearest index.
+
+    Args:
+        indices: Token or record indices to process.
+        target: Target value or index.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     if not len(indices):
         return None
     return int(np.min(np.abs(indices - int(target))))
 
 
 def percentile_rank(values: np.ndarray, value: float) -> float:
-    """Return the empirical percentile of a value in ``values``."""
+    """Return the empirical percentile of a value in ``values``.
+
+    Args:
+        values: Values to summarize or transform.
+        value: Value to rank, parse, or transform.
+
+    Returns:
+        The computed scalar metric.
+    """
     values = np.asarray(values)
     if not len(values):
         return float("nan")
@@ -133,7 +183,14 @@ def percentile_rank(values: np.ndarray, value: float) -> float:
 
 
 def prefix_checkpoints(length: int) -> dict[int, int]:
-    """Map 25/50/75 percent checkpoints to valid zero-based token indices."""
+    """Map 25/50/75 percent checkpoints to valid zero-based token indices.
+
+    Args:
+        length: Sequence length.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     return {
         percent: min(max(int(np.ceil(length * percent / 100)) - 1, 0), length - 1)
         for percent in (25, 50, 75)
@@ -147,9 +204,17 @@ def update_phase_bounds(
 ) -> tuple[int, int]:
     """Map a textual token interval to pre-update and completed-state indices.
 
-    Stored state ``t`` predicts generated token ``t``. A textual interval
-    ending at token ``token_end`` is therefore fully represented at state
-    ``token_end + 1``.
+        Stored state ``t`` predicts generated token ``t``. A textual interval
+        ending at token ``token_end`` is therefore fully represented at state
+        ``token_end + 1``.
+
+    Args:
+        token_start: Inclusive first token index.
+        token_end: Inclusive final token index.
+        state_count: Number of stored token states.
+
+    Returns:
+        The computed aligned values described above.
     """
     if state_count < 2:
         raise ValueError("Interval dynamics require at least two states")
@@ -163,7 +228,16 @@ def interval_dynamics(
     start: int,
     end: int,
 ) -> IntervalDynamics:
-    """Integrate activation movement from ``start`` through completed ``end``."""
+    """Integrate activation movement from ``start`` through completed ``end``.
+
+    Args:
+        states: Token-aligned hidden-state vectors.
+        start: Inclusive start index.
+        end: Inclusive end index.
+
+    Returns:
+        Integrated dynamics for the requested activation interval.
+    """
     values = np.asarray(states, dtype=np.float32)
     if not 0 <= start < end < len(values):
         raise ValueError(f"Invalid interval [{start}, {end}] for {len(values)} states")
@@ -201,7 +275,14 @@ def interval_dynamics(
 
 
 def cumulative_cosine_distance(vectors: np.ndarray) -> float:
-    """Sum adjacent cosine distances over a vector sequence."""
+    """Sum adjacent cosine distances over a vector sequence.
+
+    Args:
+        vectors: Feature or activation vectors to process.
+
+    Returns:
+        The computed scalar metric.
+    """
     values = np.asarray(vectors, dtype=np.float32)
     if len(values) < 2:
         return 0.0
@@ -219,7 +300,17 @@ def matched_control_dynamics(
     excluded: list[tuple[int, int]],
     max_windows: int = 31,
 ) -> list[IntervalDynamics]:
-    """Sample same-duration non-update windows as a conservative null."""
+    """Sample same-duration non-update windows as a conservative null.
+
+    Args:
+        states: Token-aligned hidden-state vectors.
+        duration: Window duration in token transitions.
+        excluded: Intervals that control windows must not overlap.
+        max_windows: Maximum number of matched control windows.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     last_start = len(states) - duration - 1
     if duration < 1 or last_start < 0:
         return []
@@ -244,7 +335,16 @@ def control_percentile(
     controls: list[IntervalDynamics],
     field: str,
 ) -> float | None:
-    """Rank an interval metric against its same-length control windows."""
+    """Rank an interval metric against its same-length control windows.
+
+    Args:
+        value: Value to rank, parse, or transform.
+        controls: Matched control interval summaries.
+        field: Record field to read or summarize.
+
+    Returns:
+        The computed scalar metric, or ``None`` when unavailable.
+    """
     if not controls:
         return None
     control_values = np.asarray([getattr(control, field) for control in controls])

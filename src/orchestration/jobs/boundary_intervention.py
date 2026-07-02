@@ -18,7 +18,14 @@ from src.runtime.data import load_samples
 
 
 def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
-    """Enumerate incomplete point-condition-continuation cells."""
+    """Enumerate incomplete point-condition-continuation cells.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The computed aligned values described above.
+    """
     config = load_config(run_path)
     intervention_cfg = config["boundary_intervention"]
     points = load_samples(Path(intervention_cfg["manifest"]).resolve())
@@ -50,7 +57,14 @@ def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
 
 
 def setup_worker(run_path: Path) -> BoundaryInterventionWorker:
-    """Load one model replica, source index, and prepared boundary manifest."""
+    """Load one model replica, source index, and prepared boundary manifest.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        A worker initialized for boundary interventions.
+    """
     config = load_config(run_path)
     raw = {key: value for key, value in config.raw.items() if key != "_run_path"}
     raw["model"] = {**raw["model"], "device_map": {"": 0}}
@@ -79,7 +93,16 @@ def setup_worker(run_path: Path) -> BoundaryInterventionWorker:
 
 
 def log_path(run_path: Path, host: str, gpu: int) -> Path:
-    """Return one persistent worker's intervention log path."""
+    """Return one persistent worker's intervention log path.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        host: Remote worker host name.
+        gpu: GPU index on the worker host.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     return (
         run_path
         / "interventions"
@@ -101,7 +124,15 @@ class BoundaryInterventionWorker:
     tokenizer: Any
 
     def run_task(self, task: Task, _progress: Any) -> TaskResult:
-        """Generate and persist one intervention cell."""
+        """Generate and persist one intervention cell.
+
+        Args:
+            task: Serialized orchestration task.
+            _progress: Unused orchestration progress callback required by the job contract.
+
+        Returns:
+            A task result containing its stable key and serialized record.
+        """
         intervention_cfg = self.config["boundary_intervention"]
         point = self.points[int(task["point_index"])]
         continuation = int(task["continuation"])

@@ -78,7 +78,14 @@ def sentence_end_tokens(row: dict[str, Any]) -> list[int]:
 
 
 def sentence_end_positions(text: str) -> list[int]:
-    """Return offsets after period runs, excluding decimal points."""
+    """Return offsets after period runs, excluding decimal points.
+
+    Args:
+        text: Generated text to inspect.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     positions: list[int] = []
     for match in re.finditer(r"\.+", text):
         start, end = match.span()

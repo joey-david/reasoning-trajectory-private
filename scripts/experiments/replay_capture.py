@@ -11,6 +11,14 @@ from src.experiments.replay_capture import rebuild_replay_index, replay_capture_
 
 
 def main() -> int:
+    """Capture replay activations or rebuild their metadata index.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(
         description="Teacher-force existing generations and capture activations."
     )

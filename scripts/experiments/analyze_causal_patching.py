@@ -14,6 +14,14 @@ from src.experiments.patching_analysis import (
 
 
 def main() -> int:
+    """Analyze H3 patching outputs or apply its smoke gate.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(description="Analyze H3 causal patching.")
     parser.add_argument("run_path", type=Path)
     parser.add_argument("--smoke-gate", action="store_true")

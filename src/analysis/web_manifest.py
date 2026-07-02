@@ -69,7 +69,14 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
 def discover_generation_artifact(
     run: Path,
 ) -> tuple[Path, str, dict[str, dict]] | None:
-    """Return the browser-facing row artifact, format, and sample records."""
+    """Return the browser-facing row artifact, format, and sample records.
+
+    Args:
+        run: Run summary whose browser artifact should be discovered.
+
+    Returns:
+        The computed aligned values described above.
+    """
     generations = run / "generation" / "generations.jsonl"
     if generations.exists():
         return generations, "generation", read_sample_records(run)

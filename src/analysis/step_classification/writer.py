@@ -125,7 +125,17 @@ def assign_all_clusters(
     *,
     chunk_size: int = 4096,
 ) -> None:
-    """Assign bounded-fit clusters to every step in memory-safe chunks."""
+    """Assign bounded-fit clusters to every step in memory-safe chunks.
+
+    Args:
+        records: Aligned records to analyze or annotate.
+        features: Aligned feature arrays or step feature bundle.
+        model: Loaded model used for inference or transformation.
+        chunk_size: Maximum number of rows transformed at once.
+
+    Returns:
+        None.
+    """
     for start in range(0, len(features), chunk_size):
         end = start + chunk_size
         assign_clusters(

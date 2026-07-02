@@ -78,7 +78,16 @@ def transform_step_means(
     *,
     chunk_size: int = 4096,
 ) -> np.ndarray:
-    """Transform every step mean through a PCA fitted on a bounded sample."""
+    """Transform every step mean through a PCA fitted on a bounded sample.
+
+    Args:
+        features: Aligned feature arrays or step feature bundle.
+        pca: Fitted PCA transform, or ``None`` when no reduction is needed.
+        chunk_size: Maximum number of rows transformed at once.
+
+    Returns:
+        The resulting numeric array or tensor.
+    """
     chunks = (
         np.stack(
             [feature.mean for feature in features[start : start + chunk_size]]

@@ -24,7 +24,14 @@ RATE_FIELDS = (
 
 
 def analyze_causal_patching(run_path: Path) -> Path:
-    """Write cell summaries and paired question-grouped H3 contrasts."""
+    """Write cell summaries and paired question-grouped H3 contrasts.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     config = load_config(run_path)
     patch_cfg = config["patching"]
     rows = load_samples((run_path / "patching" / "continuations.jsonl").resolve())
@@ -138,7 +145,17 @@ def validate_h3_smoke(
     continuation_count: int = 1,
     residual_tolerance: float = 1e-4,
 ) -> Path:
-    """Gate the full H3 run on a complete, numerically valid eight-cell smoke."""
+    """Gate the full H3 run on a complete, numerically valid eight-cell smoke.
+
+    Args:
+        run_path: Run directory containing the configuration and artifacts.
+        pair_count: Number of smoke-test pairs required.
+        continuation_count: Number of continuations required per smoke-test cell.
+        residual_tolerance: Maximum normalized residual reconstruction error.
+
+    Returns:
+        The path of the written or discovered artifact.
+    """
     config = load_config(run_path)
     patch_cfg = config["patching"]
     modes = [str(mode) for mode in patch_cfg.get("patch_modes", ("full", "subspace"))]
@@ -244,7 +261,15 @@ def grouped_rate_summary(
     rows: list[dict[str, Any]],
     field: str,
 ) -> dict[str, Any] | None:
-    """Summarize a boolean outcome with question-grouped uncertainty."""
+    """Summarize a boolean outcome with question-grouped uncertainty.
+
+    Args:
+        rows: Generation or analysis records to process.
+        field: Record field to read or summarize.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     by_question: defaultdict[str, list[float]] = defaultdict(list)
     for row in rows:
         value = row.get(field)
@@ -264,7 +289,14 @@ def grouped_rate_summary(
 
 
 def reconstruction_summary(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Summarize available subspace reconstruction diagnostics."""
+    """Summarize available subspace reconstruction diagnostics.
+
+    Args:
+        rows: Generation or analysis records to process.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     records = [
         row["reconstruction"]
         for row in rows
@@ -290,7 +322,16 @@ def paired_comparison(
     treatment: tuple[str, str],
     reference: tuple[str, str],
 ) -> dict[str, Any] | None:
-    """Compare two cells after averaging paired effects by question."""
+    """Compare two cells after averaging paired effects by question.
+
+    Args:
+        by_pair_cell: Intervention rows indexed by pair, mode, and condition.
+        treatment: Treatment cell name.
+        reference: Reference cell name.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     pair_ids = sorted({pair_id for pair_id, _, _ in by_pair_cell})
     metrics = {}
     pair_count = 0
@@ -333,12 +374,27 @@ def paired_comparison(
 
 
 def present_bool_values(rows: list[dict[str, Any]], field: str) -> list[float]:
-    """Convert present boolean field values to numeric rates."""
+    """Convert present boolean field values to numeric rates.
+
+    Args:
+        rows: Generation or analysis records to process.
+        field: Record field to read or summarize.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     return [float(bool(row[field])) for row in rows if row.get(field) is not None]
 
 
 def fallback_gate_inputs(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Extract prespecified attention-to-MLP fallback contrasts."""
+    """Extract prespecified attention-to-MLP fallback contrasts.
+
+    Args:
+        cells: Available patching cells keyed by mode and condition.
+
+    Returns:
+        The resulting keyed records or metrics.
+    """
     indexed = {
         (cell["patch_mode"], cell["condition"]): cell
         for cell in cells
@@ -354,7 +410,15 @@ def fallback_gate_inputs(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
         return None
 
     def rate(key: tuple[str, str], field: str) -> float | None:
-        """Read one question-mean cell rate when available."""
+        """Read one question-mean cell rate when available.
+
+        Args:
+            key: Sample and seed key identifying a trace.
+            field: Record field to read or summarize.
+
+        Returns:
+            The computed scalar metric, or ``None`` when unavailable.
+        """
         summary = indexed[key]["rates"][field]
         return summary["question_mean"] if summary else None
 
@@ -383,7 +447,15 @@ def fallback_gate_inputs(cells: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def subtract_optional(left: float | None, right: float | None) -> float | None:
-    """Subtract two values when both are present."""
+    """Subtract two values when both are present.
+
+    Args:
+        left: Left operand or comparison input.
+        right: Right operand or comparison input.
+
+    Returns:
+        The computed scalar metric, or ``None`` when unavailable.
+    """
     return left - right if left is not None and right is not None else None
 
 
@@ -392,7 +464,15 @@ def bootstrap_mean_interval(
     *,
     draws: int = 1000,
 ) -> list[float]:
-    """Bootstrap a deterministic 95% interval for a mean."""
+    """Bootstrap a deterministic 95% interval for a mean.
+
+    Args:
+        values: Values to summarize or transform.
+        draws: Number of bootstrap resamples.
+
+    Returns:
+        The resulting ordered records or values.
+    """
     rng = np.random.default_rng(42)
     means = [
         float(np.mean(rng.choice(values, size=len(values), replace=True)))

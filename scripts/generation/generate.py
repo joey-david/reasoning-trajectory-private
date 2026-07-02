@@ -11,6 +11,14 @@ from src.orchestration.generation_runner import generate_runs
 
 
 def main() -> int:
+    """Generate outputs for the requested run directories.
+
+    Args:
+        None.
+
+    Returns:
+        The computed index, count, or status code.
+    """
     parser = argparse.ArgumentParser(
         description="Generate outputs for one or more run folders."
     )

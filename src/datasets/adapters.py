@@ -82,6 +82,8 @@ def adapt_row(row: dict[str, Any], adapter: str, idx: int) -> dict[str, Any]:
             row.get("Incorrect Answer 3") or row.get("incorrect_answer_3"),
         ]
         choices = [(str(correct), True), *[(str(x), False) for x in incorrect if x]]
+        # Shuffle deterministically so answer letters carry no dataset-level
+        # position signal while IDs remain stable across preparation runs.
         stable_shuffle(choices, str(row.get("Record ID") or row.get("id") or idx))
         gold = next(
             chr(65 + i) for i, (_, is_correct) in enumerate(choices) if is_correct
