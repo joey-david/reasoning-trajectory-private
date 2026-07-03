@@ -16,6 +16,8 @@ curl -4 -L --fail --silent --show-error \
   --range 0-1023 --output /dev/null "$probe_url"
 
 if (($#)); then
+  command_dir="$(cd "$(dirname "$1")" && pwd)"
+  export PATH="$command_dir:$PATH"
   exec "$@"
 fi
 

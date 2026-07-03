@@ -3,7 +3,8 @@
 Tools for generating many reasoning traces, capturing their hidden states, and
 studying how reasoning evolves through latent space.
 
-[Hypotheses](hypotheses.md) | [Experiment plan](experiments_plan.md)
+[Hypotheses](lit/hypotheses.md) | [Experiment plan](lit/experiments_plan.md) |
+[Token segmentation](lit/thought_units.md)
 
 ## Pipeline
 
@@ -104,6 +105,8 @@ python3 -m http.server 8765
 
 Open <http://localhost:8765/web/index.html> to inspect run summaries,
 generations, and interactive token- or step-level latent trajectories.
+Open <http://localhost:8765/web/research/> for the illustrated research story,
+from activation capture through the token-level no-free-lunch result.
 
 ## Multi-GPU and Remote Runs
 
@@ -129,10 +132,15 @@ Orchestrable jobs live in `src/orchestration/jobs/<name>.py`. Each exports
 `run_task(...) -> TaskResult`. Tasks must be JSON-serializable and outputs must
 be resumable with locked writes.
 
-Available jobs are `generation`, `gold_answer_capture`,
-`boundary_intervention`, and `causal_patching`.
+Available jobs are `generation`, `gold_answer_capture`, `causal_patching`, and
+`solution_object_labeling`.
 
-Use `--nodes local --devices 0,1` to schedule across GPUs on the current host.
+Use `solution_object_labeling_smoke` before the full Qwen3.5 FP8 labeling queue.
+On Ampere, install vLLM from its cu129 index documented in `requirements.txt`;
+the default v0.21 wheel requires CUDA 13.
+
+Commas create independent workers (`0,1`); plus signs give one worker multiple
+GPUs (`0+1`). Use `--nodes local` for the current host.
 
 Sync configs and pinned datasets to the server, then pull completed artifacts:
 
@@ -141,7 +149,7 @@ Sync configs and pinned datasets to the server, then pull completed artifacts:
 ./scripts/remote.sh pull runs/<model>/<run-path>
 ```
 
-Experiment-specific remote sequences and fallback gates are kept in
-[experiments_plan.md](experiments_plan.md).
+Experiment-specific status is kept in
+[lit/experiments_plan.md](lit/experiments_plan.md).
 
 Remote generation is never required for local analysis.

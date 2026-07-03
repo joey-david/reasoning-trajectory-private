@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import os
 from pathlib import Path
 from queue import Empty, Queue
 import re
@@ -24,6 +25,8 @@ from src.runtime.config import load_config
 
 
 PREFIX = "@@ORCHESTRATOR@@"
+GpuGroup = tuple[int, ...]
+Worker = tuple[str, GpuGroup]
 
 
 def emit(message: dict[str, Any]) -> None:
@@ -93,10 +96,22 @@ def worker_main(run_path: Path, job_name: str) -> int:
     """
     import torch
 
-    if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
-        raise RuntimeError("Worker must see exactly one CUDA GPU")
-
     config = load_config(run_path)
+    visible_group_size = int(os.environ.get("ORCHESTRATOR_GPU_COUNT", "1"))
+    expected_gpus = int(
+        config.get("model", {}).get("required_gpus", visible_group_size)
+    )
+    if (
+        not torch.cuda.is_available()
+        or torch.cuda.device_count() != expected_gpus
+        or visible_group_size != expected_gpus
+    ):
+        raise RuntimeError(
+            f"Worker must see exactly {expected_gpus} CUDA GPU(s), "
+            f"launcher declared {visible_group_size} and PyTorch found "
+            f"{torch.cuda.device_count()}"
+        )
+
     dtype = str(config.get("model", {}).get("dtype", "auto")).lower()
     if dtype in {"bfloat16", "bf16"} and not torch.cuda.is_bf16_supported():
         raise RuntimeError(f"{torch.cuda.get_device_name(0)} does not support {dtype}")
@@ -136,12 +151,12 @@ def worker_main(run_path: Path, job_name: str) -> int:
     return 0
 
 
-def parse_workers(nodes: list[str], devices: list[str]) -> list[tuple[str, int]]:
-    """Expand one comma-separated GPU selection per SSH node.
+def parse_workers(nodes: list[str], devices: list[str]) -> list[Worker]:
+    """Parse independent or grouped GPU selections for each SSH node.
 
     Args:
         nodes: Remote host names.
-        devices: Per-host GPU specifications.
+        devices: Per-host selections; commas split workers and plus signs group GPUs.
 
     Returns:
         The resulting ordered records or values.
@@ -149,13 +164,18 @@ def parse_workers(nodes: list[str], devices: list[str]) -> list[tuple[str, int]]
     if len(nodes) != len(devices):
         raise ValueError("--devices needs exactly one entry per --nodes host")
     workers = [
-        (node, int(gpu))
+        (node, tuple(int(gpu) for gpu in group.split("+")))
         for node, selected in zip(nodes, devices)
-        for gpu in selected.split(",")
-        if gpu.strip()
+        for group in selected.split(",")
+        if group.strip()
     ]
-    if not workers or len(workers) != len(set(workers)):
-        raise ValueError("Worker GPU selections must be non-empty and unique")
+    selected_devices = [(node, gpu) for node, group in workers for gpu in group]
+    if (
+        not workers
+        or any(not group or len(group) != len(set(group)) for _, group in workers)
+        or len(selected_devices) != len(set(selected_devices))
+    ):
+        raise ValueError("Worker GPU selections must be non-empty and disjoint")
     return workers
 
 
@@ -180,7 +200,7 @@ def receive(process: subprocess.Popen[str], log: TextIO) -> dict[str, Any]:
 
 def worker_command(
     host: str,
-    gpu: int,
+    gpu: int | GpuGroup,
     run_path: Path,
     root: Path,
     job_name: str,
@@ -189,7 +209,7 @@ def worker_command(
 
     Args:
         host: Remote worker host name.
-        gpu: GPU index on the worker host.
+        gpu: One GPU index or a grouped set used by one model worker.
         run_path: Run directory containing the configuration and artifacts.
         root: Repository root on the remote hosts.
         job_name: Registered orchestration job name.
@@ -197,10 +217,13 @@ def worker_command(
     Returns:
         The resulting ordered records or values.
     """
-    worker = f"{host}:{gpu}"
+    group = (gpu,) if isinstance(gpu, int) else gpu
+    devices = ",".join(str(device) for device in group)
+    worker = f"{host}:{'+'.join(str(device) for device in group)}"
     command = (
         f"cd {shlex.quote(root.as_posix())} && "
-        f"export CUDA_VISIBLE_DEVICES={gpu} && "
+        f"export CUDA_VISIBLE_DEVICES={devices} && "
+        f"export ORCHESTRATOR_GPU_COUNT={len(group)} && "
         "exec bash scripts/run_with_hf_download_fix.sh "
         f".venv/bin/python -u scripts/orchestrate.py "
         f"--run {shlex.quote(run_path.as_posix())} "
@@ -221,7 +244,7 @@ def worker_command(
 
 
 def run_worker(
-    worker: tuple[str, int],
+    worker: Worker,
     job_name: str,
     run_path: Path,
     root: Path,
@@ -235,7 +258,7 @@ def run_worker(
     """Load one persistent worker and consume tasks until the queue is empty.
 
     Args:
-        worker: Remote host/GPU worker specification.
+        worker: Remote host and grouped GPU worker specification.
         job_name: Registered orchestration job name.
         run_path: Run directory containing the configuration and artifacts.
         root: Repository root on the remote hosts.
@@ -249,13 +272,14 @@ def run_worker(
     Returns:
         None.
     """
-    host, gpu = worker
-    name = f"{host}:{gpu}"
-    log_path = load_job(job_name).log_path(run_path, host, gpu)
+    host, gpu_group = worker
+    gpu_label = "+".join(str(gpu) for gpu in gpu_group)
+    name = f"{host}:{gpu_label}"
+    log_path = load_job(job_name).log_path(run_path, host, gpu_label)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
-            worker_command(host, gpu, run_path, root, job_name),
+            worker_command(host, gpu_group, run_path, root, job_name),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=log,
@@ -332,7 +356,7 @@ def run_worker(
 
 
 def orchestrate(
-    workers: list[tuple[str, int]],
+    workers: list[Worker],
     run_path: Path,
     remote_root: Path,
     job_name: str = "generation",
@@ -367,7 +391,10 @@ def orchestrate(
     bars = [
         tqdm(
             total=0,
-            desc=f"{f'{host}:{gpu}':<20} starting",
+            desc=(
+                f"{host}:{'+'.join(str(value) for value in gpu)}".ljust(20)
+                + " starting"
+            ),
             position=index + 1,
             bar_format="{desc}",
             leave=True,

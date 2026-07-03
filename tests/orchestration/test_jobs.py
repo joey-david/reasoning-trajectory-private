@@ -6,14 +6,11 @@ import tempfile
 import unittest
 
 from src.orchestration.jobs import load_job
-from src.orchestration.jobs.boundary_intervention import (
-    pending_tasks as pending_boundary_tasks,
-)
 from src.orchestration.jobs.causal_patching import pending_tasks
 from src.orchestration.jobs.gold_answer_capture import (
     pending_tasks as pending_gold_tasks,
 )
-from src.orchestration.remote import worker_command
+from src.orchestration.remote import parse_workers, worker_command
 
 
 class OrchestrationJobTests(unittest.TestCase):
@@ -22,6 +19,14 @@ class OrchestrationJobTests(unittest.TestCase):
         self.assertIs(
             load_job("gold-answer-capture"),
             load_job("gold_answer_capture"),
+        )
+        self.assertIs(
+            load_job("solution-object-labeling"),
+            load_job("solution_object_labeling"),
+        )
+        self.assertIs(
+            load_job("solution-object-labeling-smoke"),
+            load_job("solution_object_labeling_smoke"),
         )
 
     def test_local_worker_command_avoids_ssh_and_isolates_gpu(self):
@@ -34,7 +39,32 @@ class OrchestrationJobTests(unittest.TestCase):
         )
         self.assertEqual(command[:2], ["bash", "-lc"])
         self.assertIn("CUDA_VISIBLE_DEVICES=3", command[2])
+        self.assertIn("ORCHESTRATOR_GPU_COUNT=1", command[2])
         self.assertIn("--job causal_patching", command[2])
+
+    def test_grouped_devices_create_one_multi_gpu_worker(self):
+        workers = parse_workers(
+            ["upnquick", "coktailjet"],
+            ["0+1", "0,1"],
+        )
+
+        self.assertEqual(
+            workers,
+            [
+                ("upnquick", (0, 1)),
+                ("coktailjet", (0,)),
+                ("coktailjet", (1,)),
+            ],
+        )
+        command = worker_command(
+            "local",
+            (0, 1),
+            Path("runs/model/job"),
+            Path("/repo"),
+            "solution_object_labeling",
+        )
+        self.assertIn("CUDA_VISIBLE_DEVICES=0,1", command[2])
+        self.assertIn("ORCHESTRATOR_GPU_COUNT=2", command[2])
 
     def test_causal_patching_tasks_resume_by_full_cell_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -92,45 +122,6 @@ class OrchestrationJobTests(unittest.TestCase):
             },
             tasks,
         )
-
-    def test_boundary_tasks_resume_by_point_condition_and_continuation(self):
-        with tempfile.TemporaryDirectory() as directory:
-            run_path = Path(directory)
-            manifest = run_path / "boundaries.jsonl"
-            manifest.write_text(
-                json.dumps({"point_id": 4}) + "\n",
-                encoding="utf-8",
-            )
-            (run_path / "config.yaml").write_text(
-                json.dumps(
-                    {
-                        "boundary_intervention": {
-                            "manifest": str(manifest),
-                            "conditions": ["baseline", "zero"],
-                            "continuations_per_condition": 2,
-                        }
-                    }
-                ),
-                encoding="utf-8",
-            )
-            output = run_path / "interventions" / "continuations.jsonl"
-            output.parent.mkdir()
-            output.write_text(
-                json.dumps(
-                    {
-                        "point_id": 4,
-                        "condition": "zero",
-                        "continuation": 1,
-                    }
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            tasks, total, complete = pending_boundary_tasks(run_path)
-
-        self.assertEqual(total, 4)
-        self.assertEqual(complete, 1)
-        self.assertEqual(len(tasks), 3)
 
     def test_gold_answer_tasks_resume_by_sample_id(self):
         with tempfile.TemporaryDirectory() as directory:

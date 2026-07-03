@@ -44,7 +44,7 @@ def load_hf_model_and_tokenizer(model_cfg: dict):
     """
     model_kwargs = {
         "device_map": model_cfg.get("device_map", "auto"),
-        "torch_dtype": torch_dtype_from_config(model_cfg.get("dtype")),
+        "dtype": torch_dtype_from_config(model_cfg.get("dtype")),
         "trust_remote_code": bool(model_cfg.get("trust_remote_code", False)),
     }
     if model_cfg.get("revision"):

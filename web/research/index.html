@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="An illustrated account of experiments on latent reasoning trajectories in language models.">
+  <title>Inside a Reasoning Trajectory</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="figures.css">
+  <link rel="stylesheet" href="responsive.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#story">Skip to the research story</a>
+
+  <header class="topbar">
+    <a class="wordmark" href="#top" aria-label="Inside a Reasoning Trajectory, home">
+      <span class="wordmark-mark" aria-hidden="true"></span>
+      <span>Inside a Reasoning Trajectory</span>
+    </a>
+    <div class="topbar-actions">
+      <a href="../index.html">Open data explorer</a>
+      <button id="glossary-button" type="button" aria-controls="glossary-drawer" aria-expanded="false">
+        Glossary
+      </button>
+    </div>
+  </header>
+
+  <nav class="chapter-nav" aria-label="Research chapters">
+    <a href="#capture" data-chapter="capture"><span>01</span> Capture</a>
+    <a href="#updates" data-chapter="updates"><span>02</span> Updates</a>
+    <a href="#causality" data-chapter="causality"><span>03</span> Causality</a>
+    <a href="#structure" data-chapter="structure"><span>04</span> Structure</a>
+    <a href="#prediction" data-chapter="prediction"><span>05</span> Prediction</a>
+    <a href="#segmentation" data-chapter="segmentation"><span>06</span> Segmentation</a>
+    <a href="#conclusion" data-chapter="conclusion"><span>07</span> Conclusion</a>
+  </nav>
+
+  <main id="story">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <canvas id="hero-canvas" aria-hidden="true"></canvas>
+      <div class="hero-content">
+        <p class="kicker">A visual research report</p>
+        <h1 id="hero-title">How does reasoning move inside a language model?</h1>
+        <p class="hero-deck">
+          We captured the internal state of a model at every generated token,
+          then tested whether reasoning breaks into natural, portable steps.
+          The answer is more interesting than a clean yes or no.
+        </p>
+        <div class="hero-verdict" aria-label="Central finding">
+          <span>The short answer</span>
+          <strong>Structure is real, but the “right step” depends on what you want the step to do.</strong>
+        </div>
+        <a class="scroll-cue" href="#capture">Start with the capture <span aria-hidden="true">↓</span></a>
+      </div>
+      <div class="hero-stats" aria-label="Study scale">
+        <div><strong>580</strong><span>reasoning traces</span></div>
+        <div><strong>17,602</strong><span>verified updates</span></div>
+        <div><strong>310,044</strong><span>held-out tokens</span></div>
+      </div>
+    </section>
+
+    <section class="opening-band">
+      <div class="section-inner opening-grid">
+        <div>
+          <p class="kicker">The intuition</p>
+          <h2>Words are visible. Computation is not.</h2>
+        </div>
+        <div class="opening-copy">
+          <p>
+            A model writes an answer one <button class="term" data-term="token">token</button> at a time.
+            Underneath, each token is accompanied by a long numerical vector: a
+            <button class="term" data-term="hidden-state">hidden state</button>.
+            String those vectors together and reasoning becomes a
+            <button class="term" data-term="trajectory">trajectory</button> through
+            <button class="term" data-term="latent-space">latent space</button>.
+          </p>
+          <p>
+            Our original hope was that meaningful reasoning steps would appear as
+            sharp bends or peaks in that trajectory. We designed five experiments
+            to give that idea every reasonable chance to succeed.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter" id="capture" data-observe="capture">
+      <div class="section-inner">
+        <header class="chapter-heading">
+          <p class="chapter-number">01 · Latent capture</p>
+          <h2>Turn generated text into a measurable path</h2>
+          <p>
+            We sampled ten solutions for each of 58 GSM-Symbolic questions from
+            SmolLM3-3B. For every generated token, we stored the final layer’s
+            hidden state in compressed form.
+          </p>
+        </header>
+
+        <div class="capture-flow" aria-label="Activation capture pipeline">
+          <div class="flow-stage">
+            <span class="flow-index">A</span>
+            <strong>Question</strong>
+            <p>“How much does the 74-minute call cost?”</p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true">→</div>
+          <div class="flow-stage">
+            <span class="flow-index">B</span>
+            <strong>Generated tokens</strong>
+            <p><mark>First</mark> <mark>calculate</mark> <mark>14</mark> <mark>×</mark> <mark>0.5</mark> …</p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true">→</div>
+          <div class="flow-stage">
+            <span class="flow-index">C</span>
+            <strong>Hidden states</strong>
+            <p>[−0.18, 0.42, …, 1.07] for every token</p>
+          </div>
+          <div class="flow-arrow" aria-hidden="true">→</div>
+          <div class="flow-stage">
+            <span class="flow-index">D</span>
+            <strong>Trajectory</strong>
+            <p>One continuous path through thousands of dimensions</p>
+          </div>
+        </div>
+
+        <figure class="capture-demo">
+          <div class="demo-copy">
+            <p class="figure-label">Interactive illustration</p>
+            <h3>Scrub through one imagined trajectory</h3>
+            <p>
+              The chart compresses a high-dimensional state into two dimensions
+              so it can be drawn. Nearby points are similar under this
+              <button class="term" data-term="projection">projection</button>;
+              distance on screen is not a literal map of the full model.
+            </p>
+            <label class="scrubber">
+              <span>Generated token <output id="token-output">1 / 18</output></span>
+              <input id="token-scrubber" type="range" min="0" max="17" value="0">
+            </label>
+            <div class="token-readout" aria-live="polite">
+              <span id="active-token">First</span>
+              <code id="active-vector">h₁ = [−0.18, 0.42, …]</code>
+            </div>
+          </div>
+          <canvas id="capture-canvas" role="img" aria-label="A projected latent trajectory whose active token can be changed with the slider"></canvas>
+          <figcaption>
+            <strong>How to read it.</strong> Each dot is one token state. The line
+            is time, not a claim that the model literally has two-dimensional thoughts.
+          </figcaption>
+        </figure>
+
+        <div class="method-strip">
+          <div>
+            <span>Model</span>
+            <strong>SmolLM3-3B</strong>
+          </div>
+          <div>
+            <span>Corpus</span>
+            <strong>58 questions × 10 traces</strong>
+          </div>
+          <div>
+            <span>Captured layer</span>
+            <strong>Final hidden layer</strong>
+          </div>
+          <div>
+            <span>Storage</span>
+            <strong>Scaled int8 activations</strong>
+          </div>
+        </div>
+
+        <figure class="artifact-figure">
+          <div class="artifact-image-wrap">
+            <img
+              src="../../runs/Qwen3-14B/gsm_symbolic_dry/analysis/plots/pca_layer-1.png"
+              alt="A PCA scatter plot of captured token activations from an early Qwen3-14B run"
+              loading="lazy">
+          </div>
+          <figcaption>
+            <span class="figure-label">Actual captured artifact</span>
+            <strong>An early PCA view of token activations.</strong>
+            Broad shape is visible, but a visually separated cloud is not yet a
+            reasoning-step ontology. PCA preserves directions of high variance,
+            not necessarily directions that matter for a chosen reasoning task.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="chapter tinted" id="updates" data-observe="updates">
+      <div class="section-inner">
+        <header class="chapter-heading">
+          <p class="chapter-number">02 · H1 and H2</p>
+          <h2>We looked for a spike. We found a wave.</h2>
+          <p>
+            First, we asked whether textual boundaries coincide with sharp latent
+            events. Then we used a symbolic engine to locate exact arithmetic
+            updates without asking a human or another model to judge them.
+          </p>
+        </header>
+
+        <div class="definition-band">
+          <div class="definition-symbol" aria-hidden="true">G<sub>k</sub> → G<sub>k+1</sub></div>
+          <div>
+            <h3>What is a symbolically verified update?</h3>
+            <p>
+              A deterministic parser reads the generated arithmetic. When a token
+              interval completes a valid new relation, binding, calculation,
+              check, or final extraction, the symbolic execution graph changes.
+              That interval is a
+              <button class="term" data-term="solution-object-update">solution-object update</button>.
+            </p>
+          </div>
+        </div>
+
+        <figure class="wave-figure">
+          <canvas id="wave-canvas" role="img" aria-label="Comparison of an expected sharp latent spike with the observed distributed wave across an update interval"></canvas>
+          <figcaption>
+            <span class="figure-label">Expected versus observed</span>
+            <strong>A completed calculation changes the state over many tokens.</strong>
+            The highlighted interval contains the textual work that completes one
+            verifiable relation. Activity is elevated, but spread across almost
+            the whole interval.
+          </figcaption>
+        </figure>
+
+        <div class="metric-explainer">
+          <article>
+            <div class="radial" style="--value:.73"><span>73rd</span></div>
+            <div>
+              <h3>Path-length percentile</h3>
+              <p>
+                The total movement inside a real update exceeded 73% of
+                length-matched control windows. Updates are active, not flat.
+              </p>
+            </div>
+          </article>
+          <article>
+            <div class="radial coral" style="--value:.19"><span>19%</span></div>
+            <div>
+              <h3>Peak share</h3>
+              <p>
+                The single largest token-to-token move accounts for only 19% of
+                movement. No one token performs the whole update.
+              </p>
+            </div>
+          </article>
+          <article>
+            <div class="radial blue" style="--value:.98"><span>98%</span></div>
+            <div>
+              <h3>Effective width</h3>
+              <p>
+                Meaningful movement occupies 98% of the update interval. This is
+                the clearest evidence against a narrow spike.
+              </p>
+            </div>
+          </article>
+          <article>
+            <div class="radial gold" style="--value:.17"><span>17%</span></div>
+            <div>
+              <h3>Net / path ratio</h3>
+              <p>
+                Only 17% of traveled distance becomes straight-line displacement.
+                The trajectory moves, turns, and partially doubles back.
+              </p>
+            </div>
+          </article>
+        </div>
+
+        <div class="reading-note">
+          <strong>Put together:</strong>
+          <p>
+            Real updates contain more latent motion than ordinary matched windows,
+            but that motion is broad and direction-changing. “Wave” is an
+            intuition for this distributed process, not a claim that the curve is
+            sinusoidal.
+          </p>
+        </div>
+
+        <div class="experiment-row">
+          <div class="experiment-id">H1</div>
+          <div>
+            <h3>Text boundaries did not reveal hidden atomic steps</h3>
+            <p>
+              Magnitude spikes recovered only 3–5% of symbolic updates.
+              <button class="term" data-term="surprisal">Surprisal</button> transitions
+              found 52–64%, but with low precision.
+              Forcing numbered or sentence-separated formatting changed net
+              displacement more than interval width or peak concentration.
+            </p>
+          </div>
+          <span class="result-tag negative">Hypothesis weakened</span>
+        </div>
+
+        <div class="source-row">
+          <a href="../../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates/report.json">H2 report.json</a>
+          <a href="../../src/experiments/localized_updates.py">H2 implementation</a>
+          <a href="../../runs/SmolLM3-3B/h1_freeform_replay/analysis/experiments/h1_boundaries/report.json">H1 report.json</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter" id="causality" data-observe="causality">
+      <div class="section-inner">
+        <header class="chapter-heading">
+          <p class="chapter-number">03 · H3</p>
+          <h2>Can a completed thought be transplanted?</h2>
+          <p>
+            Correlation is not causation. We patched activations from one
+            derivation into another derivation that had reached the same symbolic
+            state, then measured whether the continuation improved.
+          </p>
+        </header>
+
+        <div class="patch-diagram">
+          <div class="trace-lane donor">
+            <span>Donor trace A</span>
+            <div class="trace-points">
+              <i></i><i></i><i></i><i class="selected"></i><i></i><i></i>
+            </div>
+            <p>Different wording, same verified intermediate result</p>
+          </div>
+          <div class="patch-transfer" aria-hidden="true">
+            <span>activation vector</span>
+            <b>↓</b>
+          </div>
+          <div class="trace-lane target">
+            <span>Target trace B</span>
+            <div class="trace-points">
+              <i></i><i></i><i></i><i class="patched"></i><i></i><i></i>
+            </div>
+            <p>Continue generation after the injected state</p>
+          </div>
+        </div>
+
+        <figure class="chart-figure split-chart">
+          <div class="chart-copy">
+            <p class="figure-label">960 continuations · attention layer 18</p>
+            <h3>Equivalent patches did not reliably beat controls</h3>
+            <p>
+              A dot is the estimated accuracy difference. The horizontal line is
+              its 95%
+              <button class="term" data-term="confidence-interval">confidence interval</button>.
+              If that line crosses zero, the experiment cannot distinguish an
+              improvement from noise at this sample size.
+            </p>
+          </div>
+          <canvas id="patch-chart" role="img" aria-label="Confidence intervals for full and subspace equivalent patch effects versus position-random and mismatched controls"></canvas>
+          <figcaption>
+            <strong>How to read it.</strong> All four intervals cross zero.
+            Full-vector patching improved target accuracy by 6.9 points versus
+            position-random control, but the interval spans −3.6 to +16.9.
+          </figcaption>
+        </figure>
+
+        <div class="verdict-line">
+          <span class="result-tag inconclusive">No reliable causal effect</span>
+          <p>
+            This does not prove portable solution objects never exist. It says
+            this component, layer, alignment, and intervention did not isolate
+            one. The result is consistent with H2’s distributed-update picture.
+          </p>
+        </div>
+
+        <div class="source-row">
+          <a href="../../runs/SmolLM3-3B/failed_hypotheses/h3_process_isomer_patching/analysis/report.json">H3 report.json</a>
+          <a href="../../src/experiments/causal_patching.py">Patching implementation</a>
+          <a href="../../src/experiments/patching_analysis.py">Analysis implementation</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter dark" id="structure" data-observe="structure">
+      <div class="section-inner">
+        <header class="chapter-heading">
+          <p class="chapter-number">04 · H4</p>
+          <h2>The information is there. It is not naturally arranged for us.</h2>
+          <p>
+            We compared update vectors from different problems. Positive pairs
+            performed the same arithmetic operation with no shared literals;
+            negative pairs came from the same problem but performed different operations.
+          </p>
+        </header>
+
+        <div class="projection-story">
+          <div class="space-panel raw">
+            <div class="space-dots" aria-hidden="true">
+              <i data-class="add"></i><i data-class="mul"></i><i data-class="sub"></i><i data-class="div"></i>
+              <i data-class="mul"></i><i data-class="sub"></i><i data-class="add"></i><i data-class="div"></i>
+              <i data-class="sub"></i><i data-class="add"></i><i data-class="div"></i><i data-class="mul"></i>
+            </div>
+            <span>Raw geometry</span>
+            <strong>AUC 0.394</strong>
+            <p>Same-operation pairs are not naturally closer.</p>
+          </div>
+          <div class="learned-arrow" aria-hidden="true">
+            <span>learn a linear projection</span>
+            <b>→</b>
+          </div>
+          <div class="space-panel projected">
+            <div class="space-clusters" aria-hidden="true">
+              <span class="cluster add">+</span>
+              <span class="cluster sub">−</span>
+              <span class="cluster mul">×</span>
+              <span class="cluster div">÷</span>
+            </div>
+            <span>Supervised projection</span>
+            <strong>AUC 0.957</strong>
+            <p>Operation identity becomes strongly separable.</p>
+          </div>
+        </div>
+
+        <div class="two-column-explanation">
+          <div>
+            <h3>What this positive result means</h3>
+            <p>
+              A simple learned linear map can expose arithmetic operation
+              information on held-out questions. The model’s activations contain
+              a reusable signal about whether it is adding, subtracting,
+              multiplying, or dividing.
+            </p>
+          </div>
+          <div>
+            <h3>What it does not mean</h3>
+            <p>
+              The raw space does not organize itself into obvious operation
+              clusters. AUC does not establish causality, a symbolic internal
+              language, or a universal definition of a reasoning step.
+            </p>
+          </div>
+        </div>
+
+        <div class="sample-scale">
+          <span><strong>10,421</strong> updates</span>
+          <span><strong>278</strong> questions</span>
+          <span><strong>5,316</strong> held-out pairs</span>
+          <span><strong>128</strong> projected dimensions</span>
+        </div>
+
+        <div class="source-row">
+          <a href="../../runs/SmolLM3-3B/h4_structural_replay/analysis/experiments/h4_structural_contrast/report.json">H4 report.json</a>
+          <a href="../../src/experiments/structural_contrast.py">H4 implementation</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter" id="prediction" data-observe="prediction">
+      <div class="section-inner">
+        <header class="chapter-heading">
+          <p class="chapter-number">05 · H5</p>
+          <h2>Do special segments predict whether the answer will be right?</h2>
+          <p>
+            We summarized prefixes at 25%, 50%, and 75% of each trace, then used
+            a linear classifier to predict final correctness. Better segmentation
+            should preserve more useful predictive information.
+          </p>
+        </header>
+
+        <figure class="chart-figure prediction-figure">
+          <canvas id="prediction-chart" role="img" aria-label="ROC-AUC across 25, 50, and 75 percent trace checkpoints for sentence, symbolic update, and latent wave representations"></canvas>
+          <figcaption>
+            <span class="figure-label">Correctness prediction</span>
+            <strong>Ordinary sentence summaries won.</strong>
+            Sentence mean-plus-variance reached .757/.740/.762 AUC. Symbolic
+            updates reached .631/.652/.700; latent waves reached .639/.616/.680.
+          </figcaption>
+        </figure>
+
+        <div class="auc-explainer">
+          <div class="auc-gauge" aria-hidden="true">
+            <span class="chance">chance</span>
+            <span class="useful">better separation</span>
+            <i style="left: 76%"></i>
+          </div>
+          <div>
+            <h3>What does ROC-AUC mean?</h3>
+            <p>
+              <button class="term" data-term="roc-auc">ROC-AUC</button> is the
+              probability that a classifier ranks a randomly chosen correct trace
+              above a randomly chosen incorrect one. 0.5 is chance; 1.0 is perfect.
+              It measures ranking, not calibrated confidence.
+            </p>
+          </div>
+        </div>
+
+        <div class="source-row">
+          <a href="../../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h5_correctness_prediction/report.json">H5 report.json</a>
+          <a href="../../src/experiments/correctness_prediction.py">H5 implementation</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter matrix-chapter" id="segmentation" data-observe="segmentation">
+      <div class="section-inner">
+        <header class="chapter-heading">
+          <p class="chapter-number">06 · Token-level no free lunch</p>
+          <h2>There may be no objective-independent “correct step”</h2>
+          <p>
+            We stopped asking for one preferred boundary and let every
+            token-to-token transition compete. Each segmentation received the
+            same number of boundaries. Then we scored it under five different goals.
+          </p>
+        </header>
+
+        <div class="objective-list" aria-label="Segmentation objectives">
+          <div><span class="objective-dot answer"></span><strong>Answer</strong><p>Where gold-answer alignment increases.</p></div>
+          <div><span class="objective-dot object"></span><strong>Object</strong><p>Where a symbolic update completes.</p></div>
+          <div><span class="objective-dot correctness"></span><strong>Correctness</strong><p>Where predicted correctness changes.</p></div>
+          <div><span class="objective-dot compression"></span><strong>Compression</strong><p>Where local latent means shift.</p></div>
+          <div><span class="objective-dot semantic"></span><strong>Semantic</strong><p>Where the large-model judge ends a human-like unit.</p></div>
+        </div>
+
+        <figure class="matrix-figure">
+          <div id="objective-matrix" class="heatmap" role="img" aria-label="Heatmap of each oracle segmentation's normalized utility under five objectives"></div>
+          <figcaption>
+            <span class="figure-label">Objective × segmentation utility</span>
+            <strong>The bright diagonal is the result.</strong>
+            Each oracle is perfect for the objective that defined it. Away from
+            that diagonal, utility collapses. Select a cell to see its meaning.
+          </figcaption>
+          <div id="matrix-readout" class="matrix-readout" aria-live="polite">
+            Select a heatmap cell.
+          </div>
+        </figure>
+
+        <div class="nfl-verdict">
+          <div class="nfl-score">
+            <span>Best worst-case utility</span>
+            <strong>0.020</strong>
+            <small>SmolLM token-level suite</small>
+          </div>
+          <div>
+            <h3>No tested segmentation is good at everything</h3>
+            <p>
+              Utility is normalized so random selection is 0 and the
+              objective-specific oracle is 1. The strongest method’s weakest
+              objective is only .020. Changing the minimum segment length from
+              one to eight tokens leaves the conclusion intact.
+            </p>
+          </div>
+        </div>
+
+        <section class="semantic-section" aria-labelledby="semantic-title">
+          <header>
+            <p class="kicker">Independent human-semantic ontology</p>
+            <h3 id="semantic-title">A 122B model labeled “thought units” from the text</h3>
+            <p>
+              Qwen3.5-122B marked complete verbatim intervals as planning,
+              deriving a value, checking, correcting an error, extracting an
+              answer, and related operations. We aligned those spans back to
+              SmolLM token activations.
+            </p>
+          </header>
+
+          <div class="annotated-trace" aria-label="Example semantically labeled reasoning trace">
+            <span class="trace-span plan"><b>Plan</b> First, calculate the first 14 minutes at €0.5.</span>
+            <span class="trace-span derive"><b>Derive value</b> The next segment is 20 minutes, so 20 × €0.4 = €8.</span>
+            <span class="trace-span verify"><b>Verify</b> Let me check the thresholds and the two-minute rate again.</span>
+            <span class="trace-span extract"><b>Extract answer</b> Therefore, the answer is 17.</span>
+          </div>
+
+          <div class="semantic-comparisons">
+            <section class="comparison-task" aria-labelledby="boundary-comparison-title">
+              <header>
+                <span>Task A · Locate boundaries</span>
+                <h4 id="boundary-comparison-title">Is this token transition the end of a judged unit?</h4>
+                <p>Latent and text use the same labels and question-disjoint split, so these AUCs are directly comparable.</p>
+              </header>
+              <div class="semantic-metrics">
+                <article>
+                  <strong>.982</strong>
+                  <span>Latent boundary AUC</span>
+                  <p>A linear detector uses final-layer activation features.</p>
+                </article>
+                <article>
+                  <strong>.956</strong>
+                  <span>Text boundary AUC</span>
+                  <p>Character n-grams use 96 text characters on each side.</p>
+                </article>
+                <article>
+                  <strong>.969</strong>
+                  <span>Latent, non-sentence</span>
+                  <p>Boundaries near sentence ends are removed.</p>
+                </article>
+                <article>
+                  <strong>.775</strong>
+                  <span>Text, non-sentence</span>
+                  <p>Surface cues weaken sharply away from sentence ends.</p>
+                </article>
+              </div>
+              <p class="comparison-result">
+                <strong>Paired difference:</strong> latent exceeds text by .026
+                overall (95% CI [.015, .040]) and .193 off sentence boundaries
+                ([.115, .301]).
+              </p>
+            </section>
+
+            <section class="comparison-task" aria-labelledby="label-comparison-title">
+              <header>
+                <span>Task B · Classify a selected span</span>
+                <h4 id="label-comparison-title">Which semantic operation does this interval perform?</h4>
+                <p>This is a different task. Its AUCs should not be compared with boundary-location AUCs.</p>
+              </header>
+              <div class="semantic-metrics two">
+                <article>
+                  <strong>.891</strong>
+                  <span>Latent label AUC</span>
+                  <p>Eight operation labels are recoverable from activations.</p>
+                </article>
+                <article>
+                  <strong>.892</strong>
+                  <span>Lexical label AUC</span>
+                  <p>Text performs equally well: operation identity is not latent-exclusive.</p>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <div class="semantic-caveat">
+            <strong>A careful interpretation</strong>
+            <p>
+              78.2% of held-out judged boundaries are near sentence ends, though
+              54.2% of judged spans cross at least one sentence boundary. These
+              are noisy silver labels over 12 held-out arithmetic traces, not a
+              final human ground truth.
+            </p>
+          </div>
+        </section>
+
+        <div class="source-row">
+          <a href="../../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation/report.json">Token segmentation report</a>
+          <a href="../../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation/report.json">Semantic report</a>
+          <a href="../../src/experiments/token_segmentation/">Implementation folder</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter conclusion" id="conclusion" data-observe="conclusion">
+      <div class="section-inner">
+        <header class="chapter-heading">
+          <p class="chapter-number">07 · What survives</p>
+          <h2>Reasoning has structure, but not one canonical ruler</h2>
+        </header>
+
+        <div class="conclusion-grid">
+          <div class="claim supported">
+            <span>Supported</span>
+            <h3>Reasoning operations are represented</h3>
+            <p>
+              Arithmetic operation and human-semantic labels are strongly
+              decodable with supervised linear models on held-out questions.
+            </p>
+          </div>
+          <div class="claim supported">
+            <span>Supported</span>
+            <h3>Real updates contain distributed activity</h3>
+            <p>
+              Symbolic update intervals move more than controls, but the movement
+              covers almost the whole interval and changes direction.
+            </p>
+          </div>
+          <div class="claim rejected">
+            <span>Not supported</span>
+            <h3>One token is the atomic write event</h3>
+            <p>
+              Peak share is low, effective width is high, and raw spikes recover
+              very few symbolic updates.
+            </p>
+          </div>
+          <div class="claim rejected">
+            <span>Not supported</span>
+            <h3>One segmentation serves every purpose</h3>
+            <p>
+              Answer, object, correctness, compression, and semantic objectives
+              select sharply different token boundaries.
+            </p>
+          </div>
+        </div>
+
+        <blockquote>
+          <p>
+            A “reasoning step” is not simply discovered in the activation stream.
+            It is selected relative to an objective.
+          </p>
+        </blockquote>
+
+        <div class="limits-next">
+          <div>
+            <h3>Limits</h3>
+            <ul>
+              <li>The main corpus is arithmetic reasoning.</li>
+              <li>Most activation analyses use the final layer.</li>
+              <li>The causal result tests one component and layer.</li>
+              <li>Semantic labels are model-generated silver annotations.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Next decisive tests</h3>
+            <ul>
+              <li>Replicate answer-relative MI/HSIC peaks.</li>
+              <li>Repeat on code, proofs, and debugging traces.</li>
+              <li>Test transfer across model families and scales.</li>
+              <li>Build a smaller human-audited semantic benchmark.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="final-links">
+          <a href="../../lit/hypotheses_summary.md">Read the hypothesis summary</a>
+          <a href="../../lit/thought_units.md">Read the token-segmentation notes</a>
+          <a href="../index.html">Inspect individual generations</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="glossary-section" id="glossary">
+      <div class="section-inner">
+        <header class="chapter-heading">
+          <p class="chapter-number">Reference</p>
+          <h2>Glossary</h2>
+          <p>Every specialized term used in this report, in plain language.</p>
+        </header>
+        <div id="glossary-grid" class="glossary-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <aside id="glossary-drawer" class="glossary-drawer" aria-labelledby="drawer-title" hidden>
+    <div class="drawer-heading">
+      <div>
+        <span>Plain-language definition</span>
+        <h2 id="drawer-title">Glossary</h2>
+      </div>
+      <button id="glossary-close" type="button" aria-label="Close glossary">×</button>
+    </div>
+    <div id="drawer-content"></div>
+    <a href="#glossary">View the complete glossary</a>
+  </aside>
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+  <footer>
+    <span>Reasoning Trajectory · Local research report</span>
+    <span>Figures derive from repository artifacts dated July 2026.</span>
+  </footer>
+</body>
+</html>

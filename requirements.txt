@@ -3,10 +3,12 @@ numpy>=1.24
 datasets>=2.19
 matplotlib>=3.8
 scikit-learn>=1.4
-transformers>=4.53,<6
+transformers>=5.5,<6
 accelerate>=1.0
 safetensors>=0.4
 tqdm>=4.66
-# flash-attn needs to be installed after.
---extra-index-url https://download.pytorch.org/whl/cu124
-torch==2.6.0+cu124
+# Qwen3.5 FP8 on Ampere needs vLLM's cu129 wheel:
+# uv pip install vllm --extra-index-url https://wheels.vllm.ai/0.21.0/cu129 \
+#   --extra-index-url https://download.pytorch.org/whl/cu129 \
+#   --index-strategy unsafe-best-match
+torch>=2.10,<3

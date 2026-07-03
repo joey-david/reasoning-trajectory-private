@@ -56,13 +56,13 @@ class OrchestrationJob(Protocol):
             A worker initialized to execute tasks for this job.
         """
 
-    def log_path(self, run_path: Path, host: str, gpu: int) -> Path:
+    def log_path(self, run_path: Path, host: str, gpu: int | str) -> Path:
         """Return the worker log destination.
 
         Args:
             run_path: Run directory containing the configuration and artifacts.
             host: Remote worker host name.
-            gpu: GPU index on the worker host.
+            gpu: GPU index or grouped-device label on the worker host.
 
         Returns:
             The path of the written or discovered artifact.
