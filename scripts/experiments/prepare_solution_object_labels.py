@@ -12,12 +12,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.experiments.solution_object_labeling import build_label_windows
 
 
+CANONICAL_SOURCE = Path(
+    "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k"
+)
+CANONICAL_OUTPUT = Path(
+    "runs/Qwen3.5-122B-A10B-FP8/solution_object_silver/token_windows.jsonl"
+)
+CANONICAL_UPDATES = (
+    CANONICAL_SOURCE / "analysis/experiments/h2_localized_updates/updates.jsonl"
+)
+
+
 def main() -> int:
     """Build token windows from an existing activation run."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("source_run", type=Path)
-    parser.add_argument("output", type=Path)
-    parser.add_argument("--updates", type=Path, required=True)
+    parser = argparse.ArgumentParser(
+        description="Prepare canonical semantic-label windows or explicit artifacts."
+    )
+    parser.add_argument(
+        "source_run", nargs="?", type=Path, default=CANONICAL_SOURCE
+    )
+    parser.add_argument("output", nargs="?", type=Path, default=CANONICAL_OUTPUT)
+    parser.add_argument("--updates", type=Path, default=CANONICAL_UPDATES)
     parser.add_argument("--window-tokens", type=int, default=256)
     parser.add_argument("--overlap-tokens", type=int, default=48)
     args = parser.parse_args()

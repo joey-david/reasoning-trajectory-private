@@ -7,8 +7,8 @@ from pathlib import Path
 import re
 from typing import Any
 
-from src.analysis.common import read_generation_rows
-from src.analysis.token_alignment import build_token_spans, token_range_for_chars
+from reasoning_trajectory.artifacts import read_generation_rows
+from reasoning_trajectory.token_alignment import build_token_spans, token_range_for_chars
 from src.runtime.data import load_samples
 
 

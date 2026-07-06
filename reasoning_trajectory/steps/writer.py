@@ -8,27 +8,30 @@ from typing import Any
 
 import numpy as np
 
-from src.analysis.common import evenly_capped, read_generation_rows
-from src.analysis.step_classification.clustering import (
+from reasoning_trajectory.artifacts import (
+    evenly_capped,
+    load_hidden_states_npz,
+    read_generation_rows,
+    write_jsonl,
+)
+from reasoning_trajectory.steps.clustering import (
     ClusterModel,
     assign_clusters,
     cluster_metadata,
     fit_cluster_model,
 )
-from src.analysis.step_classification.features import (
+from reasoning_trajectory.steps.features import (
     StepFeature,
     StepMatrices,
     build_step_features,
     stack_features,
 )
-from src.analysis.step_classification.projection import projection_payloads
-from src.analysis.step_classification.segmentation import (
+from reasoning_trajectory.steps.projection import projection_payloads
+from reasoning_trajectory.steps.segmentation import (
     build_segments,
     configured_segmenters,
 )
-from src.analysis.token_alignment import build_token_spans
-from src.runtime.artifact_store import load_hidden_states_npz
-from src.runtime.data import write_jsonl
+from reasoning_trajectory.token_alignment import build_token_spans
 
 
 def write_step_classification(run_path: Path, cfg: dict[str, Any]) -> None:

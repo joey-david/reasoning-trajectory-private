@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reasoning-trajectory-analysis"
+version = "0.1.0"
+description = "Token-level latent trajectory analysis for LLM reasoning traces."
+readme = "reasoning_trajectory/README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "pyyaml>=6",
+  "scikit-learn>=1.4",
+  "tokenizers>=0.20",
+]
+
+[project.optional-dependencies]
+alignment = ["transformers>=5.5,<6"]
+
+[project.scripts]
+rt-analyze = "reasoning_trajectory.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["reasoning_trajectory*"]

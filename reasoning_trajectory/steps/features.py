@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 
-from src.analysis.step_classification.segmentation import StepSegment
+from reasoning_trajectory.steps.segmentation import StepSegment
 
 
 @dataclass(slots=True)
@@ -85,6 +85,7 @@ def build_step_features(
             "char_start": segment.char_start,
             "char_end": segment.char_end,
             "step_text": segment.text[:600],
+            "labels": list(segment.labels),
             "variance": round(variance, 6),
             "direction_norm": round(float(np.linalg.norm(direction)), 6),
             "nudge_norm": round(float(np.linalg.norm(nudge)), 6),

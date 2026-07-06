@@ -10,30 +10,49 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.experiments.process_isomers import write_process_isomer_pairs
 
 
+CANONICAL_RUN = Path(
+    "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k"
+)
+CANONICAL_H2_DIR = CANONICAL_RUN / "analysis/experiments/h2_localized_updates"
+CANONICAL_OUTPUT = Path("experiments/h3_process_isomer_pairs.jsonl")
+CANONICAL_AUDIT = Path("experiments/h3_process_isomer_pair_audit.json")
+
+
 def main() -> int:
-    """Mine symbolically equivalent trace pairs for H3.
-
-    Args:
-        None.
-
-    Returns:
-        The computed index, count, or status code.
-    """
-    parser = argparse.ArgumentParser(description="Mine H3 symbolic-state pairs.")
-    parser.add_argument("h2_dir", type=Path)
-    parser.add_argument("output", type=Path)
+    """Mine symbolically equivalent trace pairs for H3."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Mine the canonical H3 process-isomer pairs, or use explicit paths "
+            "and selection parameters."
+        )
+    )
+    parser.add_argument("h2_dir", nargs="?", type=Path, default=CANONICAL_H2_DIR)
+    parser.add_argument("output", nargs="?", type=Path, default=CANONICAL_OUTPUT)
     parser.add_argument("--activation-run", type=Path)
-    parser.add_argument("--generation-run", type=Path)
-    parser.add_argument("--audit-path", type=Path)
-    parser.add_argument("--per-sample", type=int, default=3)
+    parser.add_argument("--generation-run", type=Path, default=CANONICAL_RUN)
+    parser.add_argument("--audit-path", type=Path, default=CANONICAL_AUDIT)
+    parser.add_argument("--per-sample", type=int, default=10)
     parser.add_argument("--max-pairs", type=int, default=30)
     parser.add_argument("--min-pairs", type=int, default=20)
     parser.add_argument("--min-path-edits", type=int, default=2)
     parser.add_argument("--min-path-distance", type=float, default=0.2)
-    parser.add_argument("--max-pairs-per-question", type=int, default=2)
-    parser.add_argument("--max-trajectory-reuse", type=int, default=2)
-    parser.add_argument("--max-target-remaining-tokens", type=int)
-    parser.add_argument("--require-target-correct", action="store_true")
+    parser.add_argument("--max-pairs-per-question", type=int, default=3)
+    parser.add_argument("--max-trajectory-reuse", type=int, default=3)
+    parser.add_argument("--max-target-remaining-tokens", type=int, default=896)
+    correctness = parser.add_mutually_exclusive_group()
+    correctness.add_argument(
+        "--require-target-correct",
+        dest="require_target_correct",
+        action="store_true",
+        default=True,
+        help="Require correct target traces (the canonical setting).",
+    )
+    correctness.add_argument(
+        "--allow-incorrect-target",
+        dest="require_target_correct",
+        action="store_false",
+        help="Disable the canonical requirement that target traces be correct.",
+    )
     args = parser.parse_args()
     print(
         write_process_isomer_pairs(

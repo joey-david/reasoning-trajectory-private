@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-from src.analysis.common import read_generation_rows
+from reasoning_trajectory.artifacts import read_generation_rows
 from src.experiments.causal_patch_generation import (
     generate_patched_continuation,
     load_activation_vector,

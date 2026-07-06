@@ -9,11 +9,15 @@ from typing import Any
 import numpy as np
 from sklearn.decomposition import PCA
 
-from src.analysis.common import evenly_capped, project_3d, read_generation_rows
-from src.analysis.step_markers import configured_selectors
-from src.analysis.token_alignment import TokenSpan, build_token_spans
-from src.analysis.token_selectors import build_token_selector
-from src.runtime.artifact_store import load_hidden_states_npz
+from reasoning_trajectory.artifacts import (
+    evenly_capped,
+    load_hidden_states_npz,
+    read_generation_rows,
+)
+from reasoning_trajectory.markers import configured_selectors
+from reasoning_trajectory.projections import project_3d, projection_diagnostics
+from reasoning_trajectory.token_alignment import TokenSpan, build_token_spans
+from reasoning_trajectory.token_selectors import build_token_selector
 
 
 PointItem = tuple[np.ndarray, dict[str, Any], int, int, str]
@@ -66,8 +70,11 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
         if len(projection_items) < 3:
             continue
         projection_x = np.stack([item[0] for item in projection_items])
+        pca_coords, pca_fit_coords, pca_variance = project_all_with_fitted_pca(
+            items, projection_x
+        )
         projections = {
-            "pca": project_all_with_fitted_pca(items, projection_x),
+            "pca": pca_coords,
             "tsne": project_3d(projection_x)["tsne"],
         }
         projection_inputs = {
@@ -86,6 +93,11 @@ def write_interactive_trajectories(run_path: Path, cfg: dict[str, Any]) -> None:
                 max_points=max_points,
                 source_points=len(items),
                 token_spans=token_spans,
+                diagnostics=projection_diagnostics(
+                    projection_x,
+                    coords if method == "tsne" else pca_fit_coords,
+                    explained_variance=pca_variance if method == "pca" else None,
+                ),
             )
             path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             manifest.append(
@@ -109,7 +121,7 @@ def project_all_with_fitted_pca(
     fit_x: np.ndarray,
     *,
     chunk_size: int = 4096,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray, list[float]]:
     """Fit a shared PCA basis on a bounded sample, then transform every point.
 
     Args:
@@ -125,7 +137,11 @@ def project_all_with_fitted_pca(
         np.stack([item[0] for item in items[start : start + chunk_size]])
         for start in range(0, len(items), chunk_size)
     )
-    return np.concatenate([pca.transform(chunk) for chunk in chunks])
+    return (
+        np.concatenate([pca.transform(chunk) for chunk in chunks]),
+        pca.transform(fit_x),
+        pca.explained_variance_ratio_.astype(float).tolist(),
+    )
 
 
 def build_payload(
@@ -138,6 +154,7 @@ def build_payload(
     max_points: int = 0,
     source_points: int | None = None,
     token_spans: list[list[TokenSpan]] | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Combine projected coordinates and source metadata for the web UI.
 
@@ -150,6 +167,7 @@ def build_payload(
         max_points: Browser-side cap applied after the active filters.
         source_points: Candidate count before projection-specific sampling.
         token_spans: Character spans indexed by trajectory and generated token.
+        diagnostics: Projection fidelity metadata.
 
     Returns:
         A JSON-compatible interactive plot payload.
@@ -182,6 +200,7 @@ def build_payload(
         "max_points": max_points,
         "source_points": source_points if source_points is not None else len(items),
         "sampled": source_points is not None and len(items) < source_points,
+        "diagnostics": diagnostics or {},
         "points": points,
     }
 

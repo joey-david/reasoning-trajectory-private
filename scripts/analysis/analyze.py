@@ -9,11 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.analysis.answers import update_answers
 from src.analysis.hard_questions import write_hard_questions
-from src.analysis.interactive_trajectories import write_interactive_trajectories
+from reasoning_trajectory.interactive import write_interactive_trajectories
+from reasoning_trajectory.pipeline import analyze_trajectories
 from src.analysis.solution_objects import write_solution_objects
-from src.analysis.step_classification import write_step_classification
-from src.analysis.step_markers import write_step_markers
-from src.analysis.web_manifest import write_manifest
+from reasoning_trajectory.steps import write_step_classification
+from reasoning_trajectory.markers import write_step_markers
+from reasoning_trajectory.manifest import write_manifest
 from src.runtime.config import load_config
 
 
@@ -35,16 +36,13 @@ def main() -> int:
     write_step_markers(run_path, cfg)
     write_solution_objects(run_path, cfg)
     write_hard_questions(run_path, cfg)
-    if cfg.get("static_plots", False):
-        from src.analysis.trajectories import plot_trajectories
-
-        plot_trajectories(run_path, cfg)
-    else:
-        static_index = run_path / "analysis" / "plots" / "index.json"
-        if static_index.exists():
-            static_index.unlink()
+    static_index = run_path / "analysis" / "plots" / "index.json"
+    if static_index.exists():
+        static_index.unlink()
     write_interactive_trajectories(run_path, cfg)
     write_step_classification(run_path, cfg)
+    if cfg.get("trajectory_metrics", True):
+        analyze_trajectories(run_path, cfg.get("trajectory_metrics_config", {}))
     write_manifest(Path("runs"), Path("web/data/runs.json"))
     return 0
 

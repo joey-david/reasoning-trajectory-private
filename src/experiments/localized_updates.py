@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 from sklearn.metrics import roc_auc_score
 
-from src.analysis.token_alignment import build_token_spans
+from reasoning_trajectory.token_alignment import build_token_spans
 from src.experiments.common import (
     balanced_generation_rows,
     control_percentile,

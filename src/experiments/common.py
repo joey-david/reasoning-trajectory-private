@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from src.analysis.common import read_generation_rows
+from reasoning_trajectory.artifacts import read_generation_rows
 
 
 @dataclass(slots=True)

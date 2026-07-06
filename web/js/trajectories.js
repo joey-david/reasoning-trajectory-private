@@ -70,7 +70,6 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     $("plot-color-mode").value = route.color === "cluster" ? "cluster" : "correctness";
     updateSeedOptions(route.seed);
     updateRangeOutputs();
-    renderStaticPlots();
     loadSelectedPlot(route);
   }
 
@@ -157,7 +156,14 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     const samplingNote = payload.sampled
       ? ` · globally sampled from ${formatNumber(payload.source_points)}`
       : "";
-    $("plot-status").textContent = `${pointCount} · ${formatNumber(trajectoryCount)} trajectories${samplingNote}`;
+    const trust = Number(payload.diagnostics?.trustworthiness);
+    const trustNote = Number.isFinite(trust)
+      ? ` · projection trust ${(trust * 100).toFixed(1)}%`
+      : "";
+    const warning = payload.diagnostics?.warning ?? "";
+    $("plot-status").textContent = `${pointCount} · ${formatNumber(trajectoryCount)} trajectories${samplingNote}${trustNote}`;
+    $("plot-status").classList.toggle("warning", Boolean(warning));
+    $("plot-status").title = warning;
 
     if (!points.length) {
       window.Plotly.purge("plot3d");
@@ -278,17 +284,17 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     return {
       autosize: true,
       margin: { l: 0, r: 0, t: 0, b: 0 },
-      paper_bgcolor: "#ffffff",
-      plot_bgcolor: "#ffffff",
+      paper_bgcolor: "#111417",
+      plot_bgcolor: "#111417",
       showlegend: false,
       hoverlabel: {
-        bgcolor: "#17211c",
-        bordercolor: "#17211c",
-        font: { color: "#ffffff", size: 12 },
+        bgcolor: "#20262b",
+        bordercolor: "#3d474f",
+        font: { color: "#f4f5f6", size: 12 },
         align: "left",
       },
       scene: {
-        bgcolor: "#fbfcfb",
+        bgcolor: "#111417",
         dragmode: "orbit",
         aspectmode: "cube",
         xaxis: axisStyle(`${component} 1`),
@@ -500,15 +506,6 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     $("plot-status").textContent = "";
   }
 
-  function renderStaticPlots() {
-    const { run } = getState();
-    $("static-plots").innerHTML = (run.plots ?? []).map(plot => `
-      <figure>
-        <img src="${escapeHtml(plot.path)}" alt="${escapeHtml(plot.method)} projection, layer ${escapeHtml(plot.layer)}">
-        <figcaption>${escapeHtml(plot.method.toUpperCase())} · layer ${escapeHtml(plot.layer)} · ${formatNumber(plot.trajectories)} trajectories</figcaption>
-      </figure>`).join("") || `<p class="muted">No static plots were generated for this run.</p>`;
-  }
-
   return { load };
 }
 
@@ -572,7 +569,7 @@ function endpointTrace(name, point, symbol, color, hover) {
       symbol,
       size: 8,
       color,
-      line: { color: "#17211c", width: 1.5 },
+      line: { color: "#111417", width: 1.5 },
     },
   };
 }
@@ -699,12 +696,12 @@ function copyCamera(camera) {
 
 function axisStyle(title) {
   return {
-    title: { text: title, font: { size: 11, color: "#5c6a62" } },
-    color: "#5c6a62",
-    gridcolor: "#dce3df",
-    zerolinecolor: "#b9c5be",
+    title: { text: title, font: { size: 11, color: "#8f9aa2" } },
+    color: "#8f9aa2",
+    gridcolor: "#252c31",
+    zerolinecolor: "#343d44",
     showbackground: true,
-    backgroundcolor: "#fbfcfb",
+    backgroundcolor: "#111417",
     tickfont: { size: 9 },
   };
 }

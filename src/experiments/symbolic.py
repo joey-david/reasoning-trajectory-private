@@ -8,7 +8,7 @@ import math
 import re
 from typing import Any
 
-from src.analysis.token_alignment import TokenSpan, token_range_for_chars
+from reasoning_trajectory.token_alignment import TokenSpan, token_range_for_chars
 
 
 _EQUATION_RE = re.compile(

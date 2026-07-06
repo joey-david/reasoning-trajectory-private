@@ -10,18 +10,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.experiments.component_localization import run_component_localization
 
 
+CANONICAL_REPLAY = Path("runs/SmolLM3-3B/h2_component_replay")
+CANONICAL_H2_DIR = Path(
+    "runs/SmolLM3-3B/frontier_identification/"
+    "gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates"
+)
+
+
 def main() -> int:
-    """Analyze H2 localization across captured components.
-
-    Args:
-        None.
-
-    Returns:
-        The computed index, count, or status code.
-    """
-    parser = argparse.ArgumentParser(description="Analyze H2 component replay.")
-    parser.add_argument("replay_run", type=Path)
-    parser.add_argument("h2_dir", type=Path)
+    """Analyze H2 localization across captured components."""
+    parser = argparse.ArgumentParser(
+        description="Analyze the canonical H2 component replay or explicit artifacts."
+    )
+    parser.add_argument(
+        "replay_run", nargs="?", type=Path, default=CANONICAL_REPLAY
+    )
+    parser.add_argument("h2_dir", nargs="?", type=Path, default=CANONICAL_H2_DIR)
     args = parser.parse_args()
     print(run_component_localization(args.replay_run, args.h2_dir))
     return 0

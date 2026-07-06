@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from src.analysis.common import read_generation_rows, read_sample_records
+from reasoning_trajectory.artifacts import read_generation_rows, read_sample_records
 from src.runtime.data import write_jsonl
 
 

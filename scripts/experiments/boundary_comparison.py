@@ -10,22 +10,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.experiments.boundary_comparison import run_boundary_comparison
 
 
+CANONICAL_RUNS = (
+    Path("runs/SmolLM3-3B/h1_freeform_replay"),
+    Path("runs/SmolLM3-3B/h1_numbered_steps_pilot"),
+    Path("runs/SmolLM3-3B/h1_sentence_separated_pilot"),
+    Path("runs/SmolLM3-3B/h1_paragraph_separated_pilot"),
+)
+
+
 def main() -> int:
-    """Run the H1 text-versus-latent boundary comparison.
-
-    Args:
-        None.
-
-    Returns:
-        The computed index, count, or status code.
-    """
-    parser = argparse.ArgumentParser(description="Run H1 boundary comparison.")
-    parser.add_argument("run_paths", nargs="+", type=Path)
+    """Run the H1 text-versus-latent boundary comparison."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run H1 over the canonical four prompting conditions, or over "
+            "explicit run folders."
+        )
+    )
+    parser.add_argument(
+        "run_paths",
+        nargs="*",
+        type=Path,
+        help="Generation runs; defaults to the canonical H1 conditions.",
+    )
     parser.add_argument("--per-sample", type=int, default=5)
     parser.add_argument("--window", type=int, default=2)
     args = parser.parse_args()
     report = run_boundary_comparison(
-        args.run_paths,
+        args.run_paths or CANONICAL_RUNS,
         per_sample=args.per_sample,
         window=args.window,
     )

@@ -20,8 +20,8 @@ from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.analysis.step_classification.segmentation import build_segments
-from src.analysis.token_alignment import build_token_spans
+from reasoning_trajectory.steps.segmentation import build_segments
+from reasoning_trajectory.token_alignment import build_token_spans
 from src.experiments.common import (
     balanced_generation_rows,
     latent_deltas,

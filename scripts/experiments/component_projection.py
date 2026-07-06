@@ -10,25 +10,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.experiments.component_projection import run_component_projection
 
 
+CANONICAL_REPLAY = Path("runs/SmolLM3-3B/h2_component_replay")
+CANONICAL_H2_DIR = Path(
+    "runs/SmolLM3-3B/frontier_identification/"
+    "gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates"
+)
+CANONICAL_OUTPUT = Path("experiments/h3_projections")
+
+
 def main() -> int:
-    """Train an H4 projection in a selected component space.
-
-    Args:
-        None.
-
-    Returns:
-        The computed index, count, or status code.
-    """
+    """Train H4 projections in the component spaces used by H3."""
     parser = argparse.ArgumentParser(
-        description="Train an H4 projection in an H3 component space."
+        description=(
+            "Train both canonical H3 component projections, or select one "
+            "component and explicit artifact paths."
+        )
     )
-    parser.add_argument("replay_run", type=Path)
-    parser.add_argument("h2_dir", type=Path)
-    parser.add_argument("out_dir", type=Path)
+    parser.add_argument(
+        "replay_run", nargs="?", type=Path, default=CANONICAL_REPLAY
+    )
+    parser.add_argument(
+        "h2_dir", nargs="?", type=Path, default=CANONICAL_H2_DIR
+    )
+    parser.add_argument(
+        "out_dir", nargs="?", type=Path, default=CANONICAL_OUTPUT
+    )
     parser.add_argument(
         "--component",
-        choices=("attention_output", "mlp_output"),
-        required=True,
+        choices=("attention_output", "mlp_output", "both"),
+        default="both",
     )
     parser.add_argument("--layer", type=int, default=18)
     parser.add_argument("--max-updates", type=int, default=12000)
@@ -36,19 +46,26 @@ def main() -> int:
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--projection-dim", type=int, default=128)
     args = parser.parse_args()
-    print(
-        run_component_projection(
-            args.replay_run,
-            args.h2_dir,
-            args.out_dir,
-            component=args.component,
-            layer=args.layer,
-            max_updates=args.max_updates,
-            max_pairs=args.max_pairs,
-            epochs=args.epochs,
-            projection_dim=args.projection_dim,
-        )
+    components = (
+        ("attention_output", "mlp_output")
+        if args.component == "both"
+        else (args.component,)
     )
+    for component in components:
+        print(f"component: {component}", flush=True)
+        print(
+            run_component_projection(
+                args.replay_run,
+                args.h2_dir,
+                args.out_dir,
+                component=component,
+                layer=args.layer,
+                max_updates=args.max_updates,
+                max_pairs=args.max_pairs,
+                epochs=args.epochs,
+                projection_dim=args.projection_dim,
+            )
+        )
     return 0
 
 

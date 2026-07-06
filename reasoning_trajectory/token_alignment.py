@@ -6,9 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from tokenizers.decoders import DecodeStream
-
-from src.runtime.config import load_config
-from src.models.hf_loader import load_hf_tokenizer
+import yaml
 
 
 TokenSpan = tuple[int, int] | None
@@ -27,13 +25,20 @@ def build_token_spans(
     Returns:
         The resulting ordered records or values.
     """
-    model_cfg = load_config(run_path).get("model", {})
+    with (run_path / "config.yaml").open(encoding="utf-8") as handle:
+        model_cfg = (yaml.safe_load(handle) or {}).get("model", {})
     if model_cfg.get("backend", "hf") != "hf":
         return [[] for _ in rows]
     try:
-        tokenizer = load_hf_tokenizer(model_cfg)
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_cfg["name"],
+            trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
+            revision=model_cfg.get("revision"),
+        )
         return [token_spans_for_row(tokenizer, row) for row in rows]
-    except (OSError, TypeError, ValueError, NotImplementedError) as error:
+    except (ImportError, OSError, TypeError, ValueError, NotImplementedError) as error:
         print(f"token alignment unavailable: {error}")
         return [[] for _ in rows]
 

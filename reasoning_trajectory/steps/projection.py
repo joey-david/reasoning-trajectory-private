@@ -7,8 +7,9 @@ from typing import Any
 import numpy as np
 from sklearn.decomposition import PCA
 
-from src.analysis.common import evenly_capped, project_3d
-from src.analysis.step_classification.features import StepFeature
+from reasoning_trajectory.artifacts import evenly_capped
+from reasoning_trajectory.projections import project_3d, projection_diagnostics
+from reasoning_trajectory.steps.features import StepFeature
 
 
 def projection_payloads(
@@ -44,6 +45,12 @@ def projection_payloads(
     )["tsne"]
     pca = PCA(n_components=3, random_state=random_state).fit(plot_means)
     pca_coords = transform_step_means(features, pca)
+    pca_diag = projection_diagnostics(
+        plot_means,
+        pca.transform(plot_means),
+        explained_variance=pca.explained_variance_ratio_.astype(float).tolist(),
+    )
+    tsne_diag = projection_diagnostics(plot_means, tsne)
     return {
         "pca": {
             "plot_type": "step_classification",
@@ -52,6 +59,7 @@ def projection_payloads(
             "max_points": max_plot_steps,
             "source_points": len(records),
             "sampled": False,
+            "diagnostics": pca_diag,
             "points": [
                 point_record(record, coords)
                 for record, coords in zip(records, pca_coords)
@@ -64,6 +72,7 @@ def projection_payloads(
             "max_points": max_plot_steps,
             "source_points": len(records),
             "sampled": len(plot_records) < len(records),
+            "diagnostics": tsne_diag,
             "points": [
                 point_record(record, coords)
                 for record, coords in zip(plot_records, tsne)

@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 
-from src.analysis.common import read_generation_rows
+from reasoning_trajectory.artifacts import read_generation_rows
 from src.runtime.artifact_store import write_json
 from src.runtime.data import load_samples, write_jsonl
 

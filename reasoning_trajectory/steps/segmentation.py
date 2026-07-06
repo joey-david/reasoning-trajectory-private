@@ -6,12 +6,13 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
-from src.analysis.token_alignment import TokenSpan, token_range_for_chars
-from src.analysis.token_selectors import (
+from reasoning_trajectory.token_alignment import TokenSpan, token_range_for_chars
+from reasoning_trajectory.token_selectors import (
     char_to_token_index,
     sentence_end_positions,
     token_count,
 )
+from reasoning_trajectory.steps.parsing import parse_structured_spans
 
 
 @dataclass(slots=True)
@@ -25,12 +26,14 @@ class StepSegment:
     token_start: int
     token_end: int
     text: str
+    labels: tuple[str, ...] = ()
 
 
 DEFAULT_SEGMENTERS: dict[str, dict[str, Any]] = {
     "sentence": {"mode": "sentence", "group_size": 1},
     "sentence_group_2": {"mode": "sentence", "group_size": 2},
     "paragraph": {"mode": "paragraph"},
+    "structured": {"mode": "structured"},
 }
 
 
@@ -74,8 +77,16 @@ def build_segments(
     mode = spec.get("mode", "sentence")
     if mode == "paragraph":
         spans = paragraph_spans(text)
+        labels_by_span: dict[tuple[int, int], tuple[str, ...]] = {}
+    elif mode == "structured":
+        structured = parse_structured_spans(text)
+        spans = [(span.char_start, span.char_end) for span in structured]
+        labels_by_span = {
+            (span.char_start, span.char_end): span.labels for span in structured
+        }
     else:
         spans = sentence_spans(text)
+        labels_by_span = {}
         group_size = max(int(spec.get("group_size", 1)), 1)
         if group_size > 1:
             spans = grouped_spans(spans, group_size)
@@ -101,6 +112,7 @@ def build_segments(
                     token_start=token_start,
                     token_end=token_end,
                     text=step_text,
+                    labels=labels_by_span.get((start, end), ()),
                 )
             )
     return segments

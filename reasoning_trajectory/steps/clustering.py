@@ -10,7 +10,7 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-from src.analysis.step_classification.features import StepMatrices
+from reasoning_trajectory.steps.features import StepMatrices
 
 
 @dataclass(slots=True)

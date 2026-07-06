@@ -1,5 +1,6 @@
 import { createGenerationView } from "./generations.js";
 import { createTrajectoryView } from "./trajectories.js";
+import { createDiagnosticsView } from "./diagnostics.js";
 import {
   $,
   debounce,
@@ -34,6 +35,10 @@ const trajectoryView = createTrajectoryView({
   setQuery,
   openGeneration,
 });
+const diagnosticsView = createDiagnosticsView({
+  getState: () => state,
+  setQuery,
+});
 
 init();
 
@@ -45,8 +50,11 @@ async function init() {
     if (!runs.length) throw new Error("No analyzed runs are listed in web/data/runs.json.");
     const route = routeState();
     const models = [...new Set(runs.map(run => run.model))].sort();
-    setOptions("model", models, null, route.model);
-    fillRunOptions(route.run);
+    const defaultRun = runs.find(run => run.trajectory_metrics) ?? runs[0];
+    setOptions("model", models, null, route.model ?? defaultRun.model);
+    fillRunOptions(route.run ?? (
+      $("model").value === defaultRun.model ? defaultRun.run : null
+    ));
     await loadRun(route);
   } catch (error) {
     showSetupError(error);
@@ -101,7 +109,7 @@ async function loadRun(route) {
     $("app-status").hidden = true;
     $("header-run-status").textContent = `${formatNumber(state.rows.length)} trajectories · ${formatNumber(Object.keys(run.samples ?? {}).length)} questions`;
     renderOverview();
-    showView(["overview", "generations", "trajectories"].includes(route.view) ? route.view : "overview");
+    showView(["overview", "generations", "trajectories", "diagnostics"].includes(route.view) ? route.view : "overview");
     setQuery({ model: run.model, run: run.run, view: state.view });
   } catch (error) {
     showSetupError(error);
@@ -122,7 +130,7 @@ function showView(view, updateUrl = true) {
   for (const button of document.querySelectorAll("[data-view]")) {
     button.setAttribute("aria-selected", String(button.dataset.view === view));
   }
-  for (const name of ["overview", "generations", "trajectories"]) {
+  for (const name of ["overview", "generations", "trajectories", "diagnostics"]) {
     $(`${name}-panel`).hidden = name !== view;
   }
   if (view === "generations") generationView.load(routeState());
@@ -130,6 +138,7 @@ function showView(view, updateUrl = true) {
     trajectoryView.load(routeState());
     setTimeout(() => window.Plotly?.Plots.resize($("plot3d")), 0);
   }
+  if (view === "diagnostics") diagnosticsView.load(routeState());
   if (updateUrl) setQuery({ ...queryCleanup(view), view });
 }
 
@@ -155,6 +164,7 @@ function renderOverview() {
     ["Step markers", Boolean(state.run.step_markers)],
     ["Token projections", Boolean(state.run.interactive_plots?.length)],
     ["Step clusters", Boolean(state.run.step_classification_plots?.length)],
+    ["Trajectory diagnostics", Boolean(state.run.trajectory_metrics)],
     ["Hardness ranking", Boolean(state.run.hard_questions)],
   ];
   $("artifact-status").innerHTML = artifacts
@@ -245,7 +255,7 @@ function openGeneration(point) {
 
 function handleShortcut(event) {
   if (event.metaKey || event.ctrlKey || event.altKey || isFormTarget(event.target)) return;
-  const view = { o: "overview", g: "generations", l: "trajectories" }[event.key.toLowerCase()];
+  const view = { o: "overview", g: "generations", l: "trajectories", d: "diagnostics" }[event.key.toLowerCase()];
   if (view) {
     event.preventDefault();
     showView(view);
@@ -298,11 +308,14 @@ function queryCleanup(view) {
     "char_end",
   ];
   const trajectoryKeys = ["source", "selector", "cluster", "color", "limit", "start", "end"];
+  const diagnosticKeys = ["diagnostic"];
   const keys = view === "overview"
-    ? [...generationKeys, ...trajectoryKeys, "question", "seed"]
+    ? [...generationKeys, ...trajectoryKeys, ...diagnosticKeys, "question", "seed"]
     : view === "generations"
-      ? trajectoryKeys
-      : generationKeys;
+      ? [...trajectoryKeys, ...diagnosticKeys]
+      : view === "trajectories"
+        ? [...generationKeys, ...diagnosticKeys]
+        : [...generationKeys, ...trajectoryKeys, "question", "seed"];
   return Object.fromEntries(keys.map(key => [key, null]));
 }
 
@@ -310,7 +323,7 @@ function showLoading(message) {
   $("app-status").hidden = false;
   $("app-status").className = "app-status";
   $("app-status").innerHTML = `<span class="spinner" aria-hidden="true"></span>${escapeHtml(message)}`;
-  for (const name of ["overview", "generations", "trajectories"]) {
+  for (const name of ["overview", "generations", "trajectories", "diagnostics"]) {
     $(`${name}-panel`).hidden = true;
   }
 }

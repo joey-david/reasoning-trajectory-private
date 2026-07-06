@@ -10,17 +10,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.experiments.correctness_prediction import run_correctness_prediction
 
 
+CANONICAL_RUN = Path(
+    "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k"
+)
+
+
 def main() -> int:
-    """Run grouped H5 correctness-prediction probes.
-
-    Args:
-        None.
-
-    Returns:
-        The computed index, count, or status code.
-    """
-    parser = argparse.ArgumentParser(description="Run H5 grouped correctness probes.")
-    parser.add_argument("run_path", type=Path)
+    """Run grouped H5 correctness-prediction probes."""
+    parser = argparse.ArgumentParser(
+        description="Run H5 on the canonical activation corpus or an explicit run."
+    )
+    parser.add_argument("run_path", nargs="?", type=Path, default=CANONICAL_RUN)
     parser.add_argument("--per-sample", type=int, default=10)
     parser.add_argument("--folds", type=int, default=5)
     args = parser.parse_args()

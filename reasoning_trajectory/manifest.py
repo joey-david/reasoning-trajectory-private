@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.analysis.common import read_sample_records
-from src.runtime.config import load_config
+from reasoning_trajectory.artifacts import read_sample_records
+import yaml
 
 
 def write_manifest(runs_root: Path, out_path: Path) -> None:
@@ -27,7 +27,6 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
         if generation_artifact is None:
             continue
         gen, generation_format, samples = generation_artifact
-        plots = load_json(run / "analysis" / "plots" / "index.json", [])
         interactive_plots = load_json(
             run / "analysis" / "plots" / "interactive_index.json", []
         )
@@ -37,14 +36,14 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
         step_markers = run / "analysis" / "step_markers.json"
         solution_objects = run / "analysis" / "solution_objects.jsonl"
         hard_questions = run / "analysis" / "hard_questions.jsonl"
+        trajectory_metrics = run / "analysis" / "trajectory_metrics.json"
         runs.append(
             {
                 "model": relative.parts[0],
                 "run": "/".join(relative.parts[1:]),
                 "generations": web_path(gen),
                 "generation_format": generation_format,
-                "samples": samples,
-                "plots": add_web_paths(run, plots),
+                "samples": browser_samples(samples),
                 "interactive_plots": add_web_paths(run, interactive_plots),
                 "step_classification_plots": add_web_paths(
                     run, step_classification_plots
@@ -57,6 +56,9 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
                 else None,
                 "hard_questions": web_path(hard_questions)
                 if hard_questions.exists()
+                else None,
+                "trajectory_metrics": web_path(trajectory_metrics)
+                if trajectory_metrics.exists()
                 else None,
             }
         )
@@ -84,7 +86,9 @@ def discover_generation_artifact(
     continuations = run / "patching" / "continuations.jsonl"
     if not continuations.exists():
         return None
-    activation_run = Path(load_config(run)["patching"]["activation_run"])
+    with (run / "config.yaml").open(encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+    activation_run = Path(config["patching"]["activation_run"])
     return continuations, "causal_patching", read_sample_records(activation_run)
 
 
@@ -124,3 +128,12 @@ def add_web_paths(run: Path, plots: list[dict]) -> list[dict]:
         Copied plot entries with browser-relative paths.
     """
     return [{**plot, "path": web_path(run / plot["path"])} for plot in plots]
+
+
+def browser_samples(samples: dict[str, dict]) -> dict[str, dict]:
+    """Discard generation-only token arrays from the static browser index."""
+    fields = ("sample_id", "prompt", "gold_answer")
+    return {
+        key: {field: sample.get(field) for field in fields}
+        for key, sample in samples.items()
+    }

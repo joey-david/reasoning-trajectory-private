@@ -15,11 +15,11 @@ from sklearn.metrics import (
     silhouette_score,
 )
 
-from src.analysis.step_classification.segmentation import (
+from reasoning_trajectory.steps.segmentation import (
     paragraph_spans,
     sentence_spans,
 )
-from src.analysis.token_alignment import (
+from reasoning_trajectory.token_alignment import (
     TokenSpan,
     build_token_spans,
     token_range_for_chars,

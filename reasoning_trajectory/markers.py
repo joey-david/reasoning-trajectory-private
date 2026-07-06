@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from src.analysis.common import read_generation_rows
-from src.analysis.token_selectors import build_token_selector
+from reasoning_trajectory.artifacts import read_generation_rows
+from reasoning_trajectory.token_selectors import build_token_selector
 
 
 DEFAULT_MARKER_SELECTORS: dict[str, dict[str, Any]] = {

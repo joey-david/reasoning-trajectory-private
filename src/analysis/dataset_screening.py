@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from src.analysis.common import read_generation_rows
+from reasoning_trajectory.artifacts import read_generation_rows
 from src.runtime.config import load_config
 
 

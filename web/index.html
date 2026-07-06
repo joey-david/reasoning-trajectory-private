@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="dark">
   <title>Reasoning Trajectory Explorer</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
@@ -48,7 +48,9 @@
     <button type="button" data-view="trajectories" aria-selected="false" aria-controls="trajectories-panel" aria-keyshortcuts="l">
       Latent space <kbd aria-hidden="true">L</kbd>
     </button>
-    <a class="research-story-link" href="research/">Research story</a>
+    <button type="button" data-view="diagnostics" aria-selected="false" aria-controls="diagnostics-panel" aria-keyshortcuts="d">
+      Diagnostics <kbd aria-hidden="true">D</kbd>
+    </button>
     <span id="header-run-status" class="nav-status" role="status"></span>
   </nav>
 
@@ -244,10 +246,39 @@
             </div>
             <p class="muted">Select a plotted point to see its token or reasoning-step details.</p>
           </section>
-          <details class="static-fallbacks">
-            <summary>Static plot fallbacks</summary>
-            <div id="static-plots"></div>
-          </details>
+        </div>
+      </div>
+    </section>
+
+    <section id="diagnostics-panel" class="view-panel wide-panel" aria-labelledby="diagnostics-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Original-space analysis</p>
+          <h1 id="diagnostics-title">Trajectory diagnostics</h1>
+        </div>
+        <p id="diagnostics-sampling" class="section-count" role="status"></p>
+      </div>
+      <div id="diagnostics-empty" class="empty-state" hidden></div>
+      <div id="diagnostics-workspace" class="workspace diagnostics-workspace" hidden>
+        <aside class="diagnostic-nav" aria-label="Diagnostic">
+          <button type="button" data-diagnostic="geometry" aria-selected="true">Geometry</button>
+          <button type="button" data-diagnostic="alignment" aria-selected="false">Alignment</button>
+          <button type="button" data-diagnostic="compression" aria-selected="false">Compression</button>
+          <button type="button" data-diagnostic="basins" aria-selected="false">Basins</button>
+          <button type="button" data-diagnostic="failures" aria-selected="false">Failures</button>
+        </aside>
+        <div class="diagnostic-content">
+          <div id="diagnostic-summary" class="metric-strip"></div>
+          <div class="diagnostic-heading">
+            <div>
+              <h2 id="diagnostic-tool-title">Geometry</h2>
+              <p id="diagnostic-tool-description"></p>
+            </div>
+            <span id="diagnostic-layer" class="artifact-chip"></span>
+          </div>
+          <div id="diagnostic-warning" class="diagnostic-warning" role="note" hidden></div>
+          <div id="diagnostic-plot" class="diagnostic-plot" aria-label="Diagnostic chart"></div>
+          <div id="diagnostic-detail" class="diagnostic-detail"></div>
         </div>
       </div>
     </section>

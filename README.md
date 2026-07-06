@@ -1,155 +1,104 @@
 # Reasoning Trajectory
 
-Tools for generating many reasoning traces, capturing their hidden states, and
-studying how reasoning evolves through latent space.
+Capture LLM hidden states, analyze token-level reasoning paths, and inspect them
+in a static browser workspace.
 
-[Hypotheses](lit/hypotheses.md) | [Experiment plan](lit/experiments_plan.md) |
-[Token segmentation](lit/thought_units.md)
+## What Is Reusable
 
-## Pipeline
+`reasoning_trajectory/` is the standalone analysis package. It owns artifact
+reading, token and step segmentation, latent projections, path geometry,
+alignment, compression, endpoint basins, failure divergence, and browser
+payloads. It does not import the repository's experiments or orchestration.
 
-1. Define a self-contained run with `config.yaml` and, optionally, a pinned
-   `dataset.jsonl`.
-2. Generate sampled reasoning traces and hidden-state artifacts.
-3. Analyze correctness, token trajectories, reasoning steps, and clusters
-   without loading the model again.
-4. Explore the results in the static web interface.
-
-## Repository Structure
+`src/experiments/` contains this project's hypotheses, probes, interventions,
+and symbolic labeling. Those are clients of the package, not part of it.
 
 ```text
-runs/                   # experiment configs and artifacts
-scripts/
-  data/                 # dataset inspection and preparation
-  generation/           # generation and remote orchestration entry points
-  analysis/             # analysis and screening entry points
-  experiments/          # hypothesis-specific analysis and intervention commands
+reasoning_trajectory/   reusable latent-trajectory package
 src/
-  datasets/             # dataset loaders and adapters
-  prompting/            # prompt construction
-  models/               # model loading and generation
-  runtime/              # configs, paths, and artifact I/O
-  orchestration/        # persistent GPU workers and task scheduling
-  analysis/             # trajectory analysis
-  experiments/          # symbolic updates, probes, contrastive learning, patching
-web/                    # static results interface
-lit/literature/         # local paper corpus and notes
+  models/               model loading and activation capture
+  runtime/              run configuration and artifact writing
+  orchestration/        local and remote generation workers
+  experiments/          project-specific hypotheses
+scripts/
+  generation/           generation entry points
+  analysis/             post-processing entry points
+  experiments/          experiment entry points
+runs/                   self-contained configs and artifacts
+web/                    static analysis workspace
 ```
 
-## Quick Start
+## Run Contract
 
-The full requirements target a CUDA 12.4 generation host:
+```text
+runs/<model>/<run>/
+  config.yaml
+  dataset.jsonl                 # optional pinned input
+  generation/
+    generations.jsonl
+    samples/*.json
+    hidden_states/*.npz
+  analysis/
+```
+
+Generation is resumable. Analysis reads completed artifacts and never requires
+loading the model again.
+
+## Commands
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
+
+# Optional: pin normalized dataset rows.
+.venv/bin/python scripts/data/prepare_dataset.py runs/<model>/<run>
+
+# Generate or resume traces.
+.venv/bin/python scripts/generation/generate.py runs/<model>/<run>
+
+# Score, segment, project, and compute trajectory diagnostics.
+.venv/bin/python scripts/analysis/analyze.py runs/<model>/<run>
+
+# Run only the reusable bounded metric bundle.
+rt-analyze runs/<model>/<run>
 ```
 
-Run the pipeline on any folder containing a `config.yaml`:
+The metric bundle writes `analysis/trajectory_metrics.json` with original-space
+geometry, path alignment, PCA compression, endpoint basins, failure divergence,
+and projection-fidelity warnings.
 
-```bash
-# Optional: pin the exact normalized dataset rows.
-.venv/bin/python scripts/data/prepare_dataset.py runs/<model>/<run-path>
-
-# Generate or resume sampled traces.
-.venv/bin/python scripts/generation/generate.py runs/<model>/<run-path>
-
-# Analyze completed generation artifacts.
-.venv/bin/python scripts/analysis/analyze.py runs/<model>/<run-path>
-```
-
-Generation is resumable: existing sample, seed, and temperature combinations
-are skipped.
-
-For analysis-only work on macOS, install the lightweight dependencies instead
-of the CUDA requirements:
-
-```bash
-uv pip install --python .venv/bin/python \
-  "pyyaml>=6" "numpy>=1.24" "datasets>=2.19" \
-  "matplotlib>=3.8" "scikit-learn>=1.4"
-```
-
-## Run Contract
-
-Each experiment is self-contained:
-
-```text
-runs/<model>/<run-path>/
-  config.yaml
-  dataset.jsonl             # optional pinned normalized dataset
-  generation/
-    metadata.json
-    generations.jsonl
-    samples/
-    hidden_states/          # present when capture is enabled
-  analysis/
-```
-
-`config.yaml` controls the model, dataset, sampling, prompting, activation
-capture, and analysis. Use `capture.enabled: false` for inexpensive screening
-and `capture.layers: [-1]` to store final-layer states.
-
-Analysis reads completed generation artifacts only. It writes correctness
-labels, answer parsing, hard-question rankings, token projections, step-level
-features, clusters, and browser-ready manifests under `analysis/`.
-
-## Explore Results
-
-Serve the repository root after analysis:
+## Explore
 
 ```bash
 python3 -m http.server 8765
 ```
 
-Open <http://localhost:8765/web/index.html> to inspect run summaries,
-generations, and interactive token- or step-level latent trajectories.
-Open <http://localhost:8765/web/research/> for the illustrated research story,
-from activation capture through the token-level no-free-lunch result.
+Open <http://localhost:8765/web/index.html>. The workspace provides run
+comparison, transcript inspection, interactive token/step projections, and
+metric diagnostics. Projection trustworthiness is shown explicitly; a visually
+clean 3D plot is not treated as scientific evidence by itself.
 
-## Multi-GPU and Remote Runs
-
-For one local model replica per GPU, assign a list in the run config:
-
-```yaml
-model:
-  device_map:
-    "": [0, 1]
-```
-
-For dynamic scheduling across remote nodes:
+## Remote Generation
 
 ```bash
 .venv/bin/python scripts/orchestrate.py --job generation \
-  --nodes kaisertrot boldeagle \
+  --nodes kaisertrot coktailjet \
   --devices 0,1 1 \
-  --run runs/<model>/<run-path>
+  --run runs/<model>/<run>
 ```
 
-Orchestrable jobs live in `src/orchestration/jobs/<name>.py`. Each exports
-`pending_tasks`, `setup_worker`, and `log_path`; its persistent worker implements
-`run_task(...) -> TaskResult`. Tasks must be JSON-serializable and outputs must
-be resumable with locked writes.
-
-Available jobs are `generation`, `gold_answer_capture`, `causal_patching`, and
-`solution_object_labeling`.
-
-Use `solution_object_labeling_smoke` before the full Qwen3.5 FP8 labeling queue.
-On Ampere, install vLLM from its cu129 index documented in `requirements.txt`;
-the default v0.21 wheel requires CUDA 13.
-
-Commas create independent workers (`0,1`); plus signs give one worker multiple
-GPUs (`0+1`). Use `--nodes local` for the current host.
-
-Sync configs and pinned datasets to the server, then pull completed artifacts:
+Commas create independent workers; `0+1` gives one worker two GPUs.
+Orchestrable jobs implement `pending_tasks`, `setup_worker`, and `log_path`
+under `src/orchestration/jobs/`.
 
 ```bash
 ./scripts/remote.sh push
-./scripts/remote.sh pull runs/<model>/<run-path>
+./scripts/remote.sh pull runs/<model>/<run>
 ```
 
-Experiment-specific status is kept in
-[lit/experiments_plan.md](lit/experiments_plan.md).
-
-Remote generation is never required for local analysis.
+Hypothesis-specific commands remain in
+[experiments/README.md](experiments/README.md). The reusable package interface
+is documented in
+[reasoning_trajectory/README.md](reasoning_trajectory/README.md).

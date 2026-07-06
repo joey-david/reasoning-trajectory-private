@@ -9,8 +9,8 @@ from typing import Any
 
 import numpy as np
 
-from src.analysis.step_classification.segmentation import sentence_spans
-from src.analysis.token_alignment import build_token_spans, token_range_for_chars
+from reasoning_trajectory.steps.segmentation import sentence_spans
+from reasoning_trajectory.token_alignment import build_token_spans, token_range_for_chars
 from src.experiments.common import balanced_generation_rows
 from src.runtime.artifact_store import load_hidden_states_npz
 
