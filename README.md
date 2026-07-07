@@ -102,3 +102,32 @@ Hypothesis-specific commands remain in
 [experiments/README.md](experiments/README.md). The reusable package interface
 is documented in
 [reasoning_trajectory/README.md](reasoning_trajectory/README.md).
+
+## Solution-object extraction
+
+The controlled A-H extraction protocol has separate local-small and GPU-medium
+run folders. The medium command prepares nothing implicitly outside its run
+contract and does not launch remote work:
+
+```bash
+.venv/bin/python scripts/experiments/solution_object_extraction.py run \
+  runs/SmolLM3-3B/solution_object_extraction_medium
+```
+
+It writes under
+`analysis/experiments/solution_object_extraction/` and reuses the completed
+mixed-success GSM-Symbolic activation corpus for the real trajectory and
+reranking stages. See [experiments/README.md](experiments/README.md) for staged
+commands and the preflight check.
+
+The retrieval/causal follow-up has a bounded single-node runner that uses GPU
+index 0 and reuses completed upstream artifacts:
+
+```bash
+scripts/experiments/run_solution_object_improvement_remote.sh
+```
+
+It sweeps dimensions, layers, token/multi-layer scopes, nonlinear encoders, a
+separate causal writer, matched ablations, and a targeted low-leakage ablation
+grid, then validates all medium artifacts within a hard 12-hour wall-clock
+limit.

@@ -20,6 +20,10 @@ lit/literature/
 lit/reasoning-trajectory-sun-et-al
 lit/experiments_plan.md
 lit/hypotheses.md
+initial_sol_ob_plan.md
+plan_increase_obj_extract.md
+progress.md
+web/solution-object-experiments.html
 
 # Environment
 .env

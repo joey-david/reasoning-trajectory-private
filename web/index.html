@@ -6,10 +6,10 @@
   <meta name="color-scheme" content="dark">
   <title>Reasoning Trajectory Explorer</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260707-visuals5">
   <script>document.documentElement.dataset.protocol = location.protocol.slice(0, -1);</script>
   <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=20260707-visuals5"></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to content</a>
@@ -20,7 +20,7 @@
 
   <header class="app-header">
     <div class="brand">
-      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-logo" aria-hidden="true">RT</span>
       <div>
         <strong>Reasoning Trajectory Explorer</strong>
         <span>Generation and latent-state analysis</span>
@@ -247,6 +247,49 @@
             <p class="muted">Select a plotted point to see its token or reasoning-step details.</p>
           </section>
         </div>
+
+        <aside id="trajectory-visuals" class="control-panel trajectory-visuals" aria-label="Projection visual controls">
+          <div class="control-panel-heading">
+            <h2>Visuals</h2>
+            <button class="text-button panel-toggle" type="button" data-toggle-panel="trajectory-visuals" aria-controls="trajectory-visuals" aria-expanded="true">Hide</button>
+          </div>
+          <label class="switch-row">
+            <input id="plot-show-lines" type="checkbox" checked>
+            <span>Lines</span>
+          </label>
+          <label class="switch-row">
+            <input id="plot-show-points" type="checkbox" checked>
+            <span>Points</span>
+          </label>
+          <label class="switch-row">
+            <input id="plot-show-endpoints" type="checkbox" checked>
+            <span>Start and end markers</span>
+          </label>
+          <label class="switch-row">
+            <input id="plot-hover-highlight" type="checkbox" checked>
+            <span>Highlight on hover</span>
+          </label>
+          <label class="range-control">
+            <span>Line thickness <output id="plot-line-width-output">1.5</output></span>
+            <input id="plot-line-width" type="range" min="0.5" max="12" step="0.5" value="1.5" aria-label="Line thickness">
+          </label>
+          <label class="range-control">
+            <span>Point size <output id="plot-point-size-output">3</output></span>
+            <input id="plot-point-size" type="range" min="1" max="10" step="0.5" value="3" aria-label="Point size">
+          </label>
+          <fieldset class="color-group">
+            <legend>Start marker</legend>
+            <label><span>Correct</span><input id="plot-start-correct-color" type="color" value="#7dddb4"></label>
+            <label><span>Incorrect</span><input id="plot-start-incorrect-color" type="color" value="#f09186"></label>
+            <label><span>Unknown</span><input id="plot-start-unknown-color" type="color" value="#aeb6bd"></label>
+          </fieldset>
+          <fieldset class="color-group">
+            <legend>End marker</legend>
+            <label><span>Correct</span><input id="plot-end-correct-color" type="color" value="#1c8f5b"></label>
+            <label><span>Incorrect</span><input id="plot-end-incorrect-color" type="color" value="#c4483c"></label>
+            <label><span>Unknown</span><input id="plot-end-unknown-color" type="color" value="#68737b"></label>
+          </fieldset>
+        </aside>
       </div>
     </section>
 

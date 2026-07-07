@@ -1,6 +1,6 @@
-import { createGenerationView } from "./generations.js";
-import { createTrajectoryView } from "./trajectories.js";
-import { createDiagnosticsView } from "./diagnostics.js";
+import { createGenerationView } from "./generations.js?v=20260707-visuals5";
+import { createTrajectoryView } from "./trajectories.js?v=20260707-visuals5";
+import { createDiagnosticsView } from "./diagnostics.js?v=20260707-visuals5";
 import {
   $,
   debounce,
@@ -14,7 +14,7 @@ import {
   outcome,
   questionText,
   setOptions,
-} from "./ui.js";
+} from "./ui.js?v=20260707-visuals5";
 
 const state = {
   manifest: null,
@@ -307,7 +307,27 @@ function queryCleanup(view) {
     "char_start",
     "char_end",
   ];
-  const trajectoryKeys = ["source", "selector", "cluster", "color", "limit", "start", "end"];
+  const trajectoryKeys = [
+    "source",
+    "selector",
+    "cluster",
+    "color",
+    "lines",
+    "points",
+    "endpoints",
+    "hover_highlight",
+    "line_width",
+    "point_size",
+    "start_correct",
+    "start_incorrect",
+    "start_unknown",
+    "end_correct",
+    "end_incorrect",
+    "end_unknown",
+    "limit",
+    "start",
+    "end",
+  ];
   const diagnosticKeys = ["diagnostic"];
   const keys = view === "overview"
     ? [...generationKeys, ...trajectoryKeys, ...diagnosticKeys, "question", "seed"]

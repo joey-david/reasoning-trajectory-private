@@ -183,7 +183,10 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
     );
     const values = record?.selectors?.[markerName] ?? [];
     if (!values.length) return `<div class="marker-strip">No ${escapeHtml(markerName)} markers</div>`;
-    const chips = values.slice(0, 16).map(value => `<span class="marker-chip">${escapeHtml(value)}</span>`).join("");
+    const chips = values.slice(0, 16).map(value => {
+      const target = tokenTarget(row, Number(value));
+      return `<button class="marker-chip-button" type="button" data-action="jump-marker" data-token="${escapeHtml(value)}" data-char-start="${target.charStart}" data-char-end="${target.charEnd}" title="Jump to token ${escapeHtml(value)}">${escapeHtml(value)}</button>`;
+    }).join("");
     const remainder = values.length > 16 ? `<span>+${values.length - 16} more</span>` : "";
     return `<div class="marker-strip"><strong>${values.length} markers</strong>${chips}${remainder}</div>`;
   }
@@ -225,6 +228,19 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
       button.textContent = output.classList.contains("expanded") ? "Collapse output" : "Expand output";
       return;
     }
+    if (button.dataset.action === "jump-marker") {
+      const tokenIdx = Number(button.dataset.token);
+      activationTarget = {
+        sampleId: card.dataset.sampleId,
+        seed: String(card.dataset.seed),
+        tokenIdx,
+        charStart: Number(button.dataset.charStart),
+        charEnd: Number(button.dataset.charEnd),
+      };
+      syncQuery();
+      renderRows();
+      return;
+    }
     openTrajectory(card.dataset.sampleId, card.dataset.seed);
   }
 
@@ -237,6 +253,9 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
       marker: $("generation-marker").value,
       sort: $("generation-sort").value === "question" ? "" : $("generation-sort").value,
       entropy: $("generation-entropy").checked ? "1" : "",
+      token: activationTarget?.tokenIdx ?? "",
+      char_start: activationTarget?.charStart ?? "",
+      char_end: activationTarget?.charEnd ?? "",
     });
   }
 
@@ -264,12 +283,12 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
 }
 
 function parseActivationTarget(route) {
-  if (route.token === undefined || route.char_start === undefined || route.char_end === undefined) {
+  if (route.token === undefined) {
     return null;
   }
   const tokenIdx = Number(route.token);
-  const charStart = Number(route.char_start);
-  const charEnd = Number(route.char_end);
+  const charStart = Number(route.char_start ?? 0);
+  const charEnd = Number(route.char_end ?? charStart);
   if (![tokenIdx, charStart, charEnd].every(Number.isInteger)) return null;
   return {
     sampleId: route.question ?? "",
@@ -278,6 +297,31 @@ function parseActivationTarget(route) {
     charStart,
     charEnd,
   };
+}
+
+function tokenTarget(row, tokenIdx) {
+  const text = String(row.produced_text ?? "");
+  const fromTimesteps = tokenTargetFromTimesteps(row, tokenIdx, text.length);
+  if (fromTimesteps) return fromTimesteps;
+  const tokenCount = Number(row.reasoning_length ?? row.generated_token_ids?.length ?? row.token_count);
+  const fraction = Number.isFinite(tokenCount) && tokenCount > 1
+    ? Math.max(0, Math.min(1, tokenIdx / (tokenCount - 1)))
+    : 0;
+  const charStart = Math.max(0, Math.min(text.length, Math.floor(fraction * text.length)));
+  const charEnd = Math.min(text.length, Math.max(charStart + 1, charStart + 12));
+  return { charStart, charEnd };
+}
+
+function tokenTargetFromTimesteps(row, tokenIdx, textLength) {
+  if (!Array.isArray(row.timesteps)) return null;
+  const step = row.timesteps.find(item => Number(item.token_idx ?? item.token_index ?? item.index) === tokenIdx);
+  if (!step) return null;
+  const charStart = Number(step.char_start ?? step.start_char ?? step.start);
+  const charEnd = Number(step.char_end ?? step.end_char ?? step.end);
+  if (![charStart, charEnd].every(Number.isInteger) || charStart < 0 || charEnd < charStart || charEnd > textLength) {
+    return null;
+  }
+  return { charStart, charEnd };
 }
 
 function hasEntropyTimesteps(row) {

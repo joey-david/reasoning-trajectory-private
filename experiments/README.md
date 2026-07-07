@@ -157,3 +157,103 @@ reusable artifacts. Analysis can also be rerun without inference:
 - Analysis commands overwrite only their own report directory.
 - Remote jobs are resumable and should be synchronized with
   `scripts/remote.sh`; do not commit large activation artifacts.
+
+## Latent solution-object extraction
+
+The plan-driven A-H protocol uses a controlled isomorphic bank for extraction,
+decoding, and causal tests, then evaluates trajectory failure and reranking on
+the completed real mixed-success corpus.
+
+The local pilot is already materialized. Re-run its stages independently:
+
+```bash
+.venv/bin/python scripts/experiments/solution_object_extraction.py prepare \
+  runs/SmolLM3-3B/solution_object_extraction_small
+.venv/bin/python scripts/experiments/solution_object_extraction.py capture \
+  runs/SmolLM3-3B/solution_object_extraction_small
+.venv/bin/python scripts/experiments/solution_object_extraction.py analyze \
+  runs/SmolLM3-3B/solution_object_extraction_small
+.venv/bin/python scripts/experiments/solution_object_extraction.py causal \
+  runs/SmolLM3-3B/solution_object_extraction_small
+```
+
+The medium bank is pinned at 24 base graphs, 2,496 edit-state records, five
+layers, 12 causal pairs per condition, and all 10
+available real rollouts for up to 58 mixed questions. Push code/config/datasets
+from the local checkout, then run on the GPU checkout reached through
+`ssh lamgate`:
+
+```bash
+./scripts/remote.sh push
+
+# after entering the GPU checkout through the configured lamgate route
+.venv/bin/python scripts/experiments/solution_object_extraction.py validate \
+  runs/SmolLM3-3B/solution_object_extraction_medium
+.venv/bin/python scripts/experiments/solution_object_extraction.py run \
+  runs/SmolLM3-3B/solution_object_extraction_medium
+```
+
+Every model/analysis loop has `tqdm` progress. `run` executes in the foreground;
+it does not detach or start a remote job. The medium remote run treats the
+pre-existing mixed-trajectory corpus as optional because the normal push
+intentionally excludes its 631 hidden-state files. When absent, G/H are reported
+as skipped while A-F complete normally; run G/H after pulling the medium capture
+to the local checkout that owns those source states. To resume after a completed
+capture without loading the model again, invoke `analyze` and then `causal`.
+
+### Increased object extraction and causal writing
+
+The follow-up sweep reuses the bank and adds five feature views, supervised-rank
+dimension/layer/scope selection, residual MLP encoders, a question-disjoint
+low-rank causal writer, and matched object/lexical/answer/PCA/random ablations.
+Run every local stage and validate its artifact contract with:
+
+```bash
+.venv/bin/python scripts/experiments/solution_object_extraction.py improve \
+  runs/SmolLM3-3B/solution_object_extraction_small
+.venv/bin/python scripts/experiments/solution_object_extraction.py \
+  validate-improvement \
+  runs/SmolLM3-3B/solution_object_extraction_small
+```
+
+The medium continuation runner executes in the foreground, uses only GPU index
+0 on the selected node, writes one streamed log, reuses completed upstream
+artifacts, and has a hard 12-hour wall-clock limit:
+
+```bash
+./scripts/remote.sh push
+ssh upnquick
+cd /home/lamsade/jdavid/reasoning
+scripts/experiments/run_solution_object_improvement_remote.sh
+```
+
+The final validation requires all requested patch scopes, encoder cells, writer
+epoch/alpha cells, ablation controls, ablation-grid cells when present, and the
+real-trajectory gate. It validates completion, not a positive scientific
+outcome.
+
+Current medium result after the writer/grid continuation:
+
+- Validation passes with 80 causal cells, 72 nonlinear cells, 12 writer
+  epoch/alpha cells, 64 standard ablation prompts, and 8 targeted ablation-grid
+  cells.
+- Retrieval bottleneck improved substantially under the selected nonlinear
+  encoder: validation/template-validation/heldout-vocab/heldout-template top-1
+  are 0.917/0.738/0.873/0.692, with lexical probe 0.790.
+- The fixed learned writer has finite decreasing losses, but still does not
+  beat the linear subspace: selected donor-probability delta is 0.008 versus
+  0.212 for the linear control, so `recommended_method` remains
+  `linear_subspace`.
+- The targeted ablation grid found a low-leakage pass case:
+  layer 32, patch layers `[29, 32, 35]`, rank 16, multi-layer causal cell,
+  final-token ablation, lexical probe 0.610, causal strength 0.345. Object
+  ablation drops correct probability by 0.0425 versus 0.0348 for compression,
+  0.0049 for answer, near-zero lexical, and near-zero random, giving an
+  object-minus-strongest-control margin of +0.0077.
+- The gate is now `ready_for_real_trajectory` by the prespecified aggregate
+  criterion. Interpret the pass as promising but not decisive: on the selected
+  row, paired prompt-level bootstrap keeps object > answer/lexical/random, but
+  object-vs-compression is small and crosses zero. The next meaningful stage is
+  G/H: fit and evaluate real mixed-success object-trajectory
+  predictors/rerankers; do not rerun the broad retrieval/causal/nonlinear sweeps
+  unless the run contract changes.

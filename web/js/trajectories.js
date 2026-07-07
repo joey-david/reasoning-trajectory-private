@@ -25,6 +25,7 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
   let activePlot = null;
   let loadSequence = 0;
   let interactionVersion = 0;
+  let recreatePlotOnNextRender = false;
 
   $("plot-source").addEventListener("change", () => loadSelectedPlot());
   $("plot-question").addEventListener("change", () => {
@@ -44,6 +45,27 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
       render();
       syncQuery();
     }, 50));
+  }
+  for (const id of [
+    "plot-show-lines",
+    "plot-show-points",
+    "plot-show-endpoints",
+    "plot-hover-highlight",
+    "plot-line-width",
+    "plot-point-size",
+    "plot-start-correct-color",
+    "plot-start-incorrect-color",
+    "plot-start-unknown-color",
+    "plot-end-correct-color",
+    "plot-end-incorrect-color",
+    "plot-end-unknown-color",
+  ]) {
+    $(id).addEventListener("input", debounce(() => {
+      renderVisualChange();
+    }, 50));
+    $(id).addEventListener("change", () => {
+      renderVisualChange();
+    });
   }
   $("trajectory-clear").addEventListener("click", clearFilters);
   $("reset-camera").addEventListener("click", resetCamera);
@@ -68,8 +90,21 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     $("plot-token-start").value = validRange(route.start, 0, 100, 0);
     $("plot-token-end").value = validRange(route.end, 0, 100, 100);
     $("plot-color-mode").value = route.color === "cluster" ? "cluster" : "correctness";
+    $("plot-show-lines").checked = route.lines !== "0";
+    $("plot-show-points").checked = route.points !== "0";
+    $("plot-show-endpoints").checked = route.endpoints !== "0";
+    $("plot-hover-highlight").checked = route.hover_highlight !== "0";
+    $("plot-line-width").value = validRange(route.line_width, 0.5, 12, 1.5);
+    $("plot-point-size").value = validRange(route.point_size, 1, 10, 3);
+    setColorValue("plot-start-correct-color", route.start_correct, "#7dddb4");
+    setColorValue("plot-start-incorrect-color", route.start_incorrect, "#f09186");
+    setColorValue("plot-start-unknown-color", route.start_unknown, "#aeb6bd");
+    setColorValue("plot-end-correct-color", route.end_correct, "#1c8f5b");
+    setColorValue("plot-end-incorrect-color", route.end_incorrect, "#c4483c");
+    setColorValue("plot-end-unknown-color", route.end_unknown, "#68737b");
     updateSeedOptions(route.seed);
     updateRangeOutputs();
+    updateVisualOutputs();
     loadSelectedPlot(route);
   }
 
@@ -172,7 +207,18 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     }
 
     const traces = tracesForPoints(points, trajectoryCount > 1);
-    window.Plotly.react("plot3d", traces, plotLayout(), {
+    if (!traces.length) {
+      window.Plotly.purge("plot3d");
+      showPlotMessage("Enable lines, points, or endpoint markers to render the projection.");
+      return;
+    }
+    const shouldRecreate = recreatePlotOnNextRender;
+    recreatePlotOnNextRender = false;
+    const plotMethod = shouldRecreate ? window.Plotly.newPlot : window.Plotly.react;
+    if (shouldRecreate) {
+      window.Plotly.purge("plot3d");
+    }
+    plotMethod("plot3d", traces, plotLayout(), {
       responsive: true,
       scrollZoom: true,
       displaylogo: false,
@@ -183,6 +229,13 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     }).catch(error => {
       showPlotMessage(`Plot rendering failed: ${error.message}`);
     });
+  }
+
+  function renderVisualChange() {
+    updateVisualOutputs();
+    recreatePlotOnNextRender = true;
+    render();
+    syncQuery();
   }
 
   function filteredPoints() {
@@ -217,6 +270,7 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
 
   function tracesForPoints(points, multipleTrajectories) {
     const groups = new Map();
+    const visuals = visualSettings();
     const rowsByTrajectory = new Map(
       getState().rows.map(row => [trajectoryKey(row), row]),
     );
@@ -252,28 +306,41 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
         hoverinfo: "text",
         showlegend: false,
       };
-      const groupTraces = [
-        {
+      const groupTraces = [];
+      if (visuals.showLines) {
+        groupTraces.push({
           ...common,
-          mode: "lines+markers",
-          marker: { size: 4, color: markerColors, opacity: 0.9 },
-          line: { width: 4, color: lineColor },
-        },
-        endpointTrace(
-          `${name} · start`,
-          group[0],
-          "triangle",
-          markerColors[0],
-          pointHoverText(group[0]),
-        ),
-        endpointTrace(
-          `${name} · end`,
-          group.at(-1),
-          "square",
-          markerColors.at(-1),
-          pointHoverText(group.at(-1)),
-        ),
-      ];
+          mode: "lines",
+          meta: { trajectoryTrace: "line" },
+          line: { width: visuals.lineWidth, color: lineColor },
+        });
+      }
+      if (visuals.showPoints) {
+        groupTraces.push({
+          ...common,
+          mode: "markers",
+          meta: { trajectoryTrace: "point" },
+          marker: { size: visuals.pointSize, color: markerColors, opacity: 0.9 },
+        });
+      }
+      if (visuals.showEndpoints) {
+        groupTraces.push(
+          endpointTrace(
+            `${name} · start`,
+            group[0],
+            "triangle",
+            endpointColor("start", correctness),
+            pointHoverText(group[0]),
+          ),
+          endpointTrace(
+            `${name} · end`,
+            group.at(-1),
+            "square",
+            endpointColor("end", correctness),
+            pointHoverText(group.at(-1)),
+          ),
+        );
+      }
       return groupTraces;
     });
     return traces;
@@ -287,6 +354,7 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
       paper_bgcolor: "#111417",
       plot_bgcolor: "#111417",
       showlegend: false,
+      datarevision: visualStateKey(),
       hoverlabel: {
         bgcolor: "#20262b",
         bordercolor: "#3d474f",
@@ -309,11 +377,14 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     const plot = $("plot3d");
     const version = ++interactionVersion;
     const multipleTrajectories = trajectoryCount > 1;
+    const hoverHighlight = $("plot-hover-highlight").checked;
     const hiddenTrace = -1;
     const baseStyles = new Map();
     if (multipleTrajectories) {
-      for (let traceIndex = 0; traceIndex < plot.data.length; traceIndex += 3) {
-        baseStyles.set(traceIndex, traceStyle(plot.data[traceIndex]));
+      for (let traceIndex = 0; traceIndex < plot.data.length; traceIndex += 1) {
+        if (isMainTrajectoryTrace(plot.data[traceIndex])) {
+          baseStyles.set(traceIndex, traceStyle(plot.data[traceIndex]));
+        }
       }
     }
     let desiredTrace = hiddenTrace;
@@ -355,7 +426,7 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
 
     const clearHighlight = () => {
       setPlotCursor(plot, "grab");
-      if (!multipleTrajectories) return;
+      if (!multipleTrajectories || !hoverHighlight) return;
       desiredTrace = hiddenTrace;
       scheduleUpdate();
     };
@@ -378,19 +449,22 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     });
     plot.on?.("plotly_hover", event => {
       setPlotCursor(plot, "pointer");
-      if (!multipleTrajectories) return;
+      if (!multipleTrajectories || !hoverHighlight) return;
       const curveNumber = event.points?.[0]?.curveNumber;
       if (!Number.isInteger(curveNumber)) return;
-      const mainTrace = Math.floor(curveNumber / 3) * 3;
+      const mainTrace = mainTraceForCurve(plot, curveNumber);
+      if (mainTrace < 0) return;
       if (desiredTrace === mainTrace) return;
       desiredTrace = mainTrace;
       scheduleUpdate();
     });
     plot.on?.("plotly_unhover", clearHighlight);
     plot.on?.("plotly_click", event => {
-      const point = event.points?.[0]?.customdata;
+      const clicked = event.points?.[0];
+      const point = clicked?.customdata;
       if (!point) return;
-      if (multipleTrajectories) {
+      const trace = plot.data?.[clicked.curveNumber];
+      if (trace?.meta?.trajectoryTrace === "line") {
         isolateTrajectory(point);
         return;
       }
@@ -451,10 +525,17 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     $("plot-selector").value = $("plot-selector").options[1]?.value ?? "";
     $("plot-cluster").value = "";
     $("plot-color-mode").value = "correctness";
+    $("plot-show-lines").checked = true;
+    $("plot-show-points").checked = true;
+    $("plot-show-endpoints").checked = true;
+    $("plot-hover-highlight").checked = true;
+    $("plot-line-width").value = 1.5;
+    $("plot-point-size").value = 3;
     $("plot-max-trajectories").value = 12;
     $("plot-token-start").value = 0;
     $("plot-token-end").value = 100;
     updateRangeOutputs();
+    updateVisualOutputs();
     render();
     syncQuery();
   }
@@ -478,9 +559,14 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
   }
 
   function updateRangeOutputs() {
-    $("plot-max-output").value = $("plot-max-trajectories").value;
-    $("plot-start-output").value = `${$("plot-token-start").value}%`;
-    $("plot-end-output").value = `${$("plot-token-end").value}%`;
+    $("plot-max-output").textContent = $("plot-max-trajectories").value;
+    $("plot-start-output").textContent = `${$("plot-token-start").value}%`;
+    $("plot-end-output").textContent = `${$("plot-token-end").value}%`;
+  }
+
+  function updateVisualOutputs() {
+    $("plot-line-width-output").textContent = $("plot-line-width").value;
+    $("plot-point-size-output").textContent = $("plot-point-size").value;
   }
 
   function syncQuery(push = false) {
@@ -491,6 +577,18 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
       selector: $("plot-selector").value,
       cluster: $("plot-cluster").value,
       color: $("plot-color-mode").value === "correctness" ? "" : $("plot-color-mode").value,
+      lines: $("plot-show-lines").checked ? "" : "0",
+      points: $("plot-show-points").checked ? "" : "0",
+      endpoints: $("plot-show-endpoints").checked ? "" : "0",
+      hover_highlight: $("plot-hover-highlight").checked ? "" : "0",
+      line_width: $("plot-line-width").value === "1.5" ? "" : $("plot-line-width").value,
+      point_size: $("plot-point-size").value === "3" ? "" : $("plot-point-size").value,
+      start_correct: colorQueryValue("plot-start-correct-color", "#7dddb4"),
+      start_incorrect: colorQueryValue("plot-start-incorrect-color", "#f09186"),
+      start_unknown: colorQueryValue("plot-start-unknown-color", "#aeb6bd"),
+      end_correct: colorQueryValue("plot-end-correct-color", "#1c8f5b"),
+      end_incorrect: colorQueryValue("plot-end-incorrect-color", "#c4483c"),
+      end_unknown: colorQueryValue("plot-end-unknown-color", "#68737b"),
       limit: $("plot-max-trajectories").value === "12" ? "" : $("plot-max-trajectories").value,
       start: $("plot-token-start").value === "0" ? "" : $("plot-token-start").value,
       end: $("plot-token-end").value === "100" ? "" : $("plot-token-end").value,
@@ -537,6 +635,47 @@ function pointColor(point, correctness) {
   return `hsl(210 10% ${68 - fraction * 30}%)`;
 }
 
+function visualSettings() {
+  return {
+    showLines: $("plot-show-lines").checked,
+    showPoints: $("plot-show-points").checked,
+    showEndpoints: $("plot-show-endpoints").checked,
+    lineWidth: Number($("plot-line-width").value),
+    pointSize: Number($("plot-point-size").value),
+  };
+}
+
+function endpointColor(position, correctness) {
+  const outcome = correctness === true ? "correct" : correctness === false ? "incorrect" : "unknown";
+  return $(`plot-${position}-${outcome}-color`).value;
+}
+
+function setColorValue(id, value, fallback) {
+  $(id).value = /^#[0-9a-f]{6}$/i.test(String(value ?? "")) ? value : fallback;
+}
+
+function colorQueryValue(id, fallback) {
+  const value = $(id).value.toLowerCase();
+  return value === fallback.toLowerCase() ? "" : value;
+}
+
+function visualStateKey() {
+  return [
+    $("plot-show-lines").checked ? "lines" : "nolines",
+    $("plot-show-points").checked ? "points" : "nopoints",
+    $("plot-show-endpoints").checked ? "endpoints" : "noendpoints",
+    $("plot-hover-highlight").checked ? "hover" : "nohover",
+    $("plot-line-width").value,
+    $("plot-point-size").value,
+    $("plot-start-correct-color").value,
+    $("plot-start-incorrect-color").value,
+    $("plot-start-unknown-color").value,
+    $("plot-end-correct-color").value,
+    $("plot-end-incorrect-color").value,
+    $("plot-end-unknown-color").value,
+  ].join(":");
+}
+
 function endpointTrace(name, point, symbol, color, hover) {
   if (symbol === "triangle") {
     return {
@@ -548,6 +687,7 @@ function endpointTrace(name, point, symbol, color, hover) {
       y: [point.y],
       z: [point.z],
       customdata: [point],
+      meta: { trajectoryTrace: "point" },
       text: ["▲"],
       textfont: { color, size: 18 },
       hovertext: [`${escapeHtml(name)}<br>${hover}`],
@@ -563,6 +703,7 @@ function endpointTrace(name, point, symbol, color, hover) {
     y: [point.y],
     z: [point.z],
     customdata: [point],
+    meta: { trajectoryTrace: "point" },
     text: [`${escapeHtml(name)}<br>${hover}`],
     hoverinfo: "text",
     marker: {
@@ -572,6 +713,18 @@ function endpointTrace(name, point, symbol, color, hover) {
       line: { color: "#111417", width: 1.5 },
     },
   };
+}
+
+function isMainTrajectoryTrace(trace) {
+  return trace?.meta?.trajectoryTrace === "line";
+}
+
+function mainTraceForCurve(plot, curveNumber) {
+  if (isMainTrajectoryTrace(plot.data[curveNumber])) return curveNumber;
+  for (let index = curveNumber - 1; index >= 0; index -= 1) {
+    if (isMainTrajectoryTrace(plot.data[index]) && plot.data[index].name === plot.data[curveNumber]?.name) return index;
+  }
+  return -1;
 }
 
 function hoverText(point, transcriptText, multipleTrajectories) {
@@ -657,11 +810,14 @@ function transitionHighlight(
     markerOpacities.push(style.markerOpacity);
   }
   if (nextTrace >= 0) {
+    const style = baseStyles.get(nextTrace);
+    const highlightLineWidth = Math.max(Number(style?.lineWidth ?? 1.5) * 2.5, Number(style?.lineWidth ?? 1.5) + 2);
+    const highlightMarkerSize = Math.max(Number(style?.markerSize ?? 3) + 2.5, Number(style?.markerSize ?? 3) * 1.7);
     traceIndices.push(nextTrace);
     lineColors.push("#d99a00");
-    lineWidths.push(10);
+    lineWidths.push(highlightLineWidth);
     markerColors.push("#f2b21b");
-    markerSizes.push(7);
+    markerSizes.push(highlightMarkerSize);
     markerOpacities.push(1);
   }
   if (!traceIndices.length) return;

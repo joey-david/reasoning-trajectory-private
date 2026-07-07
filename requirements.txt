@@ -13,3 +13,4 @@ tqdm>=4.66
 #   --extra-index-url https://download.pytorch.org/whl/cu129 \
 #   --index-strategy unsafe-best-match
 torch>=2.10,<3
+plotly
