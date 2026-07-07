@@ -24,14 +24,14 @@ scripts/
   generation/           generation entry points
   analysis/             post-processing entry points
   experiments/          experiment entry points
-runs/                   self-contained configs and artifacts
+runs/                   self-contained configs and artifacts grouped by purpose
 web/                    static analysis workspace
 ```
 
 ## Run Contract
 
 ```text
-runs/<model>/<run>/
+runs/<model>/<purpose>/<run>/
   config.yaml
   dataset.jsonl                 # optional pinned input
   generation/
@@ -53,16 +53,16 @@ pip install -r requirements.txt
 pip install -e .
 
 # Optional: pin normalized dataset rows.
-.venv/bin/python scripts/data/prepare_dataset.py runs/<model>/<run>
+.venv/bin/python scripts/data/prepare_dataset.py runs/<model>/<purpose>/<run>
 
 # Generate or resume traces.
-.venv/bin/python scripts/generation/generate.py runs/<model>/<run>
+.venv/bin/python scripts/generation/generate.py runs/<model>/<purpose>/<run>
 
 # Score, segment, project, and compute trajectory diagnostics.
-.venv/bin/python scripts/analysis/analyze.py runs/<model>/<run>
+.venv/bin/python scripts/analysis/analyze.py runs/<model>/<purpose>/<run>
 
 # Run only the reusable bounded metric bundle.
-rt-analyze runs/<model>/<run>
+rt-analyze runs/<model>/<purpose>/<run>
 ```
 
 The metric bundle writes `analysis/trajectory_metrics.json` with original-space
@@ -86,7 +86,7 @@ clean 3D plot is not treated as scientific evidence by itself.
 .venv/bin/python scripts/orchestrate.py --job generation \
   --nodes kaisertrot coktailjet \
   --devices 0,1 1 \
-  --run runs/<model>/<run>
+  --run runs/<model>/<purpose>/<run>
 ```
 
 Commas create independent workers; `0+1` gives one worker two GPUs.
@@ -95,11 +95,13 @@ under `src/orchestration/jobs/`.
 
 ```bash
 ./scripts/remote.sh push
-./scripts/remote.sh pull runs/<model>/<run>
+./scripts/remote.sh pull runs/<model>/<purpose>/<run>
 ```
 
 Hypothesis-specific commands remain in
-[experiments/README.md](experiments/README.md). The reusable package interface
+[experiments/README.md](experiments/README.md). Canonical experiment status,
+headline results, and durable run/report paths are indexed in
+[experiments/results.md](experiments/results.md). The reusable package interface
 is documented in
 [reasoning_trajectory/README.md](reasoning_trajectory/README.md).
 
@@ -111,7 +113,7 @@ contract and does not launch remote work:
 
 ```bash
 .venv/bin/python scripts/experiments/solution_object_extraction.py run \
-  runs/SmolLM3-3B/solution_object_extraction_medium
+  runs/SmolLM3-3B/interventions/solution_object_extraction_medium
 ```
 
 It writes under

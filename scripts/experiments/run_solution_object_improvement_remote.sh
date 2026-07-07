@@ -7,7 +7,7 @@ if [[ -z "${SOLUTION_OBJECT_12H_GUARD:-}" ]]; then
   exec timeout --foreground 12h "$0" "$@"
 fi
 
-RUN="${1:-runs/SmolLM3-3B/solution_object_extraction_medium}"
+RUN="${1:-runs/SmolLM3-3B/interventions/solution_object_extraction_medium}"
 PYTHON="${PYTHON:-.venv/bin/python}"
 ENTRY="scripts/experiments/solution_object_extraction.py"
 LOG_DIR="$RUN/logs"

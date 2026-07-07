@@ -11,7 +11,7 @@ from src.experiments.structural_contrast import run_structural_contrast
 
 
 CANONICAL_H2_DIR = Path(
-    "runs/SmolLM3-3B/h4_structural_replay/"
+    "runs/SmolLM3-3B/replay/h4_structural_replay/"
     "analysis/experiments/h2_localized_updates"
 )
 

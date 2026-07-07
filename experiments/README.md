@@ -7,19 +7,25 @@ and dataset settings live in the relevant `runs/.../config.yaml`.
 Completed run artifacts are inputs, not generated source. Local analysis never
 loads the model and may be rerun without repeating inference.
 
+For merge-facing experiment status, headline results, and the durable run/report
+index, see [results.md](results.md). This file is limited to reproduction notes
+and artifact contracts.
+
 ## Canonical Analyses
 
-These commands reproduce the reported analyses from completed artifacts:
+These commands reproduce the reported analyses from completed artifacts. The
+result status and headline interpretation live in
+[results.md](results.md#canonical-and-active-results).
 
 | Experiment | Command | Main report |
 | --- | --- | --- |
-| H1: prompted and natural boundaries | `scripts/experiments/boundary_comparison.py` | `runs/SmolLM3-3B/h1_freeform_replay/analysis/experiments/h1_boundaries/report.json` |
-| H2: localized symbolic updates | `scripts/experiments/localized_updates.py` | `runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates/report.json` |
-| H4: structural projection | `scripts/experiments/structural_contrast.py` | `runs/SmolLM3-3B/h4_structural_replay/analysis/experiments/h4_structural_contrast/report.json` |
-| H5: correctness prediction | `scripts/experiments/correctness_prediction.py` | `runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h5_correctness_prediction/report.json` |
-| Token-level no-free-lunch | `scripts/experiments/token_segmentation.py` | `runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation*/report.json` |
-| Judged semantic boundaries | `scripts/experiments/semantic_token_segmentation.py` | `runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation*/report.json` |
-| H3: causal process-isomer patching | `scripts/experiments/run_h3_protocol.sh` | `runs/SmolLM3-3B/failed_hypotheses/h3_process_isomer_patching/analysis/report.json` |
+| H1: prompted and natural boundaries | `scripts/experiments/boundary_comparison.py` | `runs/SmolLM3-3B/pilots/h1_freeform_replay/analysis/experiments/h1_boundaries/report.json` |
+| H2: localized symbolic updates | `scripts/experiments/localized_updates.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates/report.json` |
+| H4: structural projection | `scripts/experiments/structural_contrast.py` | `runs/SmolLM3-3B/replay/h4_structural_replay/analysis/experiments/h4_structural_contrast/report.json` |
+| H5: correctness prediction | `scripts/experiments/correctness_prediction.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h5_correctness_prediction/report.json` |
+| Token-level no-free-lunch | `scripts/experiments/token_segmentation.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation*/report.json` |
+| Judged semantic boundaries | `scripts/experiments/semantic_token_segmentation.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation*/report.json` |
+| H3: causal process-isomer patching | `scripts/experiments/run_h3_protocol.sh` | `runs/SmolLM3-3B/failed/h3_process_isomer_patching/analysis/report.json` |
 
 Run a canonical local analysis with no arguments:
 
@@ -40,10 +46,10 @@ accepts explicit artifact paths for reuse on a different model or corpus; see
 Inputs are the four prompting-condition runs:
 
 ```text
-runs/SmolLM3-3B/h1_freeform_replay
-runs/SmolLM3-3B/h1_numbered_steps_pilot
-runs/SmolLM3-3B/h1_sentence_separated_pilot
-runs/SmolLM3-3B/h1_paragraph_separated_pilot
+runs/SmolLM3-3B/pilots/h1_freeform_replay
+runs/SmolLM3-3B/pilots/h1_numbered_steps_pilot
+runs/SmolLM3-3B/pilots/h1_sentence_separated_pilot
+runs/SmolLM3-3B/pilots/h1_paragraph_separated_pilot
 ```
 
 Capture the freeform replay with `replay_capture.py`; generate the three
@@ -51,7 +57,7 @@ prompted conditions from their run configs. Then analyze:
 
 ```bash
 .venv/bin/python scripts/experiments/replay_capture.py \
-  runs/SmolLM3-3B/h1_freeform_replay
+  runs/SmolLM3-3B/pilots/h1_freeform_replay
 .venv/bin/python scripts/experiments/boundary_comparison.py
 ```
 
@@ -71,9 +77,9 @@ extract its symbolic updates, then train the structural projection:
 
 ```bash
 .venv/bin/python scripts/experiments/replay_capture.py \
-  runs/SmolLM3-3B/h4_structural_replay
+  runs/SmolLM3-3B/replay/h4_structural_replay
 .venv/bin/python scripts/experiments/localized_updates.py \
-  runs/SmolLM3-3B/h4_structural_replay --per-sample 5
+  runs/SmolLM3-3B/replay/h4_structural_replay --per-sample 5
 .venv/bin/python scripts/experiments/structural_contrast.py
 ```
 
@@ -85,7 +91,7 @@ teacher-forced gold-answer states:
 ```bash
 .venv/bin/python scripts/orchestrate.py \
   --job gold_answer_capture --nodes local --devices 0 \
-  --run runs/SmolLM3-3B/thought_units_gold_answers
+  --run runs/SmolLM3-3B/replay/thought_units_gold_answers
 .venv/bin/python scripts/experiments/correctness_prediction.py
 .venv/bin/python scripts/experiments/token_segmentation.py
 ```
@@ -107,11 +113,11 @@ Smoke-test one task, run the resumable two-GPU labeling queue, then analyze:
 .venv/bin/python scripts/orchestrate.py \
   --job solution_object_labeling_smoke \
   --nodes upnquick --devices 0+1 \
-  --run runs/Qwen3.5-122B-A10B-FP8/solution_object_silver
+  --run runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver
 .venv/bin/python scripts/orchestrate.py \
   --job solution_object_labeling \
   --nodes upnquick --devices 0+1 \
-  --run runs/Qwen3.5-122B-A10B-FP8/solution_object_silver
+  --run runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver
 .venv/bin/python scripts/experiments/semantic_token_segmentation.py
 ```
 
@@ -126,7 +132,7 @@ analysis stages. Rebuild the canonical pair manifest and component projections:
 ```bash
 .venv/bin/python scripts/experiments/mine_process_isomers.py
 .venv/bin/python scripts/experiments/replay_capture.py \
-  runs/SmolLM3-3B/h2_component_replay
+  runs/SmolLM3-3B/replay/h2_component_replay
 .venv/bin/python scripts/experiments/component_localization.py
 .venv/bin/python scripts/experiments/component_projection.py
 ```
@@ -145,7 +151,7 @@ reusable artifacts. Analysis can also be rerun without inference:
 
 ```bash
 .venv/bin/python scripts/experiments/analyze_causal_patching.py \
-  runs/SmolLM3-3B/failed_hypotheses/h3_process_isomer_patching
+  runs/SmolLM3-3B/failed/h3_process_isomer_patching
 ```
 
 ## Artifact Contract
@@ -168,13 +174,13 @@ The local pilot is already materialized. Re-run its stages independently:
 
 ```bash
 .venv/bin/python scripts/experiments/solution_object_extraction.py prepare \
-  runs/SmolLM3-3B/solution_object_extraction_small
+  runs/SmolLM3-3B/interventions/solution_object_extraction_small
 .venv/bin/python scripts/experiments/solution_object_extraction.py capture \
-  runs/SmolLM3-3B/solution_object_extraction_small
+  runs/SmolLM3-3B/interventions/solution_object_extraction_small
 .venv/bin/python scripts/experiments/solution_object_extraction.py analyze \
-  runs/SmolLM3-3B/solution_object_extraction_small
+  runs/SmolLM3-3B/interventions/solution_object_extraction_small
 .venv/bin/python scripts/experiments/solution_object_extraction.py causal \
-  runs/SmolLM3-3B/solution_object_extraction_small
+  runs/SmolLM3-3B/interventions/solution_object_extraction_small
 ```
 
 The medium bank is pinned at 24 base graphs, 2,496 edit-state records, five
@@ -188,9 +194,9 @@ from the local checkout, then run on the GPU checkout reached through
 
 # after entering the GPU checkout through the configured lamgate route
 .venv/bin/python scripts/experiments/solution_object_extraction.py validate \
-  runs/SmolLM3-3B/solution_object_extraction_medium
+  runs/SmolLM3-3B/interventions/solution_object_extraction_medium
 .venv/bin/python scripts/experiments/solution_object_extraction.py run \
-  runs/SmolLM3-3B/solution_object_extraction_medium
+  runs/SmolLM3-3B/interventions/solution_object_extraction_medium
 ```
 
 Every model/analysis loop has `tqdm` progress. `run` executes in the foreground;
@@ -210,10 +216,10 @@ Run every local stage and validate its artifact contract with:
 
 ```bash
 .venv/bin/python scripts/experiments/solution_object_extraction.py improve \
-  runs/SmolLM3-3B/solution_object_extraction_small
+  runs/SmolLM3-3B/interventions/solution_object_extraction_small
 .venv/bin/python scripts/experiments/solution_object_extraction.py \
   validate-improvement \
-  runs/SmolLM3-3B/solution_object_extraction_small
+  runs/SmolLM3-3B/interventions/solution_object_extraction_small
 ```
 
 The medium continuation runner executes in the foreground, uses only GPU index

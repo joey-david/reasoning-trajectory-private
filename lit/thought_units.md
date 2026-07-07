@@ -77,17 +77,17 @@ Their cross-objective performance and utility remain substantially lower.
 
 Question-level bootstrap intervals, full matrices, and examples are in:
 
-- SmolLM [report](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation/report.json),
-  [matrix](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation/objective_matrix.csv),
-  and [examples](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation/boundary_examples.jsonl).
-- Qwen [report](../runs/Qwen3-14B/thought_units_gsm_symbolic/analysis/experiments/token_segmentation/report.json),
-  [matrix](../runs/Qwen3-14B/thought_units_gsm_symbolic/analysis/experiments/token_segmentation/objective_matrix.csv),
-  and [examples](../runs/Qwen3-14B/thought_units_gsm_symbolic/analysis/experiments/token_segmentation/boundary_examples.jsonl).
+- SmolLM [report](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation/report.json),
+  [matrix](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation/objective_matrix.csv),
+  and [examples](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation/boundary_examples.jsonl).
+- Qwen [report](../runs/Qwen3-14B/replay/thought_units_gsm_symbolic/analysis/experiments/token_segmentation/report.json),
+  [matrix](../runs/Qwen3-14B/replay/thought_units_gsm_symbolic/analysis/experiments/token_segmentation/objective_matrix.csv),
+  and [examples](../runs/Qwen3-14B/replay/thought_units_gsm_symbolic/analysis/experiments/token_segmentation/boundary_examples.jsonl).
 - Minimum-length sensitivity:
-  SmolLM [1 token](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation_gap1/report.json)
-  and [8 tokens](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation_gap8/report.json);
-  Qwen [1 token](../runs/Qwen3-14B/thought_units_gsm_symbolic/analysis/experiments/token_segmentation_gap1/report.json)
-  and [8 tokens](../runs/Qwen3-14B/thought_units_gsm_symbolic/analysis/experiments/token_segmentation_gap8/report.json).
+  SmolLM [1 token](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation_gap1/report.json)
+  and [8 tokens](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation_gap8/report.json);
+  Qwen [1 token](../runs/Qwen3-14B/replay/thought_units_gsm_symbolic/analysis/experiments/token_segmentation_gap1/report.json)
+  and [8 tokens](../runs/Qwen3-14B/replay/thought_units_gsm_symbolic/analysis/experiments/token_segmentation_gap8/report.json).
 
 ## What Survived
 
@@ -132,9 +132,9 @@ Preparation:
 
 ```bash
 .venv/bin/python scripts/experiments/prepare_solution_object_labels.py \
-  runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k \
-  runs/Qwen3.5-122B-A10B-FP8/solution_object_silver/token_windows.jsonl \
-  --updates runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates/updates.jsonl
+  runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k \
+  runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver/token_windows.jsonl \
+  --updates runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates/updates.jsonl
 ```
 
 The FP8 checkpoint uses vLLM's Ampere-compatible W8A16 Marlin path. Run the
@@ -150,7 +150,7 @@ uv pip install --python .venv/bin/python vllm \
 .venv/bin/python scripts/orchestrate.py \
   --job solution_object_labeling_smoke \
   --nodes local --devices 0+1 \
-  --run runs/Qwen3.5-122B-A10B-FP8/solution_object_silver
+  --run runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver
 ```
 
 ### Semantic Results
@@ -189,13 +189,13 @@ worst-objective utility is .011 with a four-token minimum and remains
 .024/.020 at one/eight tokens. The learned semantic detector recovers .651
 semantic utility but does not transfer to answer or symbolic-object utility.
 
-Artifacts: [report](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation/report.json),
-[matrix](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation/objective_matrix.csv),
-[reconciled spans](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation/reconciled_spans.jsonl),
+Artifacts: [report](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation/report.json),
+[matrix](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation/objective_matrix.csv),
+[reconciled spans](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation/reconciled_spans.jsonl),
 and minimum-length sensitivity at
-[one](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation_gap1/report.json)
+[one](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation_gap1/report.json)
 and
-[eight](../runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation_gap8/report.json)
+[eight](../runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation_gap8/report.json)
 tokens.
 
 ## Next

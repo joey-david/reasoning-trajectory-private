@@ -1,0 +1,56 @@
+model:
+  name: Qwen/Qwen3-14B
+  revision: 40c069824f4251a91eefaf281ebe4c544efd3e18
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: true
+
+dataset:
+  source: jsonl
+  path: runs/Qwen3-14B/replay/thought_units_gsm_symbolic/dataset.jsonl
+  adapter: plain_question
+  sample_limit: 58
+  sample_offset: 0
+  shuffle_seed: null
+  require_gold_answer: true
+
+generation:
+  max_new_tokens: 16000
+  num_samples_per_item: 4
+  base_seed: 14100000
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  cap_fallback:
+    prefix: "</think>\nGiven the reasoning above, the final answer is\nAnswer: "
+    min_new_tokens: 3
+    max_new_tokens: 8
+
+capture:
+  enabled: true
+  layers: [-1]
+  activation_storage_dtype: int8_scaled
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: "You are a careful mathematical reasoner."
+  instruction: |
+    Think only as long as needed. Keep the reasoning clear and concise.
+    Solve the problem and check the calculation.
+    End with exactly: Answer: N
+    Replace N with the final numeric answer.
+    /think
+  chat_template_kwargs:
+    enable_thinking: true
+
+analysis:
+  produced_answer_regex: "(?i)(?:\\\\boxed\\{|(?:Final\\s+)?Answer\\s*:\\s*)(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  gold_answer_regex: "####\\s*(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  think_end_token_id: 151668
+  hard_question_limit: 58
+  max_plot_points: 5000
+  max_interactive_points: 6000

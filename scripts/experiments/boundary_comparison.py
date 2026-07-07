@@ -7,14 +7,14 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.experiments.boundary_comparison import run_boundary_comparison
+from src.experiments.boundaries.comparison import run_boundary_comparison
 
 
 CANONICAL_RUNS = (
-    Path("runs/SmolLM3-3B/h1_freeform_replay"),
-    Path("runs/SmolLM3-3B/h1_numbered_steps_pilot"),
-    Path("runs/SmolLM3-3B/h1_sentence_separated_pilot"),
-    Path("runs/SmolLM3-3B/h1_paragraph_separated_pilot"),
+    Path("runs/SmolLM3-3B/pilots/h1_freeform_replay"),
+    Path("runs/SmolLM3-3B/pilots/h1_numbered_steps_pilot"),
+    Path("runs/SmolLM3-3B/pilots/h1_sentence_separated_pilot"),
+    Path("runs/SmolLM3-3B/pilots/h1_paragraph_separated_pilot"),
 )
 
 

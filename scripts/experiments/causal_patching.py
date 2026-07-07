@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.experiments.causal_patching import (
+from src.experiments.process_isomers.causal_patching import (
     run_causal_patching,
     validate_causal_patching_setup,
 )

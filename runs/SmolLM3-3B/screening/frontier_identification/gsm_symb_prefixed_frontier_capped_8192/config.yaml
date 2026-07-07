@@ -1,0 +1,52 @@
+model:
+  name: HuggingFaceTB/SmolLM3-3B
+  revision: a07cc9a04f16550a088caea529712d1d335b0ac1
+  backend: hf
+  device_map:
+    "": [0,1]
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+dataset:
+  source: jsonl
+  path: runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_prefixed_frontier_capped_8192/dataset.jsonl
+  adapter: plain_question
+  sample_limit: 18
+  sample_offset: 0
+  shuffle_seed: null
+
+generation:
+  max_new_tokens: 8192
+  num_samples_per_item: 5
+  base_seed: 8120100
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  forced_prefix: "<think> Okay, let's see"
+  cap_fallback:
+    prefix: "</think> Okay, I've thought enough about this. Given what I know, the final answer should be\n Answer: "
+    min_new_tokens: 3
+    max_new_tokens: 8
+
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: "You are a careful mathematical reasoner. /think"
+  instruction: |
+    Think only as long as needed. Keep the reasoning clear and concise.
+    Solve the problem and check the calculation.
+    End with exactly: Answer: N
+    Replace N with the final numeric answer.
+  chat_template_kwargs:
+    enable_thinking: true
+
+analysis:
+  produced_answer_regex: "(?i)(?:\\\\boxed\\{|(?:Final\\s+)?Answer\\s*:\\s*)(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  gold_answer_regex: "####\\s*(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  think_end_token_id: 128003
+  hard_question_limit: 18

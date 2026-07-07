@@ -7,11 +7,11 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.experiments.process_isomers import write_process_isomer_pairs
+from src.experiments.process_isomers.mining import write_process_isomer_pairs
 
 
 CANONICAL_RUN = Path(
-    "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k"
+    "runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k"
 )
 CANONICAL_H2_DIR = CANONICAL_RUN / "analysis/experiments/h2_localized_updates"
 CANONICAL_OUTPUT = Path("experiments/h3_process_isomer_pairs.jsonl")

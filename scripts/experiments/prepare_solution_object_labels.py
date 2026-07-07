@@ -13,10 +13,10 @@ from src.experiments.solution_object_labeling import build_label_windows
 
 
 CANONICAL_SOURCE = Path(
-    "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k"
+    "runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k"
 )
 CANONICAL_OUTPUT = Path(
-    "runs/Qwen3.5-122B-A10B-FP8/solution_object_silver/token_windows.jsonl"
+    "runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver/token_windows.jsonl"
 )
 CANONICAL_UPDATES = (
     CANONICAL_SOURCE / "analysis/experiments/h2_localized_updates/updates.jsonl"

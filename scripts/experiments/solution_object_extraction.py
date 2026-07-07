@@ -36,8 +36,8 @@ from src.experiments.solution_object_extraction.validation import (
 )
 
 
-SMALL_RUN = Path("runs/SmolLM3-3B/solution_object_extraction_small")
-MEDIUM_RUN = Path("runs/SmolLM3-3B/solution_object_extraction_medium")
+SMALL_RUN = Path("runs/SmolLM3-3B/interventions/solution_object_extraction_small")
+MEDIUM_RUN = Path("runs/SmolLM3-3B/interventions/solution_object_extraction_medium")
 
 
 def main() -> int:

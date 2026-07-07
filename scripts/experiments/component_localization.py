@@ -7,12 +7,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.experiments.component_localization import run_component_localization
+from src.experiments.process_isomers.component_localization import run_component_localization
 
 
-CANONICAL_REPLAY = Path("runs/SmolLM3-3B/h2_component_replay")
+CANONICAL_REPLAY = Path("runs/SmolLM3-3B/replay/h2_component_replay")
 CANONICAL_H2_DIR = Path(
-    "runs/SmolLM3-3B/frontier_identification/"
+    "runs/SmolLM3-3B/screening/frontier_identification/"
     "gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates"
 )
 

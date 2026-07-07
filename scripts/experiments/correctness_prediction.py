@@ -11,7 +11,7 @@ from src.experiments.correctness_prediction import run_correctness_prediction
 
 
 CANONICAL_RUN = Path(
-    "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k"
+    "runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k"
 )
 
 

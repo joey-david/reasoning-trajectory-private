@@ -1,6 +1,6 @@
 {
   "hypothesis": "H4_contrastive_structural_discovery",
-  "source": "runs/SmolLM3-3B/h2_component_replay",
+  "source": "runs/SmolLM3-3B/replay/h2_component_replay",
   "component": "attention_output",
   "layer": 18,
   "update_vector": "component-output net displacement across symbolic interval",

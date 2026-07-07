@@ -1,0 +1,21 @@
+model:
+  name: HuggingFaceTB/SmolLM3-3B
+  revision: a07cc9a04f16550a088caea529712d1d335b0ac1
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+replay:
+  source_run: runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k
+  pair_manifest_path: experiments/h3_process_isomer_pairs.jsonl
+  per_sample: 10
+
+capture:
+  enabled: true
+  layers: [18]
+  components: [mlp_output, attention_output]
+  activation_storage_dtype: int8_scaled
+  diagnostics: false

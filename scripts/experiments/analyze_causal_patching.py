@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.experiments.patching_analysis import (
+from src.experiments.process_isomers.patching_analysis import (
     analyze_causal_patching,
     validate_h3_smoke,
 )

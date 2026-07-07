@@ -9,7 +9,7 @@ from typing import Any
 import torch
 
 from reasoning_trajectory.artifacts import read_generation_rows
-from src.experiments.causal_patching import (
+from src.experiments.process_isomers.causal_patching import (
     ProjectionSubspace,
     generate_patched_continuation,
     load_completed_patches,

@@ -1,7 +1,7 @@
 {
-  "source": "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates",
+  "source": "runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates",
   "activation_run": null,
-  "generation_run": "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k",
+  "generation_run": "runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k",
   "criteria": {
     "exact_graph_signature": true,
     "same_question": true,

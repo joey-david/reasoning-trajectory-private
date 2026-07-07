@@ -4,13 +4,13 @@ set -euo pipefail
 usage="usage: scripts/experiments/run_h3_protocol.sh primary | fallback"
 stage="${1:?$usage}"
 
-replay_run="runs/SmolLM3-3B/failed_hypotheses/h3_process_isomer_replay"
+replay_run="runs/SmolLM3-3B/failed/h3_process_isomer_replay"
 case "$stage" in
 primary)
-  patch_run="runs/SmolLM3-3B/failed_hypotheses/h3_process_isomer_patching"
+  patch_run="runs/SmolLM3-3B/failed/h3_process_isomer_patching"
   ;;
 fallback)
-  patch_run="runs/SmolLM3-3B/failed_hypotheses/h3_process_isomer_patching_mlp18"
+  patch_run="runs/SmolLM3-3B/failed/h3_process_isomer_patching_mlp18"
   ;;
 *)
   echo "$usage" >&2

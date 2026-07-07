@@ -1,0 +1,38 @@
+model:
+  name: HuggingFaceTB/SmolLM3-3B
+  revision: a07cc9a04f16550a088caea529712d1d335b0ac1
+  backend: hf
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+patching:
+  activation_run: runs/SmolLM3-3B/failed/h3_process_isomer_replay
+  pairs: experiments/h3_process_isomer_pairs.jsonl
+  pair_audit: experiments/h3_process_isomer_pair_audit.json
+  component: attention_output
+  layer: 18
+  projection_path: experiments/h3_projections/attention_output_layer18_projection.pt
+  projection_report: experiments/h3_projections/attention_output_layer18_report.json
+  minimum_projection_auc: 0.9
+  alignment: symbolic_step_end
+  patch_modes: [full, subspace]
+  conditions: [baseline, equivalent, position_random, mismatched]
+  continuations_per_condition: 5
+  max_pairs: 24
+  minimum_pairs: 20
+  minimum_path_distance: 0.2
+  maximum_target_remaining_tokens: 896
+  require_correct_source_targets: true
+  minimum_source_tail_headroom: 128
+  max_new_tokens: 1024
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  base_seed: 9931000
+
+analysis:
+  produced_answer_regex: "(?i)(?:\\\\boxed\\{|(?:Final\\s+)?Answer\\s*:\\s*)(-?\\d[\\d,]*(?:\\.\\d+)?)"
+  gold_answer_regex: "####\\s*(-?\\d[\\d,]*(?:\\.\\d+)?)"

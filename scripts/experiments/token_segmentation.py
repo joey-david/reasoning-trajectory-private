@@ -13,9 +13,9 @@ from src.experiments.token_segmentation import run_token_segmentation
 
 
 CANONICAL_RUN = Path(
-    "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k"
+    "runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k"
 )
-CANONICAL_GOLD_RUN = Path("runs/SmolLM3-3B/thought_units_gold_answers")
+CANONICAL_GOLD_RUN = Path("runs/SmolLM3-3B/replay/thought_units_gold_answers")
 CANONICAL_UPDATES = (
     CANONICAL_RUN / "analysis/experiments/h2_localized_updates/updates.jsonl"
 )

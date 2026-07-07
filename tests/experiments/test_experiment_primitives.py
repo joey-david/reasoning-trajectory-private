@@ -11,7 +11,7 @@ from collections import Counter
 import numpy as np
 import torch
 
-from src.experiments.causal_patching import (
+from src.experiments.process_isomers.causal_patching import (
     ProjectionSubspace,
     completion_state_index,
     load_completed_patches,
@@ -21,11 +21,11 @@ from src.experiments.causal_patching import (
 from src.experiments.common import interval_dynamics, robust_spike_indices
 from src.experiments.correctness_prediction import prefix_representations
 from src.experiments.gold_answers import capture_gold_answer
-from src.experiments.patching_analysis import (
+from src.experiments.process_isomers.patching_analysis import (
     analyze_causal_patching,
     validate_h3_smoke,
 )
-from src.experiments.process_isomers import (
+from src.experiments.process_isomers.mining import (
     deduplicate_pair_candidates,
     sequence_edit_distance,
 )

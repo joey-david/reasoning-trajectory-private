@@ -11,7 +11,7 @@ from src.experiments.localized_updates import run_localized_update_analysis
 
 
 CANONICAL_RUN = Path(
-    "runs/SmolLM3-3B/frontier_identification/gsm_symb_pure_mixed_latents_10k"
+    "runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k"
 )
 
 
