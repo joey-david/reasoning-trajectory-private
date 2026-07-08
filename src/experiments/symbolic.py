@@ -12,10 +12,10 @@ from reasoning_trajectory.token_alignment import TokenSpan, token_range_for_char
 
 
 _EQUATION_RE = re.compile(
-    r"(?P<lhs>(?<![\w.])[-+()]?\s*\d[\d,]*(?:\.\d+)?"
-    r"(?:\s*(?:\*\*|[+\-*/×÷])\s*[-+()]?\s*\d[\d,]*(?:\.\d+)?"
+    r"(?P<lhs>(?<![\w.])[-+()€$]?\s*\d[\d,]*(?:\.\d+)?"
+    r"(?:\s*(?:\*\*|[+\-*/×÷])\s*[-+()€$]?\s*\d[\d,]*(?:\.\d+)?"
     r"|\s*[()]){1,12})"
-    r"\s*=\s*(?P<rhs>-?\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)"
+    r"\s*=\s*(?P<rhs>[-+€$]?-?\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)"
 )
 _BIND_RE = re.compile(
     r"(?P<name>\b[A-Za-z][A-Za-z0-9_]{0,30})\s*=\s*"
@@ -30,6 +30,57 @@ _VERIFY_WORDS = re.compile(
 )
 _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _NUMBER_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
+
+# Prose arithmetic: word operators with explicit result (e.g. "24 plus 11 equals 35")
+_PROSE_ARITH_EQ_RE = re.compile(
+    r"(?i)"
+    r"(?P<lhs_num>-?\d[\d,]*(?:\.\d+)?)\s+"
+    r"(?P<word_op>plus|minus|times|multiplied\s+by|divided\s+by)\s+"
+    r"(?P<rhs_num>-?\d[\d,]*(?:\.\d+)?)"
+    r".{0,40}?"
+    r"\b(?:is|equals|are|makes|gives|is\s+equal\s+to)\b\s+"
+    r"(?P<result>-?\d[\d,]*(?:\.\d+)?)"
+)
+
+# Multiplier prose: "double/triple/quadruple of X (is|equals) Y" -> N*X=Y
+_PROSE_MULT_RE = re.compile(
+    r"(?i)"
+    r"(?P<mult_word>double|triple|quadruple|twice|thrice)\s+"
+    r"(?:of\s+)?"
+    r"(?P<num>-?\d[\d,]*(?:\.\d+)?)\s+"
+    r".{0,40}?"
+    r"\b(?:is|equals|are|makes)\b\s+"
+    r"(?P<result>-?\d[\d,]*(?:\.\d+)?)"
+)
+
+# Characters that continue an arithmetic expression (for BIND RHS extension)
+_BIND_EXPR_CHARS: frozenset[str] = frozenset("0123456789+-*/.,()×÷% \t")
+
+
+def _clean_expression(expression: str) -> str:
+    """Strip unbalanced leading/trailing parens from an expression.
+
+    Prose context like "(24 + 11 = 35 minutes)" captures "(" in the LHS
+    of the equation match, which survives into the stored expression.
+    Only strips parens that would create an invalid unbalanced expression.
+    """
+    expr = expression.strip()
+    # Count opening and closing parens
+    opens = expr.count("(")
+    closes = expr.count(")")
+    if opens == closes:
+        return expr  # balanced — leave as-is
+    # Strip unbalanced leading opens
+    while expr.startswith("(") and opens > closes:
+        expr = expr[1:].strip()
+        opens = expr.count("(")
+        closes = expr.count(")")
+    # Strip unbalanced trailing closes
+    while expr.endswith(")") and closes > opens:
+        expr = expr[:-1].strip()
+        opens = expr.count("(")
+        closes = expr.count(")")
+    return expr
 
 
 @dataclass(slots=True)
@@ -112,6 +163,68 @@ def extract_symbolic_updates(
             )
         )
 
+    # --- Prose arithmetic equations (word operators, e.g., "24 plus 11 equals 35") ---
+    _PROSE_OP_MAP = {
+        "plus": "+",
+        "minus": "-",
+        "times": "*",
+        "multiplied by": "*",
+        "divided by": "/",
+    }
+    for match in _PROSE_ARITH_EQ_RE.finditer(text):
+        word_op = match.group("word_op").strip().lower()
+        symbol = _PROSE_OP_MAP.get(word_op)
+        if symbol is None:
+            continue
+        lhs_text = f'{normalize_expression(match.group("lhs_num"))} {symbol} {normalize_expression(match.group("rhs_num"))}'
+        raw_rhs = match.group("result")
+        value = parse_number(raw_rhs)
+        evaluated = safe_arithmetic_eval(lhs_text)
+        if evaluated is None or not math.isclose(evaluated, value, rel_tol=1e-6, abs_tol=1e-6):
+            continue
+        signature = operation_signature(lhs_text)
+        full_expr = f"{lhs_text} = {value:g}"
+        lexical = lexical_items(match.group(0))
+        candidates.append(
+            (
+                match.start(),
+                match.end(),
+                "OPERATE",
+                full_expr,
+                value,
+                signature,
+                lexical,
+            )
+        )
+
+    # --- Prose multiplier equations (e.g., "quadruple of 35 is 140") ---
+    _MULT_MAP = {"double": 2, "triple": 3, "quadruple": 4, "twice": 2, "thrice": 3}
+    for match in _PROSE_MULT_RE.finditer(text):
+        mult_word = match.group("mult_word").strip().lower()
+        factor = _MULT_MAP.get(mult_word)
+        if factor is None:
+            continue
+        num_str = normalize_expression(match.group("num"))
+        value = parse_number(match.group("result"))
+        evaluated_val = safe_arithmetic_eval(f"{num_str} * {factor}")
+        if evaluated_val is None or not math.isclose(evaluated_val, value, rel_tol=1e-6, abs_tol=1e-6):
+            continue
+        expr = f"{num_str} * {factor}"
+        signature = operation_signature(expr)
+        full_expr = f"{expr} = {value:g}"
+        lexical = lexical_items(match.group(0))
+        candidates.append(
+            (
+                match.start(),
+                match.end(),
+                "OPERATE",
+                full_expr,
+                value,
+                signature,
+                lexical,
+            )
+        )
+
     occupied = [(start, end) for start, end, *_ in candidates]
     for match in _BIND_RE.finditer(text):
         if any(match.start() < end and match.end() > start for start, end in occupied):
@@ -127,6 +240,80 @@ def extract_symbolic_updates(
                 lexical_items(match.group(0)),
             )
         )
+
+    # --- BIND expression RHS extension ---
+    # When a BIND matches a simple number but the text continues with an
+    # arithmetic expression (e.g. "B = 24 / (4/6)"), evaluate the full RHS
+    # and emit both an OPERATE and a corrected BIND.
+    _UNIT_SKIP_RE = re.compile(
+        r"\s*(?:[A-Za-z]+(?:/[A-Za-z]+)?\s+)+\s*(?=[\d*+/×÷\-])"
+    )
+
+    extended_binds: list[tuple[int, int, str, str, float, str, tuple[str, ...]]] = []
+    for i, (start, end, operator, expression, value, signature, lexical) in enumerate(
+        candidates
+    ):
+        if operator != "BIND":
+            continue
+        # Reconstruct the RHS text from the candidate expression (last token after '=')
+        rhs_text = expression.split("=", 1)[-1].strip() if "=" in expression else str(value)
+        remaining = text[end:]
+        stop = 0
+        while stop < len(remaining) and remaining[stop] in _BIND_EXPR_CHARS:
+            stop += 1
+        continuation = remaining[:stop].strip()
+        has_op = bool(continuation and any(op in continuation for op in "+-*/×÷"))
+
+        # If basic continuation has no operator, try skipping unit words
+        # (e.g. "60 square yards * 36" → skip "square yards" to reach "*")
+        if not has_op:
+            unit_skip = _UNIT_SKIP_RE.match(remaining[stop:])
+            if unit_skip:
+                extra = remaining[stop : stop + unit_skip.end()]
+                # Continue scanning arithmetic chars after the unit words
+                extra_remaining = remaining[stop + unit_skip.end() :]
+                extra_stop = 0
+                while extra_stop < len(extra_remaining) and extra_remaining[extra_stop] in _BIND_EXPR_CHARS:
+                    extra_stop += 1
+                extra_cont = extra_remaining[:extra_stop].strip()
+                if extra_cont and any(op in extra_cont for op in "+-*/×÷"):
+                    continuation = extra + " " + extra_cont
+                    stop = stop + unit_skip.end() + extra_stop
+                    has_op = True
+
+        if has_op:
+            full_expr_str = f"{rhs_text}{continuation}"
+            # Strip unit words from expression for evaluation
+            clean_expr = _UNIT_SKIP_RE.sub(" ", full_expr_str).strip()
+            evaluated = safe_arithmetic_eval(clean_expr)
+            if evaluated is not None and not math.isclose(
+                evaluated, value, rel_tol=1e-6, abs_tol=1e-6
+            ):
+                full_match_text = text[start : end + stop]
+                op_signature = operation_signature(clean_expr)
+                op_lexical = lexical_items(full_match_text)
+                candidates[i] = (
+                    start,
+                    end + stop,
+                    "BIND",
+                    full_match_text,
+                    evaluated,
+                    "BIND",
+                    op_lexical,
+                )
+                extended_binds.append(
+                    (
+                        start,
+                        end + stop,
+                        "OPERATE",
+                        f"{clean_expr} = {evaluated:g}",
+                        evaluated,
+                        op_signature,
+                        op_lexical,
+                    )
+                )
+
+    candidates.extend(extended_binds)
 
     answer_matches = list(_ANSWER_RE.finditer(text))
     for match in answer_matches[-1:]:
@@ -173,7 +360,7 @@ def extract_symbolic_updates(
                 token_start=token_range[0],
                 token_end=token_range[1],
                 operator=operator,
-                expression=expression,
+                expression=_clean_expression(expression),
                 value=value,
                 operation_signature=signature,
                 graph_signature="|".join(sorted(set(graph_entries))),
@@ -196,7 +383,22 @@ def safe_arithmetic_eval(expression: str) -> float | None:
         tree = ast.parse(expression, mode="eval")
         value = _eval_node(tree.body)
     except (SyntaxError, TypeError, ValueError, ZeroDivisionError, OverflowError):
-        return None
+        # Fallback: strip unbalanced leading/trailing parens that come from
+        # prose context (e.g. "(24 + 11 = 35 minutes)" captures "(" in LHS)
+        stripped = expression
+        while stripped.startswith("("):
+            stripped = stripped[1:]
+        while stripped.endswith(")"):
+            stripped = stripped[:-1]
+        stripped = stripped.strip()
+        if stripped and stripped != expression:
+            try:
+                tree = ast.parse(stripped, mode="eval")
+                value = _eval_node(tree.body)
+            except (SyntaxError, TypeError, ValueError, ZeroDivisionError, OverflowError):
+                return None
+        else:
+            return None
     return float(value) if math.isfinite(float(value)) else None
 
 
@@ -239,7 +441,14 @@ def normalize_expression(expression: str) -> str:
     Returns:
         The resulting text or classification label.
     """
-    return expression.replace(",", "").replace("×", "*").replace("÷", "/").strip()
+    return (
+        expression.replace(",", "")
+        .replace("×", "*")
+        .replace("÷", "/")
+        .replace("€", "")
+        .replace("$", "")
+        .strip()
+    )
 
 
 def canonical_expression(expression: str) -> str:
@@ -367,7 +576,7 @@ def deduplicate_updates(updates: list[SymbolicUpdate]) -> list[SymbolicUpdate]:
 
 
 def parse_number(value: str) -> float:
-    """Parse a comma-separated numeric literal.
+    """Parse a comma-separated numeric literal, stripping currency prefixes.
 
     Args:
         value: Value to rank, parse, or transform.
@@ -375,4 +584,4 @@ def parse_number(value: str) -> float:
     Returns:
         The computed scalar metric.
     """
-    return float(value.replace(",", ""))
+    return float(value.replace(",", "").replace("€", "").replace("$", ""))

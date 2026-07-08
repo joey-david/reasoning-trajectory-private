@@ -1,0 +1,202 @@
+{
+  "experiment": "symbolic_parser_fidelity_audit",
+  "source_run": "runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k",
+  "labels": "experiments/symbolic_parser_audit_labels.jsonl",
+  "definition": {
+    "gold_event": "hand-labeled textual arithmetic, numeric binding, verification, or final-answer event in a selected trace window",
+    "match_rule": "parser prediction matches a gold event when value is equal and the normalized parser expression matches one of the event aliases",
+    "scope": "small stratified audit of arithmetic-heavy windows, not a corpus-wide estimate"
+  },
+  "window_count": 8,
+  "totals": {
+    "gold": 27,
+    "predicted": 33,
+    "true_positives": 26,
+    "false_positives": 7,
+    "false_negatives": 1
+  },
+  "metrics": {
+    "micro_precision": 0.7878787878787878,
+    "micro_recall": 0.9629629629629629,
+    "micro_f1": 0.8666666666666665
+  },
+  "by_gold_operator": {
+    "BIND": {
+      "gold": 3,
+      "true_positives": 3,
+      "recall": 1.0
+    },
+    "OPERATE": {
+      "gold": 24,
+      "true_positives": 23,
+      "false_negatives": 1,
+      "recall": 0.9583333333333334
+    }
+  },
+  "by_predicted_operator": {
+    "BIND": {
+      "predicted": 6,
+      "false_positives": 3,
+      "true_positives": 3,
+      "precision": 0.5
+    },
+    "OPERATE": {
+      "predicted": 20,
+      "true_positives": 17,
+      "false_positives": 3,
+      "precision": 0.85
+    },
+    "VERIFY": {
+      "predicted": 7,
+      "true_positives": 6,
+      "false_positives": 1,
+      "precision": 0.8571428571428571
+    }
+  },
+  "windows": [
+    {
+      "window_id": "tax_correct_explicit",
+      "sample_id": "gsm_symbolic_65_49",
+      "seed": 9410100,
+      "is_correct": true,
+      "gold": 3,
+      "predicted": 3,
+      "true_positives": 3,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_expressions": [],
+      "false_negative_descriptions": [],
+      "notes": "Correct trace, explicit arithmetic after the model settles on the intended interpretation."
+    },
+    {
+      "window_id": "tax_correct_final_delta",
+      "sample_id": "gsm_symbolic_65_49",
+      "seed": 9410100,
+      "is_correct": true,
+      "gold": 1,
+      "predicted": 1,
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_expressions": [],
+      "false_negative_descriptions": [],
+      "notes": "Correct trace, final comparison between doing taxes and hiring accountant."
+    },
+    {
+      "window_id": "banana_density_prose",
+      "sample_id": "gsm_symbolic_6_1",
+      "seed": 9420100,
+      "is_correct": true,
+      "gold": 4,
+      "predicted": 8,
+      "true_positives": 4,
+      "false_positives": 4,
+      "false_negatives": 0,
+      "precision": 0.5,
+      "recall": 1.0,
+      "false_positive_expressions": [
+        "B = 24 / (4/6)",
+        "B = 24 * (6/4)",
+        "24* (6/4) = 36",
+        "24 / 4 = 6"
+      ],
+      "false_negative_descriptions": [],
+      "notes": "Density derivation mixes equations, prose arithmetic, and partial variable notation."
+    },
+    {
+      "window_id": "banana_total_prose",
+      "sample_id": "gsm_symbolic_6_1",
+      "seed": 9420100,
+      "is_correct": true,
+      "gold": 1,
+      "predicted": 2,
+      "true_positives": 1,
+      "false_positives": 1,
+      "false_negatives": 0,
+      "precision": 0.5,
+      "recall": 1.0,
+      "false_positive_expressions": [
+        "bananas = 60 square yards * 36"
+      ],
+      "false_negative_descriptions": [],
+      "notes": "The key multiplication is expressed in prose without an equality sign."
+    },
+    {
+      "window_id": "pear_wrong_harvest",
+      "sample_id": "gsm_symbolic_6_10",
+      "seed": 9430100,
+      "is_correct": false,
+      "gold": 3,
+      "predicted": 3,
+      "true_positives": 3,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_expressions": [],
+      "false_negative_descriptions": [],
+      "notes": "Incorrect trace, but the local arithmetic about harvest periods and repeated harvest count is explicit."
+    },
+    {
+      "window_id": "minutes_correct_cost",
+      "sample_id": "gsm_symbolic_10_13",
+      "seed": 9120107,
+      "is_correct": false,
+      "gold": 8,
+      "predicted": 10,
+      "true_positives": 8,
+      "false_positives": 2,
+      "false_negatives": 0,
+      "precision": 0.8,
+      "recall": 1.0,
+      "false_positive_expressions": [
+        "34 - 14 = 20",
+        "40 / 2 = 20"
+      ],
+      "false_negative_descriptions": [],
+      "notes": "Correct trace, dense explicit tiered-phone-cost calculation."
+    },
+    {
+      "window_id": "library_path",
+      "sample_id": "gsm_symbolic_14_6",
+      "seed": 9160100,
+      "is_correct": true,
+      "gold": 5,
+      "predicted": 5,
+      "true_positives": 5,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_expressions": [],
+      "false_negative_descriptions": [],
+      "notes": "Correct trace, path-time computation with one prose multiplication."
+    },
+    {
+      "window_id": "tax_incorrect_partial",
+      "sample_id": "gsm_symbolic_65_49",
+      "seed": 9410101,
+      "is_correct": false,
+      "gold": 2,
+      "predicted": 1,
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "precision": 1.0,
+      "recall": 0.5,
+      "false_positive_expressions": [],
+      "false_negative_descriptions": [
+        "lost consulting income under model's interpretation"
+      ],
+      "notes": "Incorrect trace, but useful for checking whether final-answer bindings are captured locally."
+    }
+  ],
+  "interpretation": {
+    "adequate_for": "high-confidence explicit arithmetic equations and some final-answer markers in GSM-Symbolic-style traces",
+    "not_adequate_for": "complete reasoning-state segmentation: prose arithmetic, partial variable equations, units, and ambiguous bindings need manual or stronger structured labeling"
+  }
+}
