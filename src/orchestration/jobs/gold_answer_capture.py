@@ -51,7 +51,7 @@ def setup_worker(run_path: Path) -> GoldAnswerWorker:
     config = load_config(run_path)
     samples = load_run_samples(run_path, config["dataset"])
     raw = {key: value for key, value in config.raw.items() if key != "_run_path"}
-    raw["model"] = {**raw["model"], "device_map": {"": 0}}
+    raw["model"] = worker_model_config(raw["model"])
     worker_config = RunConfig.from_dict(run_path, raw)
     model, tokenizer = load_hf_model_and_tokenizer(worker_config["model"])
     capture_cfg = worker_config["gold_answer_capture"]
@@ -74,6 +74,14 @@ def setup_worker(run_path: Path) -> GoldAnswerWorker:
         layers=layers,
         storage_dtype=storage_dtype,
     )
+
+
+def worker_model_config(model_cfg: dict[str, Any]) -> dict[str, Any]:
+    """Resolve worker-local device placement after CUDA_VISIBLE_DEVICES remapping."""
+    required_gpus = int(model_cfg.get("required_gpus", 1))
+    if required_gpus > 1:
+        return {**model_cfg, "device_map": model_cfg.get("device_map", "auto")}
+    return {**model_cfg, "device_map": {"": 0}}
 
 
 def log_path(run_path: Path, host: str, gpu: int) -> Path:

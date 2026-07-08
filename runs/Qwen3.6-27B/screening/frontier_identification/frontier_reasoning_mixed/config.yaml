@@ -1,0 +1,77 @@
+model:
+  name: Qwen/Qwen3.6-27B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  required_gpus: 2
+dataset:
+  source: jsonl
+  path: runs/Qwen3.6-27B/screening/frontier_identification/frontier_reasoning_mixed/dataset.jsonl
+  adapter: plain_question
+  sample_limit: 80
+  sample_offset: 0
+  shuffle_seed: null
+  require_gold_answer: true
+generation:
+  max_new_tokens: 12288
+  num_samples_per_item: 8
+  base_seed: 2748394
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+capture:
+  enabled: true
+  layers:
+  - -1
+  activation_storage_dtype: int8_scaled
+  diagnostics: false
+prompt:
+  mode: chat
+  system: You are a careful mathematical reasoner. /think
+  instruction: 'Think only as long as needed. Keep the reasoning clear and concise.
+
+    Solve the problem and check the calculation.
+
+    End with exactly: Answer: N
+
+    Replace N with the final numeric answer.
+
+    '
+  chat_template_kwargs:
+    enable_thinking: true
+analysis:
+  produced_answer_regex: (?i)(?:\\boxed\{|(?:Final\s+)?Answer\s*:\s*)(-?\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)
+  gold_answer_regex: '####\s*(-?\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)'
+  think_end_token_id: 248069
+  hard_question_limit: 58
+  max_plot_points: 5000
+  max_interactive_points: 6000
+  step_classification:
+    cluster_k: 8
+    max_steps: 12000
+    max_plot_steps: 4000
+    random_state: 42
+    segmenters:
+      sentence:
+        mode: sentence
+        group_size: 1
+      sentence_group_2:
+        mode: sentence
+        group_size: 2
+      paragraph:
+        mode: paragraph
+  token_selector:
+    every_n: 8
+  token_selectors:
+    every_8:
+      every_n: 8
+    sentence_end:
+      mode: sentence_end
+    deciles:
+      mode: percentiles
+      count: 10
+    reasoning_boundaries:
+      mode: reasoning_boundaries
+    first_last:
+      mode: first_last

@@ -1,0 +1,28 @@
+model:
+  name: Qwen/Qwen3-8B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  attn_implementation: flash_attention_2
+replay:
+  source_run: runs/Qwen3-8B/screening/frontier_identification/frontier_reasoning_mixed
+  sample_ids_path: runs/Qwen3-8B/pilots/h1_numbered_steps_pilot/dataset.jsonl
+  per_sample: 5
+  max_trajectories: 80
+capture:
+  enabled: true
+  layers:
+  - -1
+  components: []
+  activation_storage_dtype: int8_scaled
+  diagnostics: true
+analysis:
+  experiment:
+    hypothesis: H1
+    condition: freeform
+  produced_answer_regex: (?i)(?:\\boxed\{|(?:Final\s+)?Answer\s*:\s*)(-?\d[\d,]*(?:\.\d+)?)
+  gold_answer_regex: '####\s*(-?\d[\d,]*(?:\.\d+)?)'
+  think_end_token_id: 151668
+  hard_question_limit: 80

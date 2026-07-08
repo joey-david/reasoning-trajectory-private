@@ -1,0 +1,20 @@
+model:
+  name: Qwen/Qwen3.6-27B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  required_gpus: 2
+replay:
+  source_run: runs/Qwen3.6-27B/screening/frontier_identification/frontier_reasoning_mixed
+  pair_manifest_path: experiments/qwen3_6-27b/h3_process_isomer_pairs.jsonl
+  per_sample: 8
+capture:
+  enabled: true
+  layers:
+  - 42
+  components:
+  - mlp_output
+  - attention_output
+  activation_storage_dtype: int8_scaled
+  diagnostics: false

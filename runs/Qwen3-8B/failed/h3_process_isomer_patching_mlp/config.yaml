@@ -1,0 +1,43 @@
+model:
+  name: Qwen/Qwen3-8B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  attn_implementation: flash_attention_2
+patching:
+  activation_run: runs/Qwen3-8B/failed/h3_process_isomer_replay
+  pairs: experiments/qwen3-8b/h3_process_isomer_pairs.jsonl
+  pair_audit: experiments/qwen3-8b/h3_process_isomer_pair_audit.json
+  component: mlp_output
+  layer: 24
+  projection_path: experiments/qwen3-8b/h3_projections/mlp_output_layer24_projection.pt
+  projection_report: experiments/qwen3-8b/h3_projections/mlp_output_layer24_report.json
+  minimum_projection_auc: 0.9
+  alignment: symbolic_step_end
+  patch_modes:
+  - full
+  - subspace
+  conditions:
+  - baseline
+  - equivalent
+  - position_random
+  - mismatched
+  continuations_per_condition: 5
+  max_pairs: 24
+  minimum_pairs: 20
+  minimum_path_distance: 0.2
+  maximum_target_remaining_tokens: 896
+  require_correct_source_targets: true
+  minimum_source_tail_headroom: 128
+  max_new_tokens: 1536
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  base_seed: 7205864
+analysis:
+  produced_answer_regex: (?i)(?:\\boxed\{|(?:Final\s+)?Answer\s*:\s*)(-?\d[\d,]*(?:\.\d+)?)
+  gold_answer_regex: '####\s*(-?\d[\d,]*(?:\.\d+)?)'
+  think_end_token_id: 151668
+  hard_question_limit: 80

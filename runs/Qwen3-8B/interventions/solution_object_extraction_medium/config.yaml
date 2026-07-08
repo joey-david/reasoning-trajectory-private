@@ -1,0 +1,104 @@
+model:
+  name: Qwen/Qwen3-8B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  attn_implementation: flash_attention_2
+solution_object_extraction:
+  scale: medium
+  bank:
+    graph_count: 24
+    include_corruptions: true
+    splits:
+    - train
+    - validation
+    - heldout_vocab
+    - heldout_template
+    - heldout_question
+  capture:
+    layers:
+    - 12
+    - 24
+    - 35
+    batch_size: 16
+  projection:
+    dimension: 32
+  mixed_trajectories:
+    source_run: runs/Qwen3-8B/screening/frontier_identification/frontier_reasoning_mixed
+    required: false
+    layer: -1
+    per_sample: 10
+    max_questions: 58
+  causal:
+    max_pairs_per_condition: 12
+    continuation_tokens: 16
+  improvement:
+    dimensions:
+    - 16
+    - 32
+    - 64
+    - 128
+    - 256
+    layers:
+    - 23
+    - 26
+    - 29
+    - 32
+    - 35
+    patch_scopes:
+    - final_token
+    - last_2_tokens
+    - operation_interval
+    - multi_layer
+    nonlinear:
+      latent_dimensions:
+      - 32
+      - 64
+      - 128
+      - 256
+      hidden_dimensions:
+      - 128
+      - 256
+      - 512
+      epochs:
+      - 30
+      - 60
+      variants:
+      - mlp
+      - contrastive
+      - contrastive_adversarial
+    writer:
+      train_pairs: 192
+      validation_pairs: 48
+      epochs:
+      - 3
+      - 6
+      - 12
+      alpha:
+      - 0.25
+      - 0.5
+      - 1.0
+      - 2.0
+    ablation:
+      max_prompts: 64
+    ablation_grid:
+      dimensions:
+      - 16
+      - 32
+      scopes:
+      - final_token
+      - last_2_tokens
+      - operation_interval
+      - multi_layer
+      max_lexical_probe: 0.85
+      min_causal_strength: 0.0
+      max_cells: 8
+    budget:
+      total_hours: 12
+      capture_hours: 0.75
+      retrieval_hours: 0.5
+      concurrent_causal_encoder_hours: 4.0
+      concurrent_writer_ablation_hours: 5.0
+      final_validation_hours: 1.75

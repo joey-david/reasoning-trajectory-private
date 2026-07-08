@@ -1,0 +1,58 @@
+model:
+  name: Qwen/Qwen3-8B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  attn_implementation: flash_attention_2
+dataset:
+  source: jsonl
+  path: runs/Qwen3-8B/screening/frontier_identification/frontier_reasoning_mixed/dataset.jsonl
+  adapter: plain_question
+  sample_limit: 16
+generation:
+  max_new_tokens: 8192
+  num_samples_per_item: 5
+  base_seed: 2203182
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+capture:
+  enabled: true
+  layers:
+  - -1
+  activation_storage_dtype: int8_scaled
+  diagnostics: true
+prompt:
+  mode: chat
+  system: 'You are a careful mathematical reasoner. /think
+
+    Express your reasoning with exactly one complete sentence per paragraph. Use a
+    double newline after every single sentence.
+
+    '
+  instruction: 'Think only as long as needed. Solve the problem and check the calculation.
+
+    End with exactly: Answer: N
+
+    '
+  demonstrations:
+  - user: A shop packs 3 boxes with 4 pens each. How many pens are packed?
+    assistant: 'There are 3 boxes with 4 pens in each box.
+
+
+      Multiplying 3 by 4 gives 12 pens.
+
+
+      Answer: 12'
+  chat_template_kwargs:
+    enable_thinking: true
+analysis:
+  experiment:
+    hypothesis: H1
+    condition: sentence_separated
+  produced_answer_regex: (?i)(?:\\boxed\{|(?:Final\s+)?Answer\s*:\s*)(-?\d[\d,]*(?:\.\d+)?)
+  think_end_token_id: 151668
+  hard_question_limit: 80
+  gold_answer_regex: '####\s*(-?\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)'

@@ -1,0 +1,56 @@
+model:
+  name: Qwen/Qwen3-8B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  attn_implementation: flash_attention_2
+dataset:
+  source: hf
+  path: Idavidrein/gpqa
+  name: gpqa_diamond
+  split: train
+  adapter: gpqa
+  sample_limit: 198
+  sample_offset: 0
+  shuffle_seed: 31415
+generation:
+  max_new_tokens: 8192
+  num_samples_per_item: 10
+  base_seed: 5593818
+  temperature: 0.7
+  top_p: 0.95
+  top_k: 20
+capture:
+  enabled: false
+  layers: []
+  activation_storage_dtype: int8_scaled
+  diagnostics: false
+prompt:
+  mode: chat
+  system: You are a careful scientific reasoner.
+  instruction: 'Choose the best answer. Reason carefully.
+
+    Put the final answer as one letter A, B, C, or D at the end.
+
+    '
+analysis:
+  produced_answer_regex: (?:Final Answer|Answer|answer)[:*\s]*([A-D])\b
+  gold_answer_regex: \b([A-D])\b
+  think_end_token_id: 151668
+  hard_question_limit: 50
+  token_selector:
+    every_n: 8
+  token_selectors:
+    every_8:
+      every_n: 8
+    sentence_end:
+      mode: sentence_end
+    deciles:
+      mode: percentiles
+      count: 10
+    reasoning_boundaries:
+      mode: reasoning_boundaries
+    first_last:
+      mode: first_last

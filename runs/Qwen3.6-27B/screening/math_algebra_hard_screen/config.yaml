@@ -1,0 +1,55 @@
+model:
+  name: Qwen/Qwen3.6-27B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  required_gpus: 2
+dataset:
+  source: hf
+  path: EleutherAI/hendrycks_math
+  name: algebra
+  split: test
+  adapter: hendrycks_math
+  sample_limit: 200
+  sample_offset: 0
+  shuffle_seed: 1618
+generation:
+  max_new_tokens: 12288
+  num_samples_per_item: 8
+  base_seed: 9165104
+  temperature: 0.7
+  top_p: 0.95
+  top_k: 20
+capture:
+  enabled: false
+  layers: []
+  activation_storage_dtype: int8_scaled
+  diagnostics: false
+prompt:
+  mode: chat
+  system: You are a careful mathematical reasoner.
+  instruction: 'Solve the problem. Reason carefully.
+
+    Put the final answer at the end.
+
+    '
+analysis:
+  produced_answer_regex: \\boxed\{([^}]+)\}
+  gold_answer_regex: \\boxed\{([^}]+)\}
+  think_end_token_id: 248069
+  hard_question_limit: 50
+  token_selector:
+    every_n: 8
+  token_selectors:
+    every_8:
+      every_n: 8
+    sentence_end:
+      mode: sentence_end
+    deciles:
+      mode: percentiles
+      count: 10
+    reasoning_boundaries:
+      mode: reasoning_boundaries
+    first_last:
+      mode: first_last

@@ -1,0 +1,15 @@
+model:
+  name: /home/lamsade/jdavid/.cache/huggingface/hub/Qwen3.5-122B-A10B-FP8
+  backend: vllm
+  required_gpus: 2
+  tensor_parallel_size: 2
+  dtype: auto
+  trust_remote_code: true
+  language_model_only: true
+  max_model_len: 4096
+  gpu_memory_utilization: 0.92
+solution_object_labeling:
+  input: runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver_qwen3-8b/token_windows.jsonl
+  output: runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver_qwen3-8b/labels/silver_labels.jsonl
+  max_new_tokens: 1200
+  alignment_retries: 1

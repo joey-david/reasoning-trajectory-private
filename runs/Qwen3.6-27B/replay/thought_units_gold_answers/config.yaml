@@ -1,0 +1,22 @@
+model:
+  name: Qwen/Qwen3.6-27B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  required_gpus: 2
+dataset:
+  source: jsonl
+  path: runs/Qwen3.6-27B/replay/thought_units_gold_answers/dataset.jsonl
+  adapter: plain_question
+  sample_limit: 80
+  sample_offset: 0
+  shuffle_seed: null
+  require_gold_answer: true
+generation:
+  max_new_tokens: 12288
+gold_answer_capture:
+  layers:
+  - -1
+  max_tokens: 12288
+  activation_storage_dtype: int8_scaled

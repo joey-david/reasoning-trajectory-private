@@ -1,0 +1,55 @@
+model:
+  name: Qwen/Qwen3.6-27B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  required_gpus: 2
+dataset:
+  source: jsonl
+  path: runs/Qwen3.6-27B/screening/frontier_identification/frontier_reasoning_mixed/dataset.jsonl
+  adapter: plain_question
+  sample_limit: 16
+generation:
+  max_new_tokens: 8192
+  num_samples_per_item: 5
+  base_seed: 9952948
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+capture:
+  enabled: true
+  layers:
+  - -1
+  activation_storage_dtype: int8_scaled
+  diagnostics: true
+prompt:
+  mode: chat
+  system: 'You are a careful mathematical reasoner. /think
+
+    Break your reasoning down into explicit numbered steps. Start each step with ''Step
+    X:'' on a new line.
+
+    '
+  instruction: 'Think only as long as needed. Solve the problem and check the calculation.
+
+    End with exactly: Answer: N
+
+    '
+  demonstrations:
+  - user: A shop packs 3 boxes with 4 pens each. How many pens are packed?
+    assistant: 'Step 1: There are 3 boxes with 4 pens in each box.
+
+      Step 2: Multiply 3 by 4 to get 12 pens.
+
+      Answer: 12'
+  chat_template_kwargs:
+    enable_thinking: true
+analysis:
+  experiment:
+    hypothesis: H1
+    condition: numbered
+  produced_answer_regex: (?i)(?:\\boxed\{|(?:Final\s+)?Answer\s*:\s*)(-?\d[\d,]*(?:\.\d+)?)
+  think_end_token_id: 248069
+  hard_question_limit: 80
+  gold_answer_regex: '####\s*(-?\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)'

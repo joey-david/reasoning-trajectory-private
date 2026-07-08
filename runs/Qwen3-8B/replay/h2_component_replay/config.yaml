@@ -1,0 +1,23 @@
+model:
+  name: Qwen/Qwen3-8B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  attn_implementation: flash_attention_2
+replay:
+  source_run: runs/Qwen3-8B/screening/frontier_identification/frontier_reasoning_mixed
+  per_sample: 3
+  max_trajectories: 240
+capture:
+  enabled: true
+  components:
+  - mlp_output
+  - attention_output
+  activation_storage_dtype: int8_scaled
+  diagnostics: false
+  layers:
+  - 12
+  - 24
+  - 35

@@ -1,0 +1,44 @@
+model:
+  name: Qwen/Qwen3.6-27B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  required_gpus: 2
+dataset:
+  source: hf
+  path: Hothan/OlympiadBench
+  revision: 91184b52131e7fc9455fef848035173aea8cc01a
+  name: OE_TO_maths_en_COMP
+  split: train
+  adapter: olympiadbench_numeric
+  require_gold_answer: true
+  sample_limit: 12
+  sample_offset: 0
+  shuffle_seed: 41005
+generation:
+  max_new_tokens: 12288
+  num_samples_per_item: 10
+  base_seed: 4798989
+  temperature: 0.7
+  top_p: 0.95
+  top_k: 20
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+prompt:
+  mode: chat
+  system: You are a careful olympiad mathematician.
+  instruction: 'Solve the open-ended problem. Check the result.
+
+    End with exactly: Answer: N
+
+    Replace N with the final numeric answer and no units.
+
+    '
+analysis:
+  produced_answer_regex: (?i)(?:\\boxed\{|(?:Final\s+)?Answer\s*:\s*)(-?\d+(?:\.\d+)?)
+  gold_answer_regex: (-?\d+(?:\.\d+)?)
+  hard_question_limit: 200
+  think_end_token_id: 248069
