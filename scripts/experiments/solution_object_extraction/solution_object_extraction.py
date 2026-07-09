@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.experiments.solution_object_extraction.pipeline import (
     run_analysis,

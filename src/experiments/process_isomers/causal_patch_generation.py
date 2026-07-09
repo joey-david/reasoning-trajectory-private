@@ -17,7 +17,7 @@ from src.experiments.process_isomers.causal_patch_mechanics import (
     completion_state_index,
     output_degeneration_reasons,
 )
-from src.experiments.replay_capture import load_source_sample
+from src.experiments.trajectory_dynamics.replay_capture import load_source_sample
 from src.models.generation_pipeline import GeneratedTextRegexStop, set_seed
 from src.models.introspection import get_input_device
 from src.runtime.artifact_store import load_component_states_npz

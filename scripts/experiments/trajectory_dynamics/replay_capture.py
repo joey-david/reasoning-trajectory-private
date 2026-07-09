@@ -5,9 +5,9 @@ import argparse
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from src.experiments.replay_capture import rebuild_replay_index, replay_capture_run
+from src.experiments.trajectory_dynamics.replay_capture import rebuild_replay_index, replay_capture_run
 
 
 def main() -> int:

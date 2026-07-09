@@ -14,13 +14,13 @@ from typing import Any
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.analysis.dataset_screening import summarize_run
 from src.runtime.config import load_config
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 PYTHON = ".venv/bin/python"
 
 
@@ -526,7 +526,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
         commands.append(
             [
                 PYTHON,
-                "scripts/experiments/scale_reasoning_replication.py",
+                "scripts/experiments/replication/scale_reasoning_replication.py",
                 spec.key,
                 "select-frontier",
             ]
@@ -547,7 +547,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                 direct_model_cmd(
                     spec,
                     args,
-                    [PYTHON, "scripts/experiments/replay_capture.py", h1["freeform"].as_posix()],
+                    [PYTHON, "scripts/experiments/trajectory_dynamics/replay_capture.py", h1["freeform"].as_posix()],
                 ),
                 *[
                     orchestrate_cmd(h1[name], "generation", args, spec)
@@ -555,19 +555,19 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                 ],
                 [
                     PYTHON,
-                    "scripts/experiments/boundary_comparison.py",
+                    "scripts/experiments/boundaries/boundary_comparison.py",
                     *(run.as_posix() for run in h1.values()),
                 ],
-                [PYTHON, "scripts/experiments/localized_updates.py", primary.as_posix()],
+                [PYTHON, "scripts/experiments/trajectory_dynamics/localized_updates.py", primary.as_posix()],
                 [
                     PYTHON,
-                    "scripts/experiments/correctness_prediction.py",
+                    "scripts/experiments/trajectory_dynamics/correctness_prediction.py",
                     primary.as_posix(),
                 ],
                 orchestrate_cmd(gold_run(spec), "gold_answer_capture", args, spec),
                 [
                     PYTHON,
-                    "scripts/experiments/token_segmentation.py",
+                    "scripts/experiments/token_segmentation/token_segmentation.py",
                     primary.as_posix(),
                     "--gold-run",
                     gold_run(spec).as_posix(),
@@ -577,18 +577,18 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                 direct_model_cmd(
                     spec,
                     args,
-                    [PYTHON, "scripts/experiments/replay_capture.py", h4_replay(spec).as_posix()],
+                    [PYTHON, "scripts/experiments/trajectory_dynamics/replay_capture.py", h4_replay(spec).as_posix()],
                 ),
                 [
                     PYTHON,
-                    "scripts/experiments/localized_updates.py",
+                    "scripts/experiments/trajectory_dynamics/localized_updates.py",
                     h4_replay(spec).as_posix(),
                     "--per-sample",
                     "5",
                 ],
                 [
                     PYTHON,
-                    "scripts/experiments/structural_contrast.py",
+                    "scripts/experiments/trajectory_dynamics/structural_contrast.py",
                     h4_h2_dir.as_posix(),
                 ],
             ]
@@ -599,7 +599,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
             [
                 [
                     PYTHON,
-                    "scripts/experiments/prepare_solution_object_labels.py",
+                    "scripts/experiments/solution_object_extraction/prepare_solution_object_labels.py",
                     primary.as_posix(),
                     (labels / "token_windows.jsonl").as_posix(),
                     "--updates",
@@ -608,7 +608,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                 orchestrate_cmd(labels, "solution_object_labeling", args, spec),
                 [
                     PYTHON,
-                    "scripts/experiments/semantic_token_segmentation.py",
+                    "scripts/experiments/token_segmentation/semantic_token_segmentation.py",
                     primary.as_posix(),
                     "--labels-run",
                     labels.as_posix(),
@@ -625,7 +625,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
             [
                 [
                     PYTHON,
-                    "scripts/experiments/mine_process_isomers.py",
+                    "scripts/experiments/process_isomers/mine_process_isomers.py",
                     h2_dir.as_posix(),
                     pairs.as_posix(),
                     "--activation-run",
@@ -640,17 +640,17 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                 direct_model_cmd(
                     spec,
                     args,
-                    [PYTHON, "scripts/experiments/replay_capture.py", h3_replay(spec).as_posix()],
+                    [PYTHON, "scripts/experiments/trajectory_dynamics/replay_capture.py", h3_replay(spec).as_posix()],
                 ),
                 [
                     PYTHON,
-                    "scripts/experiments/component_localization.py",
+                    "scripts/experiments/process_isomers/component_localization.py",
                     h2_component_replay(spec).as_posix(),
                     h2_dir.as_posix(),
                 ],
                 [
                     PYTHON,
-                    "scripts/experiments/component_projection.py",
+                    "scripts/experiments/process_isomers/component_projection.py",
                     h2_component_replay(spec).as_posix(),
                     h2_dir.as_posix(),
                     projection_dir.as_posix(),
@@ -660,7 +660,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                 *[
                     [
                         PYTHON,
-                        "scripts/experiments/causal_patching.py",
+                        "scripts/experiments/process_isomers/causal_patching.py",
                         run_path.as_posix(),
                         "--validate-only",
                     ]
@@ -673,7 +673,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                 *[
                     [
                         PYTHON,
-                        "scripts/experiments/analyze_causal_patching.py",
+                        "scripts/experiments/process_isomers/analyze_causal_patching.py",
                         run_path.as_posix(),
                     ]
                     for run_path in h3_patch_runs(spec).values()
@@ -690,7 +690,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                     args,
                     [
                         PYTHON,
-                        "scripts/experiments/solution_object_extraction.py",
+                        "scripts/experiments/solution_object_extraction/solution_object_extraction.py",
                         "prepare",
                         medium.as_posix(),
                     ],
@@ -700,7 +700,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                     args,
                     [
                         PYTHON,
-                        "scripts/experiments/solution_object_extraction.py",
+                        "scripts/experiments/solution_object_extraction/solution_object_extraction.py",
                         "run",
                         medium.as_posix(),
                     ],
@@ -710,7 +710,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                     args,
                     [
                         PYTHON,
-                        "scripts/experiments/solution_object_extraction.py",
+                        "scripts/experiments/solution_object_extraction/solution_object_extraction.py",
                         "improve",
                         medium.as_posix(),
                     ],
@@ -720,7 +720,7 @@ def command_plan(spec: ModelSpec, args: argparse.Namespace) -> list[list[str]]:
                     args,
                     [
                         PYTHON,
-                        "scripts/experiments/solution_object_extraction.py",
+                        "scripts/experiments/solution_object_extraction/solution_object_extraction.py",
                         "validate-improvement",
                         medium.as_posix(),
                     ],
@@ -844,11 +844,11 @@ def validate_prepared_configs(spec: ModelSpec) -> None:
     for path in paths:
         load_config(ROOT / path)
     help_commands = [
-        [PYTHON, "scripts/experiments/boundary_comparison.py", "--help"],
-        [PYTHON, "scripts/experiments/token_segmentation.py", "--help"],
-        [PYTHON, "scripts/experiments/semantic_token_segmentation.py", "--help"],
-        [PYTHON, "scripts/experiments/causal_patching.py", "--help"],
-        [PYTHON, "scripts/experiments/solution_object_extraction.py", "--help"],
+        [PYTHON, "scripts/experiments/boundaries/boundary_comparison.py", "--help"],
+        [PYTHON, "scripts/experiments/token_segmentation/token_segmentation.py", "--help"],
+        [PYTHON, "scripts/experiments/token_segmentation/semantic_token_segmentation.py", "--help"],
+        [PYTHON, "scripts/experiments/process_isomers/causal_patching.py", "--help"],
+        [PYTHON, "scripts/experiments/solution_object_extraction/solution_object_extraction.py", "--help"],
     ]
     for command in help_commands:
         subprocess.run(command, cwd=ROOT, check=True, stdout=subprocess.DEVNULL)

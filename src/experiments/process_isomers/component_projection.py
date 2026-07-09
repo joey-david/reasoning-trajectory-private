@@ -10,7 +10,7 @@ import numpy as np
 
 from reasoning_trajectory.artifacts import read_generation_rows
 from src.experiments.common import update_phase_bounds
-from src.experiments.structural_contrast import fit_structural_projection
+from src.experiments.trajectory_dynamics.structural_contrast import fit_structural_projection
 from src.runtime.artifact_store import load_component_states_npz
 from src.runtime.data import load_samples
 

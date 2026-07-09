@@ -18,7 +18,7 @@ dataset:
   sample_offset: 0
   shuffle_seed: 81001
 generation:
-  max_new_tokens: 8192
+  max_new_tokens: 16384
   num_samples_per_item: 10
   base_seed: 4332793
   temperature: 0.6

@@ -9,7 +9,7 @@ fi
 
 RUN="${1:-runs/SmolLM3-3B/interventions/solution_object_extraction_medium}"
 PYTHON="${PYTHON:-.venv/bin/python}"
-ENTRY="scripts/experiments/solution_object_extraction.py"
+ENTRY="scripts/experiments/solution_object_extraction/solution_object_extraction.py"
 LOG_DIR="$RUN/logs"
 mkdir -p "$LOG_DIR"
 exec > >(tee -a "$LOG_DIR/improvement_remote.log") 2>&1

@@ -112,7 +112,7 @@ run folders. The medium command prepares nothing implicitly outside its run
 contract and does not launch remote work:
 
 ```bash
-.venv/bin/python scripts/experiments/solution_object_extraction.py run \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py run \
   runs/SmolLM3-3B/interventions/solution_object_extraction_medium
 ```
 

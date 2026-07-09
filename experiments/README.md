@@ -19,21 +19,21 @@ result status and headline interpretation live in
 
 | Experiment | Command | Main report |
 | --- | --- | --- |
-| H1: prompted and natural boundaries | `scripts/experiments/boundary_comparison.py` | `runs/SmolLM3-3B/pilots/h1_freeform_replay/analysis/experiments/h1_boundaries/report.json` |
-| H2: localized symbolic updates | `scripts/experiments/localized_updates.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates/report.json` |
-| H4: structural projection | `scripts/experiments/structural_contrast.py` | `runs/SmolLM3-3B/replay/h4_structural_replay/analysis/experiments/h4_structural_contrast/report.json` |
-| H5: correctness prediction | `scripts/experiments/correctness_prediction.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h5_correctness_prediction/report.json` |
-| Token-level no-free-lunch | `scripts/experiments/token_segmentation.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation*/report.json` |
-| Judged semantic boundaries | `scripts/experiments/semantic_token_segmentation.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation*/report.json` |
+| H1: prompted and natural boundaries | `scripts/experiments/boundaries/boundary_comparison.py` | `runs/SmolLM3-3B/pilots/h1_freeform_replay/analysis/experiments/h1_boundaries/report.json` |
+| H2: localized symbolic updates | `scripts/experiments/trajectory_dynamics/localized_updates.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates/report.json` |
+| H4: structural projection | `scripts/experiments/trajectory_dynamics/structural_contrast.py` | `runs/SmolLM3-3B/replay/h4_structural_replay/analysis/experiments/h4_structural_contrast/report.json` |
+| H5: correctness prediction | `scripts/experiments/trajectory_dynamics/correctness_prediction.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h5_correctness_prediction/report.json` |
+| Token-level no-free-lunch | `scripts/experiments/token_segmentation/token_segmentation.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/token_segmentation*/report.json` |
+| Judged semantic boundaries | `scripts/experiments/token_segmentation/semantic_token_segmentation.py` | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/semantic_token_segmentation*/report.json` |
 | H3: causal process-isomer patching | `scripts/experiments/run_h3_protocol.sh` | `runs/SmolLM3-3B/failed/h3_process_isomer_patching/analysis/report.json` |
 
 Run a canonical local analysis with no arguments:
 
 ```bash
-.venv/bin/python scripts/experiments/localized_updates.py
-.venv/bin/python scripts/experiments/correctness_prediction.py
-.venv/bin/python scripts/experiments/token_segmentation.py
-.venv/bin/python scripts/experiments/semantic_token_segmentation.py
+.venv/bin/python scripts/experiments/trajectory_dynamics/localized_updates.py
+.venv/bin/python scripts/experiments/trajectory_dynamics/correctness_prediction.py
+.venv/bin/python scripts/experiments/token_segmentation/token_segmentation.py
+.venv/bin/python scripts/experiments/token_segmentation/semantic_token_segmentation.py
 ```
 
 The token scripts run the prespecified minimum-segment sweep of 1, 4, and 8
@@ -56,9 +56,9 @@ Capture the freeform replay with `replay_capture.py`; generate the three
 prompted conditions from their run configs. Then analyze:
 
 ```bash
-.venv/bin/python scripts/experiments/replay_capture.py \
+.venv/bin/python scripts/experiments/trajectory_dynamics/replay_capture.py \
   runs/SmolLM3-3B/pilots/h1_freeform_replay
-.venv/bin/python scripts/experiments/boundary_comparison.py
+.venv/bin/python scripts/experiments/boundaries/boundary_comparison.py
 ```
 
 The paragraph run currently contains 21 of 60 planned traces. Existing reports
@@ -69,18 +69,18 @@ preserve that interrupted pilot rather than silently imputing missing traces.
 H2 reads the primary 580-trace activation corpus:
 
 ```bash
-.venv/bin/python scripts/experiments/localized_updates.py
+.venv/bin/python scripts/experiments/trajectory_dynamics/localized_updates.py
 ```
 
 H4 uses a separate 300-question teacher-forced replay. Rebuild its activations,
 extract its symbolic updates, then train the structural projection:
 
 ```bash
-.venv/bin/python scripts/experiments/replay_capture.py \
+.venv/bin/python scripts/experiments/trajectory_dynamics/replay_capture.py \
   runs/SmolLM3-3B/replay/h4_structural_replay
-.venv/bin/python scripts/experiments/localized_updates.py \
+.venv/bin/python scripts/experiments/trajectory_dynamics/localized_updates.py \
   runs/SmolLM3-3B/replay/h4_structural_replay --per-sample 5
-.venv/bin/python scripts/experiments/structural_contrast.py
+.venv/bin/python scripts/experiments/trajectory_dynamics/structural_contrast.py
 ```
 
 ## H5 and Token-Level Segmentation
@@ -92,8 +92,8 @@ teacher-forced gold-answer states:
 .venv/bin/python scripts/orchestrate.py \
   --job gold_answer_capture --nodes local --devices 0 \
   --run runs/SmolLM3-3B/replay/thought_units_gold_answers
-.venv/bin/python scripts/experiments/correctness_prediction.py
-.venv/bin/python scripts/experiments/token_segmentation.py
+.venv/bin/python scripts/experiments/trajectory_dynamics/correctness_prediction.py
+.venv/bin/python scripts/experiments/token_segmentation/token_segmentation.py
 ```
 
 Replace `--nodes local --devices 0` with the desired orchestration workers for
@@ -104,7 +104,7 @@ remote capture.
 Prepare overlapping labeling windows from the primary corpus and H2 updates:
 
 ```bash
-.venv/bin/python scripts/experiments/prepare_solution_object_labels.py
+.venv/bin/python scripts/experiments/solution_object_extraction/prepare_solution_object_labels.py
 ```
 
 Smoke-test one task, run the resumable two-GPU labeling queue, then analyze:
@@ -118,7 +118,7 @@ Smoke-test one task, run the resumable two-GPU labeling queue, then analyze:
   --job solution_object_labeling \
   --nodes upnquick --devices 0+1 \
   --run runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver
-.venv/bin/python scripts/experiments/semantic_token_segmentation.py
+.venv/bin/python scripts/experiments/token_segmentation/semantic_token_segmentation.py
 ```
 
 The Qwen checkpoint path is cluster-specific and is declared in the labeling
@@ -130,11 +130,11 @@ H3 has independently resumable pair-mining, replay, projection, patching, and
 analysis stages. Rebuild the canonical pair manifest and component projections:
 
 ```bash
-.venv/bin/python scripts/experiments/mine_process_isomers.py
-.venv/bin/python scripts/experiments/replay_capture.py \
+.venv/bin/python scripts/experiments/process_isomers/mine_process_isomers.py
+.venv/bin/python scripts/experiments/trajectory_dynamics/replay_capture.py \
   runs/SmolLM3-3B/replay/h2_component_replay
-.venv/bin/python scripts/experiments/component_localization.py
-.venv/bin/python scripts/experiments/component_projection.py
+.venv/bin/python scripts/experiments/process_isomers/component_localization.py
+.venv/bin/python scripts/experiments/process_isomers/component_projection.py
 ```
 
 The exact primary and fallback patch definitions are pinned in their run
@@ -150,7 +150,7 @@ process-isomer preparation commands remain separate because they produce
 reusable artifacts. Analysis can also be rerun without inference:
 
 ```bash
-.venv/bin/python scripts/experiments/analyze_causal_patching.py \
+.venv/bin/python scripts/experiments/process_isomers/analyze_causal_patching.py \
   runs/SmolLM3-3B/failed/h3_process_isomer_patching
 ```
 
@@ -173,13 +173,13 @@ the completed real mixed-success corpus.
 The local pilot is already materialized. Re-run its stages independently:
 
 ```bash
-.venv/bin/python scripts/experiments/solution_object_extraction.py prepare \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py prepare \
   runs/SmolLM3-3B/interventions/solution_object_extraction_small
-.venv/bin/python scripts/experiments/solution_object_extraction.py capture \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py capture \
   runs/SmolLM3-3B/interventions/solution_object_extraction_small
-.venv/bin/python scripts/experiments/solution_object_extraction.py analyze \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py analyze \
   runs/SmolLM3-3B/interventions/solution_object_extraction_small
-.venv/bin/python scripts/experiments/solution_object_extraction.py causal \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py causal \
   runs/SmolLM3-3B/interventions/solution_object_extraction_small
 ```
 
@@ -193,9 +193,9 @@ from the local checkout, then run on the GPU checkout reached through
 ./scripts/remote.sh push
 
 # after entering the GPU checkout through the configured lamgate route
-.venv/bin/python scripts/experiments/solution_object_extraction.py validate \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py validate \
   runs/SmolLM3-3B/interventions/solution_object_extraction_medium
-.venv/bin/python scripts/experiments/solution_object_extraction.py run \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py run \
   runs/SmolLM3-3B/interventions/solution_object_extraction_medium
 ```
 
@@ -215,9 +215,9 @@ low-rank causal writer, and matched object/lexical/answer/PCA/random ablations.
 Run every local stage and validate its artifact contract with:
 
 ```bash
-.venv/bin/python scripts/experiments/solution_object_extraction.py improve \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py improve \
   runs/SmolLM3-3B/interventions/solution_object_extraction_small
-.venv/bin/python scripts/experiments/solution_object_extraction.py \
+.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py \
   validate-improvement \
   runs/SmolLM3-3B/interventions/solution_object_extraction_small
 ```

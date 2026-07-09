@@ -5,9 +5,9 @@ import argparse
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from src.experiments.structural_contrast import run_structural_contrast
+from src.experiments.trajectory_dynamics.structural_contrast import run_structural_contrast
 
 
 CANONICAL_H2_DIR = Path(

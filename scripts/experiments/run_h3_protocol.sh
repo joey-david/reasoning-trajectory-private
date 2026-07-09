@@ -18,12 +18,12 @@ fallback)
   ;;
 esac
 
-.venv/bin/python scripts/experiments/replay_capture.py "$replay_run"
-.venv/bin/python scripts/experiments/causal_patching.py \
+.venv/bin/python scripts/experiments/trajectory_dynamics/replay_capture.py "$replay_run"
+.venv/bin/python scripts/experiments/process_isomers/causal_patching.py \
   "$patch_run" --validate-only
-.venv/bin/python scripts/experiments/causal_patching.py \
+.venv/bin/python scripts/experiments/process_isomers/causal_patching.py \
   "$patch_run" --max-pairs 2 --continuations-per-condition 1
-.venv/bin/python scripts/experiments/analyze_causal_patching.py \
+.venv/bin/python scripts/experiments/process_isomers/analyze_causal_patching.py \
   "$patch_run" --smoke-gate --smoke-pairs 2 --smoke-continuations 1
 if [[ -n "${H3_DEVICES:-}" ]]; then
   .venv/bin/python scripts/orchestrate.py \
@@ -32,6 +32,6 @@ if [[ -n "${H3_DEVICES:-}" ]]; then
     --devices "$H3_DEVICES" \
     --run "$patch_run"
 else
-  .venv/bin/python scripts/experiments/causal_patching.py "$patch_run"
+  .venv/bin/python scripts/experiments/process_isomers/causal_patching.py "$patch_run"
 fi
-.venv/bin/python scripts/experiments/analyze_causal_patching.py "$patch_run"
+.venv/bin/python scripts/experiments/process_isomers/analyze_causal_patching.py "$patch_run"

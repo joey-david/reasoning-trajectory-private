@@ -5,9 +5,9 @@ import argparse
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from src.experiments.correctness_prediction import run_correctness_prediction
+from src.experiments.trajectory_dynamics.localized_updates import run_localized_update_analysis
 
 
 CANONICAL_RUN = Path(
@@ -16,18 +16,20 @@ CANONICAL_RUN = Path(
 
 
 def main() -> int:
-    """Run grouped H5 correctness-prediction probes."""
+    """Analyze H2 interval activation dynamics."""
     parser = argparse.ArgumentParser(
-        description="Run H5 on the canonical activation corpus or an explicit run."
+        description="Run H2 on the canonical activation corpus or an explicit run."
     )
     parser.add_argument("run_path", nargs="?", type=Path, default=CANONICAL_RUN)
     parser.add_argument("--per-sample", type=int, default=10)
-    parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument("--spike-z", type=float, default=3.0)
+    parser.add_argument("--window", type=int, default=2)
     args = parser.parse_args()
-    report = run_correctness_prediction(
+    report = run_localized_update_analysis(
         args.run_path,
         per_sample=args.per_sample,
-        folds=args.folds,
+        spike_z=args.spike_z,
+        window=args.window,
     )
     print(report)
     return 0

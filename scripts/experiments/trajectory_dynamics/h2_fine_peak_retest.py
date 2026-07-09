@@ -12,7 +12,7 @@ from typing import Any
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from reasoning_trajectory.token_alignment import build_token_spans
 from src.experiments.common import (

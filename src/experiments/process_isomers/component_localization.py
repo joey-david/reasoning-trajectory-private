@@ -16,7 +16,7 @@ from src.experiments.common import (
     matched_control_dynamics,
     update_phase_bounds,
 )
-from src.experiments.localized_updates import mean_or_none
+from src.experiments.trajectory_dynamics.localized_updates import mean_or_none
 from src.runtime.artifact_store import (
     load_component_states_npz,
     load_hidden_states_npz,

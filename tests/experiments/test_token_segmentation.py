@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from src.experiments.solution_object_labeling import (
+from src.experiments.solution_object_extraction.labeling import (
     EXAMPLE_INPUT,
     EXAMPLE_OUTPUT,
     label_messages,

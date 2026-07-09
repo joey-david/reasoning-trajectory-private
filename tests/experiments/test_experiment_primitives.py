@@ -19,7 +19,7 @@ from src.experiments.process_isomers.causal_patching import (
     select_control_donor,
 )
 from src.experiments.common import interval_dynamics, robust_spike_indices
-from src.experiments.correctness_prediction import prefix_representations
+from src.experiments.trajectory_dynamics.correctness_prediction import prefix_representations
 from src.experiments.gold_answers import capture_gold_answer
 from src.experiments.process_isomers.patching_analysis import (
     analyze_causal_patching,

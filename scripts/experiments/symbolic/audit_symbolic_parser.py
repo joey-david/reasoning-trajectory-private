@@ -12,7 +12,7 @@ import re
 import sys
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.experiments.symbolic import extract_symbolic_updates
 from src.runtime.data import load_samples, write_jsonl

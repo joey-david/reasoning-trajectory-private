@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.experiments.solution_object_labeling import (
+from src.experiments.solution_object_extraction.labeling import (
     completed_silver_labels,
     generate_hf_output,
     label_messages,

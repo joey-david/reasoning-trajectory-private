@@ -17,7 +17,7 @@ theorem would require a constrained utility family.
 The implementation is
 [`src/experiments/token_segmentation/`](../src/experiments/token_segmentation/)
 with a thin
-[`token_segmentation.py`](../scripts/experiments/token_segmentation.py) CLI.
+[`token_segmentation.py`](../scripts/experiments/token_segmentation/token_segmentation.py) CLI.
 It streams existing last-layer activations and uses a question-disjoint split.
 
 Each trace receives the same boundary budget: its number of verified symbolic
@@ -131,7 +131,7 @@ and
 Preparation:
 
 ```bash
-.venv/bin/python scripts/experiments/prepare_solution_object_labels.py \
+.venv/bin/python scripts/experiments/solution_object_extraction/prepare_solution_object_labels.py \
   runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k \
   runs/Qwen3.5-122B-A10B-FP8/labeling/solution_object_silver/token_windows.jsonl \
   --updates runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/analysis/experiments/h2_localized_updates/updates.jsonl
