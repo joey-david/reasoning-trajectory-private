@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage="usage: scripts/remote.sh push | pull [runs/<model>/<experiment> ...]"
+usage="usage: scripts/remote.sh push | pull | pull-stats [runs/<model>/<experiment> ...]"
 action="${1:?$usage}"
 shift
 host="${SSH_SERVER:-lamgate}"
@@ -27,14 +27,38 @@ pull_run() {
   fi
 }
 
+# Inputs: one run path relative to the repository root.
+# Returns: rsync's status, limited to lightweight live-progress files.
+pull_run_stats() {
+  local run_path="$1"
+  if ssh "$host" "test -d '$remote_root/$run_path'"; then
+    mkdir -p "$run_path"
+    rsync -avz --prune-empty-dirs \
+      --include '*/' \
+      --include 'config.yaml' \
+      --include 'generation/generations.jsonl' \
+      --include 'generation/metadata.json' \
+      --include 'generation/orchestrator_logs/***' \
+      --include 'analysis/live_screening_stats.json' \
+      --include 'analysis/live_screening_stats.csv' \
+      --exclude '*' \
+      "$host:$remote_root/$run_path/" "$run_path/"
+  else
+    echo "skip missing remote run: $run_path" >&2
+  fi
+}
+
 case "$action" in
 push)
-  rsync -avz --delete \
+  rsync -avz --delete --prune-empty-dirs \
     --exclude .git/ \
     --exclude .venv/ \
     --exclude .tmp/ \
-    --exclude 'runs/**/generation/hidden_states' \
-    --exclude 'runs/**/analysis/' \
+    --include '/runs/' \
+    --include '/runs/**/' \
+    --include '/runs/**/config.yaml' \
+    --include '/runs/**/dataset.jsonl' \
+    --exclude '/runs/**' \
     --exclude '__pycache__' \
     ./ "$host:$remote_root/"
   ;;
@@ -46,6 +70,17 @@ pull)
   else
     while IFS= read -r run_path; do
       pull_run "$run_path"
+    done < <(discover_runs)
+  fi
+  ;;
+pull-stats)
+  if (($#)); then
+    for run_path in "$@"; do
+      pull_run_stats "$run_path"
+    done
+  else
+    while IFS= read -r run_path; do
+      pull_run_stats "$run_path"
     done < <(discover_runs)
   fi
   ;;

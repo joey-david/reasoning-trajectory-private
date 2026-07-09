@@ -29,6 +29,7 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
     "generation-marker",
     "generation-sort",
     "generation-entropy",
+    "generation-activation-delta",
   ]) {
     $(id).addEventListener("change", rerender);
   }
@@ -52,11 +53,12 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
     activationTarget = parseActivationTarget(route);
 
     const hasEntropy = rows.some(hasEntropyTimesteps);
+    const hasActivationDelta = rows.some(hasActivationDeltaTimesteps);
     $("generation-entropy").disabled = !hasEntropy;
-    $("generation-entropy").checked = hasEntropy && route.entropy === "1";
-    $("entropy-status").textContent = hasEntropy
-      ? "Color is normalized within each generation."
-      : "This run did not store timestep entropy diagnostics.";
+    $("generation-activation-delta").disabled = !hasActivationDelta;
+    $("generation-entropy").checked = hasEntropy && route.entropy === "1" && route.activation_delta !== "1";
+    $("generation-activation-delta").checked = hasActivationDelta && route.activation_delta === "1";
+    $("entropy-status").textContent = statusText(hasEntropy, hasActivationDelta);
     $("entropy-legend").hidden = !hasEntropy || !$("generation-entropy").checked;
 
     updateSeedOptions(route.seed);
@@ -71,6 +73,7 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
     $("generation-marker").value = "";
     $("generation-sort").value = "question";
     $("generation-entropy").checked = false;
+    $("generation-activation-delta").checked = false;
     rerender();
     $("generation-search").focus();
   }
@@ -115,7 +118,9 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
       return a.sample_id.localeCompare(b.sample_id) || Number(a.seed) - Number(b.seed);
     });
 
-    $("entropy-legend").hidden = !$("generation-entropy").checked || $("generation-entropy").disabled;
+    if ($("generation-activation-delta").checked) $("generation-entropy").checked = false;
+    $("entropy-legend").hidden = (!$("generation-entropy").checked && !$("generation-activation-delta").checked)
+      || ($("generation-entropy").disabled && $("generation-activation-delta").disabled);
     renderRows();
   }
 
@@ -200,22 +205,23 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
         : `⟨token ${escapeHtml(tokenIdx)}⟩`;
       return `${escapeHtml(text.slice(0, charStart))}<mark class="activation-token-highlight" data-testid="activation-token-highlight" tabindex="-1" title="Latent activation at token ${escapeHtml(tokenIdx)}">${tokenText}</mark>${escapeHtml(text.slice(charEnd))}`;
     }
+    if ($("generation-activation-delta").checked && hasActivationDeltaTimesteps(row)) {
+      return formatMetricTokens(
+        row,
+        activationDeltaValue,
+        activationDeltaColor,
+        value => `Activation change ${value.toFixed(2)}`,
+      );
+    }
     if (!$("generation-entropy").checked || !hasEntropyTimesteps(row)) {
       return escapeHtml(row.produced_text ?? "");
     }
-    const values = row.timesteps.map(entropyValue).filter(Number.isFinite);
-    const low = Math.min(...values);
-    const high = Math.max(...values);
-    const span = Math.max(high - low, 1e-9);
-    return row.timesteps.map(timestep => {
-      const entropy = entropyValue(timestep);
-      if (!Number.isFinite(entropy)) return escapeHtml(timestep.token_str ?? "");
-      const level = (entropy - low) / span;
-      const hue = 152 - level * 145;
-      const lightness = 92 - level * 48;
-      const color = level > 0.72 ? "white" : "inherit";
-      return `<span class="token-entropy" title="Entropy ${entropy.toFixed(3)}" style="background:hsl(${hue} 74% ${lightness}%);color:${color}">${escapeHtml(timestep.token_str ?? "")}</span>`;
-    }).join("");
+    return formatMetricTokens(
+      row,
+      entropyValue,
+      entropyColor,
+      value => `Entropy ${value.toFixed(3)}`,
+    );
   }
 
   function handleListAction(event) {
@@ -253,6 +259,7 @@ export function createGenerationView({ getState, setQuery, openTrajectory }) {
       marker: $("generation-marker").value,
       sort: $("generation-sort").value === "question" ? "" : $("generation-sort").value,
       entropy: $("generation-entropy").checked ? "1" : "",
+      activation_delta: $("generation-activation-delta").checked ? "1" : "",
       token: activationTarget?.tokenIdx ?? "",
       char_start: activationTarget?.charStart ?? "",
       char_end: activationTarget?.charEnd ?? "",
@@ -328,10 +335,107 @@ function hasEntropyTimesteps(row) {
   return Array.isArray(row.timesteps) && row.timesteps.some(timestep => Number.isFinite(entropyValue(timestep)));
 }
 
+function hasActivationDeltaTimesteps(row) {
+  return Array.isArray(row.timesteps) && row.timesteps.some(timestep => Number.isFinite(activationDeltaValue(timestep)));
+}
+
 function entropyValue(timestep) {
   if (Array.isArray(timestep.entropy)) {
     const values = timestep.entropy.filter(Number.isFinite);
     return values.length ? Math.max(...values) : NaN;
   }
   return Number.isFinite(timestep.entropy) ? timestep.entropy : NaN;
+}
+
+function activationDeltaValue(timestep) {
+  return Number.isFinite(timestep.activation_delta) ? timestep.activation_delta : NaN;
+}
+
+function formatMetricTokens(row, valueFn, colorFn, titleFn) {
+  const timesteps = metricTimesteps(row, valueFn);
+  const values = timesteps.map(item => item.value);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const span = Math.max(high - low, 1e-9);
+  const text = String(row.produced_text ?? "");
+  if (text && timesteps.some(item => item.charStart !== null && item.charEnd !== null)) {
+    return formatMetricIntervals(text, timesteps, low, span, colorFn, titleFn);
+  }
+  return timesteps.map(({ timestep, value }) => {
+    const token = escapeHtml(timestep.token_str ?? "");
+    const level = (value - low) / span;
+    const { background, color } = colorFn(level);
+    return `<span class="token-entropy" title="${escapeHtml(titleFn(value))}" style="background:${background};color:${color}">${token}</span>`;
+  }).join("");
+}
+
+function metricTimesteps(row, valueFn) {
+  return (row.timesteps ?? []).map((timestep, index) => {
+    const value = valueFn(timestep);
+    const tokenIdx = Number(timestep.token_idx ?? timestep.token_index ?? timestep.index ?? index);
+    const target = Number.isFinite(tokenIdx)
+      ? tokenTarget(row, tokenIdx)
+      : { charStart: null, charEnd: null };
+    return {
+      timestep,
+      value,
+      tokenIdx,
+      charStart: Number.isInteger(target.charStart) ? target.charStart : null,
+      charEnd: Number.isInteger(target.charEnd) ? target.charEnd : null,
+    };
+  }).filter(item => Number.isFinite(item.value));
+}
+
+function formatMetricIntervals(text, timesteps, low, span, colorFn, titleFn) {
+  const ordered = [...timesteps]
+    .filter(item => item.charStart !== null && item.charEnd !== null)
+    .sort((a, b) => a.charStart - b.charStart || a.charEnd - b.charEnd);
+  let cursor = 0;
+  const pieces = [];
+  for (let index = 0; index < ordered.length; index += 1) {
+    const item = ordered[index];
+    const next = ordered[index + 1];
+    const start = Math.max(cursor, Math.min(text.length, item.charStart));
+    const fallbackEnd = Math.max(start + 1, item.charEnd);
+    const intervalEnd = next
+      ? Math.max(fallbackEnd, Math.floor((item.charEnd + next.charStart) / 2))
+      : fallbackEnd;
+    const end = Math.max(start, Math.min(text.length, intervalEnd));
+    if (cursor < start) pieces.push(escapeHtml(text.slice(cursor, start)));
+    const level = (item.value - low) / span;
+    const { background, color } = colorFn(level);
+    pieces.push(
+      `<span class="token-entropy" title="${escapeHtml(titleFn(item.value))}" style="background:${background};color:${color}">${escapeHtml(text.slice(start, end))}</span>`,
+    );
+    cursor = end;
+  }
+  if (cursor < text.length) pieces.push(escapeHtml(text.slice(cursor)));
+  return pieces.join("");
+}
+
+function entropyColor(level) {
+  return {
+    background: `hsl(${152 - level * 145} 74% ${92 - level * 48}%)`,
+    color: level > 0.56 ? "white" : "#0d0f11",
+  };
+}
+
+function activationDeltaColor(level) {
+  return {
+    background: `hsl(${205 - level * 165} 86% ${88 - level * 38}%)`,
+    color: level > 0.6 ? "white" : "#0d0f11",
+  };
+}
+
+function statusText(hasEntropy, hasActivationDelta) {
+  if (hasEntropy && hasActivationDelta) {
+    return "Color is normalized within each generation.";
+  }
+  if (hasActivationDelta) {
+    return "Activation color is normalized within each generation.";
+  }
+  if (hasEntropy) {
+    return "Entropy color is normalized within each generation.";
+  }
+  return "This run did not store timestep entropy or activation-change diagnostics.";
 }

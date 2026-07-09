@@ -6,10 +6,10 @@
   <meta name="color-scheme" content="dark">
   <title>Reasoning Trajectory Explorer</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css?v=20260707-visuals5">
+  <link rel="stylesheet" href="styles.css?v=20260708-tokenactivation2">
   <script>document.documentElement.dataset.protocol = location.protocol.slice(0, -1);</script>
   <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <script type="module" src="js/app.js?v=20260707-visuals5"></script>
+  <script type="module" src="js/app.js?v=20260708-tokenactivation2"></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to content</a>
@@ -139,6 +139,10 @@
             <input id="generation-entropy" type="checkbox">
             <span>Token entropy</span>
           </label>
+          <label class="switch-row">
+            <input id="generation-activation-delta" type="checkbox">
+            <span>Activation change magnitude</span>
+          </label>
           <p id="entropy-status" class="field-note" role="status"></p>
           <div id="entropy-legend" class="entropy-legend" hidden>
             <span>Low</span><span class="entropy-ramp" aria-hidden="true"></span><span>High</span>
@@ -198,6 +202,7 @@
             <span>Point color</span>
             <select id="plot-color-mode" data-testid="plot-color-mode-select">
               <option value="correctness">Correctness + progress</option>
+              <option value="activation_delta">Activation change magnitude</option>
               <option value="cluster">Step cluster</option>
             </select>
           </label>

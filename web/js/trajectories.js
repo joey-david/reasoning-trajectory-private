@@ -89,7 +89,9 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     $("plot-max-trajectories").value = validRange(route.limit, 1, 50, 12);
     $("plot-token-start").value = validRange(route.start, 0, 100, 0);
     $("plot-token-end").value = validRange(route.end, 0, 100, 100);
-    $("plot-color-mode").value = route.color === "cluster" ? "cluster" : "correctness";
+    $("plot-color-mode").value = ["activation_delta", "cluster"].includes(route.color)
+      ? route.color
+      : "correctness";
     $("plot-show-lines").checked = route.lines !== "0";
     $("plot-show-points").checked = route.points !== "0";
     $("plot-show-endpoints").checked = route.endpoints !== "0";
@@ -164,7 +166,16 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
     $("plot-selector-control").hidden = selectors.length === 0;
     $("plot-cluster-control").hidden = clusters.length === 0;
     $("plot-color-mode").querySelector('option[value="cluster"]').disabled = clusters.length === 0;
-    if (!clusters.length) $("plot-color-mode").value = "correctness";
+    $("plot-color-mode").querySelector('option[value="activation_delta"]').disabled = !hasMetric(
+      "direction_norm",
+      payload.points ?? [],
+    );
+    if (!clusters.length && $("plot-color-mode").value === "cluster") {
+      $("plot-color-mode").value = "correctness";
+    }
+    if ($("plot-color-mode").value === "activation_delta" && !hasMetric("direction_norm", payload.points ?? [])) {
+      $("plot-color-mode").value = "correctness";
+    }
   }
 
   function updateSeedOptions(preferred = $("plot-seed").value) {
@@ -293,7 +304,8 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
         : correctness === false
           ? "rgba(189,63,53,0.55)"
           : "rgba(107,114,128,0.48)";
-      const markerColors = group.map(point => pointColor(point, correctness));
+      const colorScale = metricScale(points, "direction_norm");
+      const markerColors = group.map(point => pointColor(point, correctness, colorScale));
       const name = `${group[0].sample_id} · ${group[0].seed}${group[0].selector ? ` · ${group[0].selector}` : ""}`;
       const common = {
         type: "scatter3d",
@@ -504,7 +516,7 @@ export function createTrajectoryView({ getState, setQuery, openGeneration }) {
       ["Selector", point.selector],
       ["Cluster", point.cluster_id],
       ["Variance", formatMetric(point.variance)],
-      ["Direction", formatMetric(point.direction_norm)],
+      ["Activation change", formatMetric(point.direction_norm)],
       ["Nudge", formatMetric(point.nudge_norm)],
       ["Answer", point.produced_answer],
     ].filter(([, value]) => value !== undefined && value !== null && value !== "");
@@ -625,14 +637,37 @@ function plotLabel(plot) {
   return `${level} · ${plot.method.toUpperCase()} · layer ${plot.layer}`;
 }
 
-function pointColor(point, correctness) {
+function pointColor(point, correctness, colorScale) {
   if ($("plot-color-mode").value === "cluster" && point.cluster_id !== undefined) {
     return CLUSTER_COLORS[Math.abs(Number(point.cluster_id)) % CLUSTER_COLORS.length];
+  }
+  if ($("plot-color-mode").value === "activation_delta" && colorScale) {
+    return activationColor(colorScale(Number(point.direction_norm)));
   }
   const fraction = Math.max(0, Math.min(1, Number(point.token_fraction ?? 0)));
   if (correctness === true) return `hsl(148 58% ${68 - fraction * 34}%)`;
   if (correctness === false) return `hsl(5 68% ${70 - fraction * 32}%)`;
   return `hsl(210 10% ${68 - fraction * 30}%)`;
+}
+
+function hasMetric(key, points) {
+  return points.some(point => Number.isFinite(Number(point[key])));
+}
+
+function metricScale(points, key) {
+  if ($("plot-color-mode").value !== "activation_delta") return null;
+  const values = points.map(point => Number(point[key])).filter(Number.isFinite);
+  if (!values.length) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (max <= min) return () => 0.5;
+  return value => Math.max(0, Math.min(1, (value - min) / (max - min)));
+}
+
+function activationColor(fraction) {
+  const hue = 205 - fraction * 165;
+  const lightness = 68 - fraction * 18;
+  return `hsl(${hue} 86% ${lightness}%)`;
 }
 
 function visualSettings() {
@@ -665,6 +700,7 @@ function visualStateKey() {
     $("plot-show-points").checked ? "points" : "nopoints",
     $("plot-show-endpoints").checked ? "endpoints" : "noendpoints",
     $("plot-hover-highlight").checked ? "hover" : "nohover",
+    $("plot-color-mode").value,
     $("plot-line-width").value,
     $("plot-point-size").value,
     $("plot-start-correct-color").value,

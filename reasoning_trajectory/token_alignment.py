@@ -27,13 +27,12 @@ def build_token_spans(
     """
     with (run_path / "config.yaml").open(encoding="utf-8") as handle:
         model_cfg = (yaml.safe_load(handle) or {}).get("model", {})
-    if model_cfg.get("backend", "hf") != "hf":
-        return [[] for _ in rows]
     try:
         from transformers import AutoTokenizer
 
+        model_name = model_cfg.get("path") if model_cfg.get("backend") == "mlx" else model_cfg["name"]
         tokenizer = AutoTokenizer.from_pretrained(
-            model_cfg["name"],
+            model_name,
             trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
             revision=model_cfg.get("revision"),
         )

@@ -1,6 +1,6 @@
-import { createGenerationView } from "./generations.js?v=20260707-visuals5";
-import { createTrajectoryView } from "./trajectories.js?v=20260707-visuals5";
-import { createDiagnosticsView } from "./diagnostics.js?v=20260707-visuals5";
+import { createGenerationView } from "./generations.js?v=20260708-tokenactivation2";
+import { createTrajectoryView } from "./trajectories.js?v=20260708-tokenactivation2";
+import { createDiagnosticsView } from "./diagnostics.js?v=20260708-tokenactivation2";
 import {
   $,
   debounce,
@@ -14,7 +14,7 @@ import {
   outcome,
   questionText,
   setOptions,
-} from "./ui.js?v=20260707-visuals5";
+} from "./ui.js?v=20260708-tokenactivation2";
 
 const state = {
   manifest: null,

@@ -1,0 +1,46 @@
+model:
+  name: Qwen/Qwen3-8B
+  backend: hf
+  device_map: auto
+  dtype: bfloat16
+  trust_remote_code: true
+  revision: b968826d9c46dd6066d109eabc6255188de91218
+  attn_implementation: flash_attention_2
+
+dataset:
+  source: jsonl
+  path: runs/Qwen3-8B/pilots/h1_aime_prompt_modulation_probe/dataset.jsonl
+  adapter: plain_question
+  sample_limit: 4
+  require_gold_answer: true
+
+generation:
+  max_new_tokens: 2048
+  num_samples_per_item: 1
+  base_seed: 7201013
+  temperature: 0.2
+  top_p: 0.95
+  top_k: 20
+
+capture:
+  enabled: false
+
+prompt:
+  mode: chat
+  system: |
+    You are a careful mathematical reasoner. /think
+    The user will specify a format-control condition. Follow that formatting instruction exactly while solving.
+  instruction: |
+    Solve the problem and check the result.
+    End with exactly: Answer: N
+    Replace N with the final numeric answer.
+  chat_template_kwargs:
+    enable_thinking: true
+
+analysis:
+  experiment:
+    hypothesis: H1
+    condition: aime_prompt_modulation_probe
+  produced_answer_regex: "(?i)(?:\\\\boxed\\{|(?:Final\\s+)?Answer\\s*:\\s*)(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  gold_answer_regex: '####\s*(-?\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)'
+  think_end_token_id: 151668

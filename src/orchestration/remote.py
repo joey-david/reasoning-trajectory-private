@@ -220,8 +220,14 @@ def worker_command(
     group = (gpu,) if isinstance(gpu, int) else gpu
     devices = ",".join(str(device) for device in group)
     worker = f"{host}:{'+'.join(str(device) for device in group)}"
+    token_exports = " ".join(
+        f"export {name}={shlex.quote(value)} &&"
+        for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")
+        if (value := os.environ.get(name))
+    )
     command = (
         f"cd {shlex.quote(root.as_posix())} && "
+        f"{token_exports} "
         f"export CUDA_VISIBLE_DEVICES={devices} && "
         f"export ORCHESTRATOR_GPU_COUNT={len(group)} && "
         "exec bash scripts/run_with_hf_download_fix.sh "
