@@ -10,6 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.analysis.answers import update_answers
 from src.analysis.hard_questions import write_hard_questions
 from reasoning_trajectory.interactive import write_interactive_trajectories
+from reasoning_trajectory.layer_variations import (
+    write_correctness_group_plots,
+    write_layer_plots,
+)
 from reasoning_trajectory.pipeline import analyze_trajectories
 from src.analysis.solution_objects import write_solution_objects
 from reasoning_trajectory.steps import write_step_classification
@@ -40,6 +44,10 @@ def main() -> int:
     if static_index.exists():
         static_index.unlink()
     write_interactive_trajectories(run_path, cfg)
+    if cfg.get("layer_variations", False):
+        write_layer_plots(run_path, cfg)
+    if cfg.get("correctness_group_plots", False):
+        write_correctness_group_plots(run_path, cfg)
     write_step_classification(run_path, cfg)
     if cfg.get("trajectory_metrics", True):
         analyze_trajectories(run_path, cfg.get("trajectory_metrics_config", {}))

@@ -589,11 +589,13 @@ tbody tr:hover {
 .generation-workspace {
   grid-template-columns: 230px minmax(0, 1fr);
 }
-.trajectory-workspace {
+.trajectory-workspace,
+.layerwise-workspace {
   align-items: stretch;
   grid-template-columns: minmax(260px, 300px) minmax(520px, 1fr) minmax(220px, 260px);
 }
-.trajectory-workspace > .control-panel {
+.trajectory-workspace > .control-panel,
+.layerwise-workspace > .control-panel {
   height: 100%;
   max-height: calc(38px + min(68vh, 760px) + 76px);
   overflow: auto;
@@ -796,7 +798,8 @@ details pre {
   border: 1px solid var(--line);
   background: var(--surface);
 }
-#plot3d {
+#plot3d,
+#layerwise3d {
   width: 100%;
   height: 100%;
 }
@@ -844,7 +847,9 @@ details pre {
 .encoding-key p {
   margin-bottom: 4px;
 }
-.trajectory-visuals {
+.trajectory-visuals,
+.layerwise-visuals {
+  align-content: start;
   gap: 10px;
 }
 .color-group {
@@ -881,6 +886,7 @@ details pre {
 }
 .line-key.correct { background: var(--green); }
 .line-key.incorrect { background: var(--red); }
+.line-key.unknown { background: var(--muted); }
 .shape-key {
   display: inline-block;
   margin: 0 4px;
@@ -1031,17 +1037,21 @@ details pre {
     border-bottom: 1px solid var(--line);
   }
   .generation-workspace,
-  .trajectory-workspace {
+  .trajectory-workspace,
+  .layerwise-workspace {
     grid-template-columns: 190px minmax(0, 1fr);
   }
-  .trajectory-workspace {
+  .trajectory-workspace,
+  .layerwise-workspace {
     grid-template-columns: minmax(210px, 240px) minmax(0, 1fr);
   }
-  .trajectory-visuals {
+  .trajectory-visuals,
+  .layerwise-visuals {
     position: static;
     grid-column: 1 / -1;
   }
-  .trajectory-workspace > .control-panel {
+  .trajectory-workspace > .control-panel,
+  .layerwise-workspace > .control-panel {
     height: auto;
     max-height: none;
   }
@@ -1097,13 +1107,15 @@ details pre {
   }
   .generation-workspace,
   .trajectory-workspace,
+  .layerwise-workspace,
   .diagnostics-workspace {
     grid-template-columns: 1fr;
   }
   .control-panel {
     position: static;
   }
-  .trajectory-workspace > .control-panel {
+  .trajectory-workspace > .control-panel,
+  .layerwise-workspace > .control-panel {
     height: auto;
     max-height: none;
   }

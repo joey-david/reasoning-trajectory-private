@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from reasoning_trajectory.config import load_run_config
 from tokenizers.decoders import DecodeStream
-import yaml
 
 
 TokenSpan = tuple[int, int] | None
@@ -25,8 +25,7 @@ def build_token_spans(
     Returns:
         The resulting ordered records or values.
     """
-    with (run_path / "config.yaml").open(encoding="utf-8") as handle:
-        model_cfg = (yaml.safe_load(handle) or {}).get("model", {})
+    model_cfg = load_run_config(run_path).get("model", {})
     try:
         from transformers import AutoTokenizer
 

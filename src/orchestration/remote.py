@@ -230,6 +230,7 @@ def worker_command(
         f"{token_exports} "
         f"export CUDA_VISIBLE_DEVICES={devices} && "
         f"export ORCHESTRATOR_GPU_COUNT={len(group)} && "
+        "export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True} && "
         "exec bash scripts/run_with_hf_download_fix.sh "
         f".venv/bin/python -u scripts/orchestrate.py "
         f"--run {shlex.quote(run_path.as_posix())} "

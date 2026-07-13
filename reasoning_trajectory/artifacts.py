@@ -72,7 +72,11 @@ def write_jsonl(path: str | Path, rows: Iterable[dict[str, Any]]) -> None:
 
 
 def load_hidden_states_npz(path: str | Path) -> tuple[np.ndarray, list[int]]:
-    """Load float or symmetrically quantized hidden states from one artifact."""
+    """Load float or symmetrically quantized hidden states from one artifact.
+    Returns:
+    - states:
+    - layers: list of layer indices corresponding to the second dimension of states
+    """
     with np.load(path) as data:
         layers = data["layer_indices"].astype(int).tolist()
         if "hidden_states" in data:

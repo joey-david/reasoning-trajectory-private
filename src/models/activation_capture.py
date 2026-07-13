@@ -100,6 +100,7 @@ def capture_selected_activations(
             resolved_layers=resolved_layers,
             components=components,
         ) as component_capture,
+        torch.inference_mode(),
     ):
         _ = base_model(
             input_ids=full_seq,

@@ -1,5 +1,6 @@
 import { createGenerationView } from "./generations.js?v=20260708-tokenactivation2";
 import { createTrajectoryView } from "./trajectories.js?v=20260708-tokenactivation2";
+import { createLayerwiseView } from "./layerwise.js?v=20260710-layerwise4";
 import { createDiagnosticsView } from "./diagnostics.js?v=20260708-tokenactivation2";
 import {
   $,
@@ -34,6 +35,10 @@ const trajectoryView = createTrajectoryView({
   getState: () => state,
   setQuery,
   openGeneration,
+});
+const layerwiseView = createLayerwiseView({
+  getState: () => state,
+  setQuery,
 });
 const diagnosticsView = createDiagnosticsView({
   getState: () => state,
@@ -81,6 +86,7 @@ function bindShell() {
   if (narrow.matches) {
     setPanelCollapsed(document.querySelector(".generation-workspace .control-panel"), true);
     setPanelCollapsed(document.querySelector(".trajectory-workspace .control-panel"), true);
+    setPanelCollapsed(document.querySelector(".layerwise-workspace .control-panel"), true);
   }
 }
 
@@ -109,7 +115,7 @@ async function loadRun(route) {
     $("app-status").hidden = true;
     $("header-run-status").textContent = `${formatNumber(state.rows.length)} trajectories · ${formatNumber(Object.keys(run.samples ?? {}).length)} questions`;
     renderOverview();
-    showView(["overview", "generations", "trajectories", "diagnostics"].includes(route.view) ? route.view : "overview");
+    showView(["overview", "generations", "trajectories", "layerwise", "diagnostics"].includes(route.view) ? route.view : "overview");
     setQuery({ model: run.model, run: run.run, view: state.view });
   } catch (error) {
     showSetupError(error);
@@ -130,13 +136,17 @@ function showView(view, updateUrl = true) {
   for (const button of document.querySelectorAll("[data-view]")) {
     button.setAttribute("aria-selected", String(button.dataset.view === view));
   }
-  for (const name of ["overview", "generations", "trajectories", "diagnostics"]) {
+  for (const name of ["overview", "generations", "trajectories", "layerwise", "diagnostics"]) {
     $(`${name}-panel`).hidden = name !== view;
   }
   if (view === "generations") generationView.load(routeState());
   if (view === "trajectories") {
     trajectoryView.load(routeState());
     setTimeout(() => window.Plotly?.Plots.resize($("plot3d")), 0);
+  }
+  if (view === "layerwise") {
+    layerwiseView.load(routeState());
+    setTimeout(() => window.Plotly?.Plots.resize($("layerwise3d")), 0);
   }
   if (view === "diagnostics") diagnosticsView.load(routeState());
   if (updateUrl) setQuery({ ...queryCleanup(view), view });
@@ -164,6 +174,7 @@ function renderOverview() {
     ["Step markers", Boolean(state.run.step_markers)],
     ["Token projections", Boolean(state.run.interactive_plots?.length)],
     ["Step clusters", Boolean(state.run.step_classification_plots?.length)],
+    ["Layerwise plots", Boolean(state.run.layerwise_plots?.length)],
     ["Trajectory diagnostics", Boolean(state.run.trajectory_metrics)],
     ["Hardness ranking", Boolean(state.run.hard_questions)],
   ];
@@ -255,7 +266,7 @@ function openGeneration(point) {
 
 function handleShortcut(event) {
   if (event.metaKey || event.ctrlKey || event.altKey || isFormTarget(event.target)) return;
-  const view = { o: "overview", g: "generations", l: "trajectories", d: "diagnostics" }[event.key.toLowerCase()];
+  const view = { o: "overview", g: "generations", l: "trajectories", w: "layerwise", d: "diagnostics" }[event.key.toLowerCase()];
   if (view) {
     event.preventDefault();
     showView(view);
@@ -329,13 +340,28 @@ function queryCleanup(view) {
     "end",
   ];
   const diagnosticKeys = ["diagnostic"];
+  const layerwiseKeys = [
+    "lsource",
+    "lcolor",
+    "llines",
+    "lpoints",
+    "lhover",
+    "lline_width",
+    "lpoint_size",
+    "lopacity",
+    "llimit",
+    "lstart",
+    "lend",
+  ];
   const keys = view === "overview"
-    ? [...generationKeys, ...trajectoryKeys, ...diagnosticKeys, "question", "seed"]
+    ? [...generationKeys, ...trajectoryKeys, ...layerwiseKeys, ...diagnosticKeys, "question", "seed"]
     : view === "generations"
-      ? [...trajectoryKeys, ...diagnosticKeys]
+      ? [...trajectoryKeys, ...layerwiseKeys, ...diagnosticKeys]
       : view === "trajectories"
-        ? [...generationKeys, ...diagnosticKeys]
-        : [...generationKeys, ...trajectoryKeys, "question", "seed"];
+        ? [...generationKeys, ...layerwiseKeys, ...diagnosticKeys]
+        : view === "layerwise"
+          ? [...generationKeys, ...trajectoryKeys, ...diagnosticKeys]
+          : [...generationKeys, ...trajectoryKeys, ...layerwiseKeys, "question", "seed"];
   return Object.fromEntries(keys.map(key => [key, null]));
 }
 
@@ -343,7 +369,7 @@ function showLoading(message) {
   $("app-status").hidden = false;
   $("app-status").className = "app-status";
   $("app-status").innerHTML = `<span class="spinner" aria-hidden="true"></span>${escapeHtml(message)}`;
-  for (const name of ["overview", "generations", "trajectories", "diagnostics"]) {
+  for (const name of ["overview", "generations", "trajectories", "layerwise", "diagnostics"]) {
     $(`${name}-panel`).hidden = true;
   }
 }

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from reasoning_trajectory.artifacts import read_sample_records
-import yaml
+from reasoning_trajectory.config import load_run_config
 
 
 def write_manifest(runs_root: Path, out_path: Path) -> None:
@@ -33,6 +33,9 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
         step_classification_plots = load_json(
             run / "analysis" / "step_classification" / "interactive_index.json", []
         )
+        layerwise_plots = load_json(
+            run / "analysis" / "layer_variations" / "web_index.json", []
+        )
         step_markers = run / "analysis" / "step_markers.json"
         solution_objects = run / "analysis" / "solution_objects.jsonl"
         hard_questions = run / "analysis" / "hard_questions.jsonl"
@@ -48,6 +51,7 @@ def write_manifest(runs_root: Path, out_path: Path) -> None:
                 "step_classification_plots": add_web_paths(
                     run, step_classification_plots
                 ),
+                "layerwise_plots": add_web_paths(run, layerwise_plots),
                 "step_markers": web_path(step_markers)
                 if step_markers.exists()
                 else None,
@@ -86,8 +90,7 @@ def discover_generation_artifact(
     continuations = run / "patching" / "continuations.jsonl"
     if not continuations.exists():
         return None
-    with (run / "config.yaml").open(encoding="utf-8") as handle:
-        config = yaml.safe_load(handle) or {}
+    config = load_run_config(run)
     activation_run = Path(config["patching"]["activation_run"])
     return continuations, "causal_patching", read_sample_records(activation_run)
 

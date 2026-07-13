@@ -6,10 +6,10 @@
   <meta name="color-scheme" content="dark">
   <title>Reasoning Trajectory Explorer</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.css?v=20260708-tokenactivation2">
+  <link rel="stylesheet" href="styles.css?v=20260710-layerwise5">
   <script>document.documentElement.dataset.protocol = location.protocol.slice(0, -1);</script>
   <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <script type="module" src="js/app.js?v=20260708-tokenactivation2"></script>
+  <script type="module" src="js/app.js?v=20260710-layerwise4"></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to content</a>
@@ -47,6 +47,9 @@
     </button>
     <button type="button" data-view="trajectories" aria-selected="false" aria-controls="trajectories-panel" aria-keyshortcuts="l">
       Latent space <kbd aria-hidden="true">L</kbd>
+    </button>
+    <button type="button" data-view="layerwise" aria-selected="false" aria-controls="layerwise-panel" aria-keyshortcuts="w">
+      Layerwise analysis <kbd aria-hidden="true">W</kbd>
     </button>
     <button type="button" data-view="diagnostics" aria-selected="false" aria-controls="diagnostics-panel" aria-keyshortcuts="d">
       Diagnostics <kbd aria-hidden="true">D</kbd>
@@ -294,6 +297,127 @@
             <label><span>Incorrect</span><input id="plot-end-incorrect-color" type="color" value="#c4483c"></label>
             <label><span>Unknown</span><input id="plot-end-unknown-color" type="color" value="#68737b"></label>
           </fieldset>
+        </aside>
+      </div>
+    </section>
+
+    <section id="layerwise-panel" class="view-panel wide-panel" aria-labelledby="layerwise-title" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Adjacent-layer dynamics</p>
+          <h1 id="layerwise-title">Layerwise analysis</h1>
+        </div>
+        <div class="heading-actions">
+          <button id="layerwise-copy-view-link" class="secondary-button" type="button">Copy view link</button>
+          <button id="layerwise-reset-camera" class="secondary-button" type="button">Reset camera</button>
+        </div>
+      </div>
+
+      <div class="workspace layerwise-workspace">
+        <aside id="layerwise-filters" class="control-panel layerwise-controls" aria-label="Layerwise controls">
+          <div class="control-panel-heading">
+            <h2>Metric</h2>
+            <div class="panel-heading-actions">
+              <button class="text-button panel-toggle" type="button" data-toggle-panel="layerwise-filters" aria-controls="layerwise-filters" aria-expanded="true">Hide</button>
+              <button id="layerwise-clear" class="text-button" type="button">Clear</button>
+            </div>
+          </div>
+          <label class="control wide">
+            <span>Dataset</span>
+            <select id="layerwise-source" data-testid="layerwise-source-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Question</span>
+            <select id="layerwise-question" data-testid="layerwise-question-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Sub-run</span>
+            <select id="layerwise-seed" data-testid="layerwise-seed-select"></select>
+          </label>
+          <label class="control wide">
+            <span>Point color</span>
+            <select id="layerwise-color-mode" data-testid="layerwise-color-mode-select">
+              <option value="value">Height (metric value)</option>
+              <option value="token">Token progress</option>
+              <option value="correctness">Correctness</option>
+            </select>
+          </label>
+          <label class="range-control">
+            <span>Maximum traces <output id="layerwise-max-output">4</output></span>
+            <input id="layerwise-max-trajectories" type="range" min="1" max="30" value="4" aria-label="Maximum traces" data-testid="layerwise-max-trajectories">
+          </label>
+          <fieldset class="range-group">
+            <legend>Token range</legend>
+            <label>
+              <span>Start <output id="layerwise-start-output">0%</output></span>
+              <input id="layerwise-token-start" type="range" min="0" max="100" value="0" aria-label="Layerwise token range start" data-testid="layerwise-token-start">
+            </label>
+            <label>
+              <span>End <output id="layerwise-end-output">100%</output></span>
+              <input id="layerwise-token-end" type="range" min="0" max="100" value="100" aria-label="Layerwise token range end" data-testid="layerwise-token-end">
+            </label>
+          </fieldset>
+          <div class="encoding-key" aria-label="Layerwise encoding">
+            <h3>Encoding</h3>
+            <p><span class="line-key correct"></span>Correct trace</p>
+            <p><span class="line-key incorrect"></span>Incorrect trace</p>
+            <p><span class="line-key unknown"></span>Unscored trace</p>
+          </div>
+        </aside>
+
+        <div class="plot-column">
+          <div class="plot-toolbar">
+            <div>
+              <strong id="layerwise-plot-title">Layerwise plot</strong>
+              <span id="layerwise-plot-status" role="status" aria-live="polite"></span>
+            </div>
+            <span id="layerwise-link-status" class="field-note" role="status"></span>
+          </div>
+          <div id="layerwise-plot-shell" class="plot-shell">
+            <div id="layerwise-plot-loading" class="plot-loading" hidden>
+              <span class="spinner" aria-hidden="true"></span>
+              Loading layerwise plot...
+            </div>
+            <div id="layerwise3d" data-testid="layerwise-plot" aria-label="Interactive three-dimensional layerwise metric plot"></div>
+          </div>
+          <section id="layerwise-inspector" class="point-inspector" aria-labelledby="layerwise-inspector-title">
+            <div>
+              <p class="eyebrow">Selected point</p>
+              <h2 id="layerwise-inspector-title">Inspect a layer point</h2>
+            </div>
+            <p class="muted">Select a plotted point to see the token and adjacent-layer metric details.</p>
+          </section>
+        </div>
+
+        <aside id="layerwise-visuals" class="control-panel layerwise-visuals" aria-label="Layerwise visual controls">
+          <div class="control-panel-heading">
+            <h2>Visuals</h2>
+            <button class="text-button panel-toggle" type="button" data-toggle-panel="layerwise-visuals" aria-controls="layerwise-visuals" aria-expanded="true">Hide</button>
+          </div>
+          <label class="switch-row">
+            <input id="layerwise-show-lines" type="checkbox" checked>
+            <span>Lines</span>
+          </label>
+          <label class="switch-row">
+            <input id="layerwise-show-points" type="checkbox" checked>
+            <span>Points</span>
+          </label>
+          <label class="switch-row">
+            <input id="layerwise-hover-highlight" type="checkbox" checked>
+            <span>Highlight on hover</span>
+          </label>
+          <label class="range-control">
+            <span>Line thickness <output id="layerwise-line-width-output">1.5</output></span>
+            <input id="layerwise-line-width" type="range" min="0.5" max="12" step="0.5" value="1.5" aria-label="Layerwise line thickness">
+          </label>
+          <label class="range-control">
+            <span>Point size <output id="layerwise-point-size-output">3</output></span>
+            <input id="layerwise-point-size" type="range" min="1" max="10" step="0.5" value="3" aria-label="Layerwise point size">
+          </label>
+          <label class="range-control">
+            <span>Opacity <output id="layerwise-opacity-output">75%</output></span>
+            <input id="layerwise-opacity" type="range" min="10" max="100" step="5" value="75" aria-label="Layerwise line and point opacity">
+          </label>
         </aside>
       </div>
     </section>

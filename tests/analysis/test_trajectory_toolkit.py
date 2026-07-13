@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import torch
 
 from reasoning_trajectory.bank import TrajectoryPath
+from reasoning_trajectory.layer_variations import _model_name, write_layer_plots
+from src.models.generation_pipeline import resolve_capture_layer_indices
 from reasoning_trajectory.metrics.alignment import alignment_summary
 from reasoning_trajectory.metrics.geometry import trajectory_geometry
 from reasoning_trajectory.metrics.diagnostics import basin_summary, compression_curve
@@ -141,6 +144,74 @@ def test_browser_manifest_drops_generation_only_token_arrays() -> None:
             "gold_answer": "42",
         }
     }
+
+
+def test_capture_layer_slice_resolves_to_all_model_layers() -> None:
+    class Model:
+        def __init__(self) -> None:
+            self.model = torch.nn.Module()
+            self.model.layers = torch.nn.ModuleList(
+                [torch.nn.Identity() for _ in range(4)]
+            )
+
+    assert resolve_capture_layer_indices({"layers": "[:]"}, Model()) == [0, 1, 2, 3]
+    assert resolve_capture_layer_indices({"layers": [-1, 2]}, Model()) == [-1, 2]
+
+
+def test_layer_variations_model_name_accepts_bare_layer_slice(tmp_path) -> None:
+    (tmp_path / "config.yaml").write_text(
+        """
+model:
+  name: dummy-model
+capture:
+  enabled: true
+  layers: [:]
+""",
+        encoding="utf-8",
+    )
+
+    assert _model_name(tmp_path) == "dummy-model"
+
+
+def test_layer_variations_writes_web_payload(tmp_path) -> None:
+    generation = tmp_path / "generation"
+    hidden = generation / "hidden_states"
+    hidden.mkdir(parents=True)
+    states = np.arange(4 * 3 * 2, dtype=np.float32).reshape(4, 3, 2)
+    np.savez_compressed(
+        hidden / "trace.npz",
+        hidden_states=states,
+        layer_indices=[0, 1, 2],
+    )
+    (generation / "generations.jsonl").write_text(
+        json.dumps(
+            {
+                "sample_id": "sample",
+                "seed": 7,
+                "is_correct": True,
+                "produced_answer": "42",
+                "hidden_states_file": "generation/hidden_states/trace.npz",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_layer_plots(tmp_path, {"layer_variations": {"max_3d_tokens": 2}})
+
+    index = json.loads(
+        (tmp_path / "analysis" / "layer_variations" / "web_index.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    cosine = next(item for item in index if item["metric"] == "cosine")
+    payload = json.loads((tmp_path / cosine["path"]).read_text(encoding="utf-8"))
+
+    assert cosine["traces"] == 1
+    assert payload["trace_count"] == 1
+    assert payload["traces"][0]["sample_id"] == "sample"
+    assert payload["traces"][0]["layer_pairs"][0]["label"] == "0->1"
+    assert len(payload["points"]) == 4
 
 
 def _path(name: str, values: np.ndarray) -> TrajectoryPath:

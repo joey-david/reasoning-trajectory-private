@@ -25,7 +25,11 @@ from src.models.generation_utils import (
     single_token_id,
 )
 from src.models.hf_loader import load_hf_model_and_tokenizer
-from src.models.introspection import assert_unique_layers, get_input_device
+from src.models.introspection import (
+    assert_unique_layers,
+    get_decoder_layers,
+    get_input_device,
+)
 from src.prompting.templates import build_prompt
 from src.runtime.artifact_store import save_generation_output
 from src.runtime.config import RunConfig
@@ -165,7 +169,9 @@ def generate_task(
     forced_prefix = generation_cfg.get("forced_prefix")
     cap_fallback = generation_cfg.get("cap_fallback", {})
     capture_enabled = bool(capture_cfg.get("enabled", True))
-    layer_indices = list(capture_cfg.get("layers", [-1])) if capture_enabled else []
+    layer_indices = (
+        resolve_capture_layer_indices(capture_cfg, model) if capture_enabled else []
+    )
     gold_answer = gold_answer_from_sample(sample)
     output, hidden_states, component_states = generate_one_twopass(
         model=model,
@@ -206,6 +212,21 @@ def generate_task(
         component_states=component_states if capture_enabled else None,
     )
     return output
+
+
+def resolve_capture_layer_indices(
+    capture_cfg: Mapping[str, Any],
+    model: PreTrainedModel,
+) -> list[int]:
+    """Resolve configured capture layers, including ``[:]`` for every layer."""
+    raw_layers = capture_cfg.get("layers", [-1])
+    if isinstance(raw_layers, str):
+        if raw_layers.strip() == "[:]":
+            return list(range(len(get_decoder_layers(model))))
+        raise ValueError(
+            "capture.layers must be a list of layer indices or the [:] sentinel"
+        )
+    return [int(layer) for layer in raw_layers]
 
 
 def generate_one_twopass(
@@ -264,6 +285,8 @@ def generate_one_twopass(
             request.progress.set_description(
                 f"activation capture {request.progress_label}".strip()
             )
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         hidden_states, component_states = capture_selected_activations(
             model=model,
             full_seq_ids=sequence.full_ids,

@@ -1,0 +1,63 @@
+model:
+  name: HuggingFaceTB/SmolLM3-3B
+  revision: a07cc9a04f16550a088caea529712d1d335b0ac1
+  backend: hf
+  device_map:
+    "": [0, 1]
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+dataset:
+  source: hf
+  path: apple/GSM-Symbolic
+  revision: 93b5b3758d9d9841ffe81d6cd2ae2b030685b078
+  name: p1
+  split: test
+  adapter: gsm_symbolic
+  filters:
+    id: 85
+    instance: 17
+  sample_limit: 1
+  sample_offset: 0
+  shuffle_seed: null
+
+generation:
+  max_new_tokens: 8192
+  num_samples_per_item: 100
+  base_seed: 9851700
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  forced_prefix: "<think> Okay, let's see"
+  cap_fallback:
+    prefix: "</think>\n Okay, I've thought about this enough. Given what I know, the final answer should be\n Answer: "
+    min_new_tokens: 3
+    max_new_tokens: 8
+
+capture:
+  enabled: true
+  layers: "[:]"
+  activation_storage_dtype: int8_scaled
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: "You are a careful mathematical reasoner. /think"
+  instruction: |
+    Think only as long as needed. Keep the reasoning clear and concise.
+    Solve the problem and check the calculation.
+    End with exactly: Answer: N
+    Replace N with the final numeric answer.
+  chat_template_kwargs:
+    enable_thinking: true
+
+analysis:
+  produced_answer_regex: "(?i)(?:\\\\boxed\\{|(?:Final\\s+)?Answer\\s*:\\s*)(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  gold_answer_regex: "####\\s*(-?\\d[\\d,]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)"
+  think_end_token_id: 128003
+  hard_question_limit: 1
+  layer_variations:
+    token_2d: 0
+    max_3d_tokens: 160
+  correctness_group_plots: true

@@ -1,3 +1,5 @@
+"""Use to plot token embeddings (not activations) of a given model."""
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from sklearn.decomposition import PCA
 import pandas as pd
@@ -11,15 +13,42 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument(
-    "--no-ints", action="store_true", help="Doesn't plot ints if passed"
+    "--no-ints", "-n", action="store_true", help="Doesn't plot ints if passed"
+)
+
+parser.add_argument(
+    "--model",
+    "-m",
+    type=str,
+    default="mlx-community/SmolLM3-3B-bf16",
+    help="specify the model whose embeddings to plot. Defaults to SmolLM3-3B-bf16",
+)
+
+parser.add_argument(
+    "--filter-path",
+    "-f",
+    type=Path,
+    help="Path to the generations.jsonl file whose tokens to plot. Plots first --max-plot toks from the embedding table if unspecified.",
+)
+
+parser.add_argument(
+    "--max-plot",
+    "-p",
+    type=int,
+    default=10000,
+    help="Maximum number of tokens to plot. Defaults to 10k.",
 )
 
 args = parser.parse_args()
 
+model_name = args.model
+
 REMOVE_NUMBERS: bool = True
 
 gen_path = Path(
-    "/Users/joey/research/miles/reasoning-trajectory-private/runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/generation/generations.jsonl"
+    args.filter_path
+    if args.filter_path is not None
+    else "/Users/joey/research/miles/reasoning-trajectory-private/runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k/generation/generations.jsonl"
 )
 used_token_ids = set()
 
@@ -30,8 +59,6 @@ with gen_path.open() as f:
 
         row = json.loads(line)
         used_token_ids.update(row["generated_token_ids"])
-
-model_name = "mlx-community/SmolLM3-3B-bf16"
 
 tok = AutoTokenizer.from_pretrained(
     model_name,
@@ -77,7 +104,7 @@ df_used = df[df["token_id"].isin(used_token_ids)].copy()
 
 print(f"Used {len(df_used)} unique tokens out of vocab size {len(df)}")
 
-df_small = df_used.sample(min(10000, len(df_used)), random_state=0)
+df_small = df_used.sample(min(args.max_plot, len(df_used)), random_state=0)
 
 fig = px.scatter_3d(
     df_small,

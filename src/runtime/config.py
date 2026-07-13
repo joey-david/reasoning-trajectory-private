@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -90,6 +91,16 @@ def load_config(run_path: str | Path) -> RunConfig:
     """
     run_path = Path(run_path)
     config_path = run_path / "config.yaml"
-    with config_path.open("r", encoding="utf-8") as handle:
-        config = yaml.safe_load(handle) or {}
+    text = _quote_bare_layer_slice(config_path.read_text(encoding="utf-8"))
+    config = yaml.safe_load(text) or {}
     return RunConfig.from_dict(run_path, config)
+
+
+def _quote_bare_layer_slice(text: str) -> str:
+    """Allow ``layers: [:]`` as a compact all-layers capture sentinel."""
+    return re.sub(
+        r"(^\s*layers\s*:\s*)\[:\](\s*(?:#.*)?$)",
+        r"\1'[:]'\2",
+        text,
+        flags=re.MULTILINE,
+    )
