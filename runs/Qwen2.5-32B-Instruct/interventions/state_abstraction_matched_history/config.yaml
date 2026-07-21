@@ -45,3 +45,12 @@ state_abstraction:
     max_state_same_mass_shift_upper: 0.05
     max_full_same_jsd_upper: 0.05
     max_full_same_mass_shift_upper: 0.05
+
+explicit_handoff:
+  gate:
+    min_gold_accuracy: 0.90
+    min_h2_self_improvement: 0.20
+    min_h4_stepwise_accuracy: 0.90
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.

@@ -219,6 +219,60 @@ def render_factorization_history(case: dict[str, Any]) -> str:
     )
 
 
+def _factorization_update_prompt(
+    *,
+    case: dict[str, Any],
+    state: int,
+    rule: dict[str, Any],
+    name: str,
+    label: str,
+) -> dict[str, Any]:
+    modulus = 2 ** int(case["bits"])
+    if not 0 <= int(state) < modulus:
+        raise ValueError(f"State {state} is outside [0, {modulus})")
+    if label not in {"FINAL", "Operation"}:
+        raise ValueError(f"Unsupported operation label: {label!r}")
+    instruction = (
+        "Apply FINAL exactly once and return the resulting state."
+        if label == "FINAL"
+        else "Apply the operation exactly once and return the resulting state."
+    )
+    text = (
+        render_factorization_preamble(case)
+        + f"Current state: {state_text(case, int(state))}.\n"
+        + f"{label}: {render_factorization_rule(case, rule)}.\n"
+        + f"{instruction}\nAnswer="
+    )
+    return {
+        "name": name,
+        "text": text,
+        "input_state": int(state),
+        "expected_next_state": apply_rule(rule, int(state), modulus),
+    }
+
+
+def render_factorization_update_prompt(
+    *,
+    tokenizer: Any,
+    case: dict[str, Any],
+    config: dict[str, Any],
+    state: int,
+    rule: dict[str, Any],
+    name: str,
+    label: str,
+) -> dict[str, Any]:
+    """Render one operation on an arbitrary supplied state."""
+    prompt = _factorization_update_prompt(
+        case=case,
+        state=state,
+        rule=rule,
+        name=name,
+        label=label,
+    )
+    prompt["text"] = format_model_prompt(tokenizer, prompt["text"], config)
+    return prompt
+
+
 def render_factorization_prompts(
     *, tokenizer: Any, case: dict[str, Any], config: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -236,15 +290,6 @@ def render_factorization_prompts(
                 "Return the current state unchanged.\nAnswer="
             ),
             "expected_next_state": current,
-        },
-        {
-            "name": "update",
-            "text": (
-                preamble
-                + f"Current state: {state_text(case, current)}.\nFINAL: {final}.\n"
-                "Apply FINAL exactly once and return the resulting state.\nAnswer="
-            ),
-            "expected_next_state": int(case["next_state"]),
         },
         {
             "name": "synthesize",
@@ -268,19 +313,26 @@ def render_factorization_prompts(
             "expected_next_state": int(case["next_state"]),
         },
     ]
+    prompts.insert(
+        1,
+        _factorization_update_prompt(
+            case=case,
+            state=current,
+            rule=case["final_rule"],
+            name="update",
+            label="FINAL",
+        ),
+    )
     states = case["state_path"]
     for index, rule in enumerate(case["history"], 1):
         prompts.append(
-            {
-                "name": f"history_step_{index}",
-                "text": (
-                    preamble
-                    + f"Current state: {state_text(case, states[index - 1])}.\n"
-                    + f"Operation: {render_factorization_rule(case, rule)}.\n"
-                    + "Apply the operation exactly once and return the resulting state.\nAnswer="
-                ),
-                "expected_next_state": int(states[index]),
-            }
+            _factorization_update_prompt(
+                case=case,
+                state=int(states[index - 1]),
+                rule=rule,
+                name=f"history_step_{index}",
+                label="Operation",
+            )
         )
     for prompt in prompts:
         prompt["text"] = format_model_prompt(tokenizer, prompt["text"], config)

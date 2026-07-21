@@ -60,6 +60,10 @@ from src.experiments.depth_relief.transfer_pipeline import (
     transfer_status,
     validate_transfer,
 )
+from src.experiments.depth_relief.explicit_handoff import (
+    analyze_explicit_handoff,
+    explicit_handoff_status,
+)
 
 
 def main() -> int:
@@ -108,6 +112,8 @@ def main() -> int:
         "prepare-abstraction-interchange",
         "analyze-abstraction-interchange",
         "status-abstraction",
+        "analyze-explicit-handoff",
+        "status-explicit-handoff",
     ))
     parser.add_argument("run_paths", type=Path, nargs="+")
     parser.add_argument("--max-cases", type=int)
@@ -201,6 +207,8 @@ def main() -> int:
         result = analyze_interchange(args.run_paths[0])
     elif args.command == "analyze-handoff":
         result = analyze_handoff(args.run_paths[0])
+    elif args.command == "analyze-explicit-handoff":
+        result = analyze_explicit_handoff(args.run_paths[0])
     elif args.command == "status-qualification":
         result = qualification_status(args.run_paths[0])
     elif args.command == "status-calibration":
@@ -213,6 +221,8 @@ def main() -> int:
         result = transfer_status(args.run_paths[0])
     elif args.command == "status-abstraction":
         result = state_abstraction_status(args.run_paths[0])
+    elif args.command == "status-explicit-handoff":
+        result = explicit_handoff_status(args.run_paths[0])
     else:
         result = status(args.run_paths[0])
     print(json.dumps(result, indent=2, sort_keys=True))

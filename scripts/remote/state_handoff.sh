@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$REPO_ROOT"
+
+PYTHON="${PYTHON:-.venv/bin/python}"
+action="${1:-}"
+
+case "$action" in
+phase1-32b)
+  run="runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history"
+  nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  devices="${STATE_HANDOFF_32B_DEVICES:-0+1}"
+  "$PYTHON" scripts/experiments/depth_relief.py \
+    analyze-explicit-handoff "$run"
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_explicit_handoff \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$run"
+  "$PYTHON" scripts/experiments/depth_relief.py \
+    analyze-explicit-handoff "$run"
+  ;;
+*)
+  echo "usage: scripts/remote/state_handoff.sh phase1-32b" >&2
+  exit 2
+  ;;
+esac
