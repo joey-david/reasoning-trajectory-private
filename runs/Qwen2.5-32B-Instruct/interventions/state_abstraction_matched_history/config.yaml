@@ -1,0 +1,47 @@
+model:
+  name: Qwen/Qwen2.5-32B-Instruct
+  revision: 5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd
+  backend: hf
+  required_gpus: 2
+  device_map: auto
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_materialization:
+  decision:
+    min_control_accuracy_lower: 0.85
+    min_candidate_mass_lower: 0.80
+    min_admitted_cases: 50
+    min_update_minus_synthesize_lower: 0.30
+    max_synthesize_compose_gap: 0.15
+    min_format_update_minus_synthesize_lower: 0.20
+    min_routing_cases: 50
+    max_compose_given_synthesize_upper: 0.25
+    min_synthesize_minus_compose_lower: 0.20
+    min_format_synthesize_minus_compose_lower: 0.15
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.
+
+state_abstraction:
+  seed: 7152073
+  benchmark:
+    bits: 3
+    history_steps: [2, 4]
+    groups_per_horizon: 15
+    paths_per_state: 8
+    formats: [prose]
+    seed: 7152031
+  decoder_rank: 7
+  causal_layers: [23, 31, 39, 47, 55]
+  max_pairs_per_group: 8
+  min_pairs_per_evaluation_split: 40
+  causal_gate:
+    min_state_shift_lower: 0.05
+    min_state_over_random_lower: 0.05
+    min_full_shift_lower: 0.10
+    max_state_same_jsd_upper: 0.05
+    max_state_same_mass_shift_upper: 0.05
+    max_full_same_jsd_upper: 0.05
+    max_full_same_mass_shift_upper: 0.05
