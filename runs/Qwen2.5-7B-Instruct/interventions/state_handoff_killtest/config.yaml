@@ -42,3 +42,46 @@ explicit_handoff:
   prompt:
     mode: chat
     system: Execute the state program exactly and return one decimal integer.
+
+state_handoff_training:
+  phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
+  conditions: [outcome_only, explicit_handoff]
+  evaluation_adapter: best
+  dataset:
+    bits: 3
+    seed: 721301
+    train_examples: 20000
+    validation_examples: 2000
+    train_horizons: [1, 2]
+    validation_horizons: [1, 2]
+    test_horizons: [2, 4, 8]
+    train_program_contexts: 50
+    validation_program_contexts: 15
+    test_program_contexts: 30
+    test_paths_per_state: 4
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  training:
+    seed: 721401
+    max_sequence_length: 256
+    microbatch: 8
+    gradient_accumulation: 8
+    effective_batch: 64
+    optimizer: adamw
+    learning_rate: 0.0001
+    weight_decay: 0
+    warmup_ratio: 0.03
+    epochs: 2
+    evaluation_interval: 250
+    max_gradient_norm: 1.0
+    gradient_checkpointing: true
+  pilot_gate:
+    min_ood_improvement: 0.10
+    min_same_state_agreement: 0.90
+    min_gold_gap_closed: 0.50
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.

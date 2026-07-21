@@ -57,6 +57,26 @@ def _history_for_target(
     return [{"kind": "add", "value": value} for value in values]
 
 
+def matched_addition_history(
+    *,
+    initial: int,
+    target: int,
+    path_code: int,
+    history_steps: int,
+    group_index: int,
+    modulus: int,
+) -> list[dict[str, Any]]:
+    """Build one exact addition history for a chosen endpoint."""
+    return _history_for_target(
+        initial=initial,
+        target=target,
+        path_code=path_code,
+        history_steps=history_steps,
+        group_index=group_index,
+        modulus=modulus,
+    )
+
+
 def _diagnostic_targets(case: dict[str, Any]) -> dict[str, int]:
     modulus = 2 ** int(case["bits"])
     return {
@@ -109,7 +129,7 @@ def build_state_abstraction_benchmark(config: dict[str, Any]) -> list[dict[str, 
             split = split_names[group_index % len(split_names)]
             for target in range(modulus):
                 for path_code in range(path_count):
-                    history = _history_for_target(
+                    history = matched_addition_history(
                         initial=initial,
                         target=target,
                         path_code=path_code,
