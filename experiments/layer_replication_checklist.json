@@ -1,0 +1,117 @@
+{
+  "status": "pending",
+  "papers": [
+    {
+      "key": "lad",
+      "paper": "The Remarkable Robustness of LLMs: Stages of Inference?",
+      "fidelity": "paper protocol on a paper-listed Qwen2.5-1.5B model",
+      "checks": [
+        {
+          "label": "complete intervention matrix",
+          "expected": "all drop/swap cells",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "middle layers are deletion-robust",
+          "expected": "middle KL < edge KL",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "middle layers are swap-robust",
+          "expected": "middle KL < edge KL",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "middle swaps are less harmful than drops",
+          "expected": "swap KL < drop KL in middle half",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "middle deletion preserves predictions",
+          "expected": "middle top-1 consistency > edge consistency",
+          "observed": null,
+          "status": "pending"
+        }
+      ],
+      "status": "pending"
+    },
+    {
+      "key": "yang",
+      "paper": "Emergent Symbolic Mechanisms Support Abstract Reasoning in LLMs",
+      "fidelity": "paper-sized Qwen2.5-7B identity-rule CMA",
+      "checks": [
+        {
+          "label": "complete causal-mediation matrix",
+          "expected": "all selected pairs",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "significant heads for all three mechanisms",
+          "expected": "FWER p<0.05 count > 0 for each mechanism",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "three-stage depth hierarchy",
+          "expected": "abstraction center < induction center < retrieval center",
+          "observed": null,
+          "status": "pending"
+        }
+      ],
+      "status": "pending"
+    },
+    {
+      "key": "zhang",
+      "paper": "Is One Layer Enough? Training A Single Transformer Layer Can Match Full-Parameter RL Training",
+      "fidelity": "published Qwen3-1.7B anchor layers; full 28-layer scan optional",
+      "checks": [
+        {
+          "label": "core base/full/layer evaluations",
+          "expected": "base, full, and layers 1/7/10/12/24",
+          "observed": {
+            "missing": [
+              "base",
+              "full",
+              "layer-01",
+              "layer-07",
+              "layer-10",
+              "layer-12",
+              "layer-24"
+            ]
+          },
+          "status": "pending"
+        },
+        {
+          "label": "full GRPO improves the base model",
+          "expected": "full math average > base",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "best published middle layer matches full GRPO",
+          "expected": "max contribution at layers 10/12 >= 0.9",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "middle-layer contribution concentration",
+          "expected": "mean layers 7/10/12 > mean layers 1/24",
+          "observed": null,
+          "status": "pending"
+        },
+        {
+          "label": "late control underperforms best middle layer",
+          "expected": "layer 24 contribution < max layer 10/12 contribution",
+          "observed": null,
+          "status": "pending"
+        }
+      ],
+      "status": "pending"
+    }
+  ]
+}

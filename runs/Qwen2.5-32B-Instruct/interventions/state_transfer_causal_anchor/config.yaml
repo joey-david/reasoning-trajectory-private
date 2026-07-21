@@ -1,0 +1,38 @@
+model:
+  name: Qwen/Qwen2.5-32B-Instruct
+  revision: 5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd
+  backend: hf
+  required_gpus: 2
+  device_map: auto
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_transfer:
+  source_run: runs/Qwen2.5-32B-Instruct/interventions/state_routing_confirmation
+  seed: 47
+  train_fraction: 0.55
+  rank: 8
+  layers: [7, 15, 23, 31, 39, 47, 55, 63]
+  capture_gate:
+    min_explicit_accuracy_lower: 0.85
+    max_compose_accuracy_upper: 0.25
+    min_candidate_mass_lower: 0.80
+  causal_gate:
+    min_state_shift_lower: 0.10
+    min_state_over_random_lower: 0.10
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.
+
+state_handoff:
+  seed: 53
+  rank: 7
+  localization_gate:
+    min_history_state_accuracy_lower: 0.30
+    min_history_over_shuffled_lower: 0.15
+    min_history_over_initial_lower: 0.10
+  causal_gate:
+    min_self_shift_lower: 0.10
+    min_self_over_random_lower: 0.10
+    min_margin_improvement_lower: 0.10

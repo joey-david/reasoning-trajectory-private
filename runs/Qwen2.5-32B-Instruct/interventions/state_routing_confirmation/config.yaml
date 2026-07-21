@@ -1,0 +1,19 @@
+model:
+  name: Qwen/Qwen2.5-32B-Instruct
+  revision: 5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd
+  backend: hf
+  required_gpus: 2
+  device_map: auto
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_routing:
+  source_run: runs/Qwen2.5-32B-Instruct/interventions/state_materialization_factorization
+  gate:
+    min_accuracy_lower: 0.85
+    min_candidate_mass_lower: 0.80
+    min_joint_correct: 50
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.

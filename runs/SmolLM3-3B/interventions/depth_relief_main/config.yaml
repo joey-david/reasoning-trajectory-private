@@ -1,0 +1,28 @@
+model:
+  name: HuggingFaceTB/SmolLM3-3B
+  revision: a07cc9a04f16550a088caea529712d1d335b0ac1
+  backend: hf
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+depth_relief:
+  benchmark:
+    families: [pointer, affine, register]
+    bits: [2, 3]
+    examples_per_cell: 16
+    history_steps: 2
+    seed: 7132026
+  settling_jsd_threshold: 0.50
+  causal_examples_per_cell: 4
+  causal_layers: "[:]"
+  causal_recovery_threshold: 0.80
+  read_effect_fraction_threshold: 0.10
+  prompt:
+    mode: chat
+    system: You execute exact finite-state programs and obey checkpoint values.
+    chat_template_kwargs:
+      enable_thinking: false

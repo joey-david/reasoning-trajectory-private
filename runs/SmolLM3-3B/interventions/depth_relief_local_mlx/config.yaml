@@ -1,0 +1,20 @@
+model:
+  name: mlx-community/SmolLM3-3B-bf16
+  path: /Users/joey/.cache/huggingface/hub/models--mlx-community--SmolLM3-3B-bf16/snapshots/7bd243308ac4462f1250777fac5c39fd85ab943a
+  backend: mlx
+  dtype: bfloat16
+
+depth_relief:
+  benchmark:
+    families: [pointer, affine, register]
+    bits: [2, 3]
+    examples_per_cell: 1
+    history_steps: 2
+    seed: 7132026
+  settling_jsd_threshold: 0.50
+  causal_examples_per_cell: 0
+  prompt:
+    mode: chat
+    system: You execute exact finite-state programs and obey checkpoint values.
+    chat_template_kwargs:
+      enable_thinking: false

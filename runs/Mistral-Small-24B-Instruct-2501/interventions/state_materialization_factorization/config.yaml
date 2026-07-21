@@ -1,0 +1,36 @@
+model:
+  name: mistralai/Mistral-Small-24B-Instruct-2501
+  revision: 9527884be6e5616bdd54de542f9ae13384489724
+  backend: hf
+  required_gpus: 2
+  device_map: auto
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+  tokenizer_kwargs:
+    fix_mistral_regex: true
+
+state_materialization:
+  benchmark:
+    history_families: [add, xor, affine]
+    final_family: pointer
+    bits: [3]
+    history_steps: [1, 2, 4]
+    formats: [prose, assignments]
+    examples_per_cell: 12
+    seed: 7132029
+    require_distinct_diagnostics: true
+  decision:
+    min_control_accuracy_lower: 0.85
+    min_candidate_mass_lower: 0.80
+    min_admitted_cases: 50
+    min_update_minus_synthesize_lower: 0.30
+    max_synthesize_compose_gap: 0.15
+    min_format_update_minus_synthesize_lower: 0.20
+    min_routing_cases: 50
+    max_compose_given_synthesize_upper: 0.25
+    min_synthesize_minus_compose_lower: 0.20
+    min_format_synthesize_minus_compose_lower: 0.15
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.

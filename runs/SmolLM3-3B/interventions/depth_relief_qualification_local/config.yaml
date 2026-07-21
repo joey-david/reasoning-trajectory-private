@@ -1,0 +1,24 @@
+model:
+  name: mlx-community/SmolLM3-3B-bf16
+  path: /Users/joey/.cache/huggingface/hub/models--mlx-community--SmolLM3-3B-bf16/snapshots/7bd243308ac4462f1250777fac5c39fd85ab943a
+  backend: mlx
+  dtype: bfloat16
+
+depth_relief_qualification:
+  benchmark:
+    bits: [2, 3]
+    history_steps: [1, 2, 4, 8]
+    examples_per_cell: 1
+    seed: 7132027
+  gate:
+    min_direct_accuracy_lower: 0.90
+    min_register_accuracy_lower: 0.85
+    min_history_accuracy_lower: 0.60
+    min_invalid_invariance_lower: 0.60
+    min_candidate_mass_lower: 0.80
+    min_joint_none_gold: 1
+  prompt:
+    mode: chat
+    system: Execute the integer program exactly and return one decimal integer.
+    chat_template_kwargs:
+      enable_thinking: false

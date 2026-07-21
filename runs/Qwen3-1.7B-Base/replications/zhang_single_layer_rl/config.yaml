@@ -1,0 +1,78 @@
+source:
+  paper: https://arxiv.org/abs/2607.01232
+  training_framework: https://github.com/huggingface/trl
+  training_framework_version: 1.8.0
+  training_framework_commit: 95809b942eb5d11d0b06d749510d88be99230b73
+
+model:
+  name: Qwen/Qwen3-1.7B-Base
+  revision: ea980cb0a6c2ae4b936e82123acc929f1cec04c1
+  backend: hf
+  layer_count: 28
+  required_gpus: 1
+  dtype: bfloat16
+  attn_implementation: sdpa
+  trust_remote_code: true
+
+single_layer_rl:
+  # Published Table 2 anchors: early, middle/high, and late/low contribution.
+  # The remote driver scans these by default; set LAYER_RL_SCAN=full for 0..27.
+  core_scan_layers: [1, 7, 10, 12, 24]
+  dataset:
+    path: AI-MO/NuminaMath-CoT
+    revision: 9d8d210c9f6a36c8f3cd84045668c9b7800ef517
+    split: train
+    sample_limit: 50000
+  training:
+    algorithm: GRPO
+    learning_rate: 0.000005
+    train_batch_size: 512
+    ppo_mini_batch_size: 128
+    micro_batch_size: 8
+    group_size: 4
+    max_response_length: 3072
+    kl_coefficient: 0.001
+    clip_range: 0.2
+    epochs: 4
+    seed: 260701232
+    logging_steps: 1
+    use_transformers_continuous_batching: true
+  evaluation:
+    batch_size: 1
+    max_new_tokens: 3072
+    seed: 260701233
+    benchmarks:
+      - key: math500
+        path: HuggingFaceH4/MATH-500
+        revision: 6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be
+        split: test
+        problem_field: problem
+        answer_field: answer
+        samples_per_problem: 1
+      - key: gsm8k
+        path: openai/gsm8k
+        revision: 740312add88f781978c0658806c59bc2815b9866
+        name: main
+        split: test
+        problem_field: question
+        answer_field: answer
+        answer_regex: '####\s*(?P<answer>.+?)\s*$'
+        samples_per_problem: 1
+      - key: olympiadbench
+        path: Hothan/OlympiadBench
+        revision: 91184b52131e7fc9455fef848035173aea8cc01a
+        name: OE_TO_maths_en_COMP
+        split: train
+        problem_field: question
+        answer_field: final_answer
+        samples_per_problem: 1
+      - key: amc
+        path: AI-MO/aimo-validation-amc
+        revision: 69d78a4a2c840e82d69af6bc742bda09005f6316
+        name: default
+        split: train
+        problem_field: problem
+        answer_field: answer
+        samples_per_problem: 32
+        temperature: 0.6
+        top_p: 0.95

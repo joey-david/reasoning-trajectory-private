@@ -75,10 +75,12 @@ def load_hf_tokenizer(model_cfg: dict):
     Returns:
         The configured Hugging Face tokenizer.
     """
+    tokenizer_kwargs = dict(model_cfg.get("tokenizer_kwargs", {}))
     tokenizer = AutoTokenizer.from_pretrained(
         model_cfg["name"],
         trust_remote_code=bool(model_cfg.get("trust_remote_code", False)),
         revision=model_cfg.get("revision"),
+        **tokenizer_kwargs,
     )
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
         tokenizer.pad_token = tokenizer.eos_token

@@ -26,6 +26,9 @@ pull_run() {
     local rsync_args=(-avz --progress)
     if [[ "$include_hidden_states" != true ]]; then
       rsync_args+=(--exclude "*/hidden_states/***")
+      rsync_args+=(--exclude "*/activations/***")
+      rsync_args+=(--exclude "layer_replications/*/checkpoints/***")
+      rsync_args+=(--exclude "*.npz")
     fi
     rsync "${rsync_args[@]}" "$host:$remote_root/$run_path/" "$run_path/"
   else
@@ -64,6 +67,7 @@ push)
     --include '/runs/**/' \
     --include '/runs/**/config.yaml' \
     --include '/runs/**/dataset.jsonl' \
+    --include '/runs/**/layer_replications/**/dataset_manifest.json' \
     --exclude '/runs/**' \
     --exclude '__pycache__' \
     ./ "$host:$remote_root/"

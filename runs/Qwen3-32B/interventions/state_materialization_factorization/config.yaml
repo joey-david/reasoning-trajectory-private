@@ -1,0 +1,32 @@
+model:
+  name: Qwen/Qwen3-32B
+  revision: 9216db5781bf21249d130ec9da846c4624c16137
+  backend: hf
+  required_gpus: 2
+  device_map: auto
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: true
+
+state_materialization:
+  benchmark:
+    history_families: [add, xor, affine]
+    final_family: pointer
+    bits: [3]
+    history_steps: [1, 2, 4]
+    formats: [prose, assignments]
+    examples_per_cell: 12
+    seed: 7132029
+    require_distinct_diagnostics: true
+  decision:
+    min_control_accuracy_lower: 0.85
+    min_candidate_mass_lower: 0.80
+    min_admitted_cases: 50
+    min_update_minus_synthesize_lower: 0.30
+    max_synthesize_compose_gap: 0.15
+    min_format_update_minus_synthesize_lower: 0.20
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.
+    chat_template_kwargs:
+      enable_thinking: false

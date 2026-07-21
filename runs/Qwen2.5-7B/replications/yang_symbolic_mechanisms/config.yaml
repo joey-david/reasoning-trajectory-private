@@ -1,0 +1,29 @@
+source:
+  paper: https://arxiv.org/abs/2502.20332
+  upstream_code: https://github.com/yukang123/LLMSymbMech
+  upstream_commit: 7dfaf791cc3916cc95d646f88d7d2909bf6f9588
+
+model:
+  name: Qwen/Qwen2.5-7B
+  revision: d149729398750b98c0af14eb82c78cfe92750796
+  backend: hf
+  layer_count: 28
+  attention_heads: 28
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+symbolic_mechanisms:
+  benchmark:
+    rules: [ABA, ABB]
+    contexts: [abstract, token]
+    in_context_examples: 10
+    candidate_pairs_per_direction: 1000
+    seed: 250220332
+  valid_pairs_per_direction: 100
+  head_batch_size: 7
+  permutation_trials: 5000
+

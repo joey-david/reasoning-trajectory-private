@@ -1,0 +1,30 @@
+model:
+  name: Qwen/Qwen2.5-32B-Instruct
+  revision: 5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd
+  backend: hf
+  required_gpus: 2
+  device_map: auto
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+depth_relief_calibration:
+  benchmark:
+    history_families: [add, xor, affine]
+    final_family: pointer
+    bits: [2, 3]
+    history_steps: [1, 2, 3, 4]
+    examples_per_cell: 12
+    seed: 7132028
+  sentinels: [unknown, missing]
+  discovery_gate:
+    min_direct_accuracy: 0.90
+    min_register_accuracy: 0.90
+    min_absent_accuracy: 0.60
+    min_absent_invariance: 0.80
+    min_candidate_mass: 0.80
+    min_joint_none_gold: 8
+    target_none_accuracy: 0.75
+  prompt:
+    mode: chat
+    system: Execute the state transitions exactly and return one decimal integer.

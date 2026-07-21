@@ -1,0 +1,31 @@
+source:
+  paper: https://arxiv.org/abs/2406.19384
+  upstream_code: https://github.com/vdlad/Remarkable-Robustness-of-LLMs
+  upstream_commit: 4ee3f29ecf3e812a20af111f8888cb57085fdbae
+
+model:
+  name: Qwen/Qwen2.5-1.5B
+  revision: 8faed761d45a263340a0528343f099c05c9a4323
+  backend: hf
+  layer_count: 28
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+layer_robustness:
+  interventions: [drop, swap]
+  blocks_per_task: 64
+  dataset:
+    path: EleutherAI/the_pile_deduplicated
+    revision: fcbfcfde4222cbb1acd1d33bad0be250ee14b1bb
+    split: train
+    text_field: text
+    token_count: 1000000
+    sequence_length: 256
+    sampling: random_pages
+    page_size: 100
+    request_interval_seconds: 2.1
+    seed: 240619384

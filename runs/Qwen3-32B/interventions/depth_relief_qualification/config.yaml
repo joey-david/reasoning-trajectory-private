@@ -1,0 +1,28 @@
+model:
+  name: Qwen/Qwen3-32B
+  revision: 9216db5781bf21249d130ec9da846c4624c16137
+  backend: hf
+  required_gpus: 2
+  device_map: auto
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: true
+
+depth_relief_qualification:
+  benchmark:
+    bits: [2, 3]
+    history_steps: [1, 2, 4, 8]
+    examples_per_cell: 12
+    seed: 7132027
+  gate:
+    min_direct_accuracy_lower: 0.90
+    min_register_accuracy_lower: 0.85
+    min_history_accuracy_lower: 0.60
+    min_invalid_invariance_lower: 0.60
+    min_candidate_mass_lower: 0.80
+    min_joint_none_gold: 50
+  prompt:
+    mode: chat
+    system: Execute the integer program exactly and return one decimal integer.
+    chat_template_kwargs:
+      enable_thinking: false

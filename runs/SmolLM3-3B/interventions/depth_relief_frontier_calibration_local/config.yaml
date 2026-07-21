@@ -1,0 +1,28 @@
+model:
+  name: mlx-community/SmolLM3-3B-bf16
+  path: /Users/joey/.cache/huggingface/hub/models--mlx-community--SmolLM3-3B-bf16/snapshots/7bd243308ac4462f1250777fac5c39fd85ab943a
+  backend: mlx
+  dtype: bfloat16
+
+depth_relief_calibration:
+  benchmark:
+    history_families: [add, xor, affine]
+    final_family: pointer
+    bits: [2, 3]
+    history_steps: [1, 2, 3, 4]
+    examples_per_cell: 1
+    seed: 7132028
+  sentinels: [unknown, missing]
+  discovery_gate:
+    min_direct_accuracy: 0.90
+    min_register_accuracy: 0.90
+    min_absent_accuracy: 0.60
+    min_absent_invariance: 0.80
+    min_candidate_mass: 0.80
+    min_joint_none_gold: 1
+    target_none_accuracy: 0.75
+  prompt:
+    mode: chat
+    system: Execute the state transitions exactly and return one decimal integer.
+    chat_template_kwargs:
+      enable_thinking: false

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import torch
-from transformers import PreTrainedModel
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from transformers import PreTrainedModel
+else:
+    PreTrainedModel = Any
 
 
 DecoderLayout = tuple[
