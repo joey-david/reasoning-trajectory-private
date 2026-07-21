@@ -164,6 +164,77 @@ reusable artifacts. Analysis can also be rerun without inference:
 - Remote jobs are resumable and should be synchronized with
   `scripts/remote.sh`; do not commit large activation artifacts.
 
+## Explicit one-token state handoff
+
+This follow-up asks whether a decimal state token can turn correct local updates
+into reliable composition. It reuses the completed 1,920-case matched-history
+run and never regenerates its inference. The local artifact-only analysis is:
+
+```bash
+.venv/bin/python scripts/experiments/depth_relief.py \
+  analyze-explicit-handoff \
+  runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
+.venv/bin/python scripts/experiments/depth_relief.py \
+  status-explicit-handoff \
+  runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
+```
+
+At horizon 2, deterministic execution of the recorded Synthesize state scores
+76.98%, versus 13.44% for one-pass Compose. The program-context-paired gain is
++63.54 points with a 95% interval of +58.33 to +68.75. At horizon 4, both paths
+score 12.71% because state synthesis itself has failed. This is an oracle result,
+not a passed handoff gate: no LM self, gold, or stepwise inference rows exist.
+
+The large steps run in this order from the shared checkout on `lamgate`:
+
+```bash
+scripts/remote/state_handoff.sh phase1-32b
+scripts/remote/state_handoff.sh screen-7b
+scripts/remote/state_handoff.sh prepare-pilot-7b
+scripts/remote/state_handoff.sh pilot-7b
+```
+
+`phase1-32b` runs history-free self, gold, and stepwise calls with
+Qwen2.5-32B-Instruct revision
+`5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd`. `screen-7b` runs frozen
+Read/Update/Synthesize/Compose and explicit handoff at h1/h2/h4/h8 with
+Qwen2.5-7B-Instruct revision
+`a09a35458c702b33eeacc393d103063234e8bc28`. FlashAttention 2 falls back to
+SDPA if unavailable. The 32B job uses one two-GPU worker; each 7B job uses one
+A100. All jobs resume from append-only rows.
+
+The trainer refuses to start unless the 32B Phase 1 gate passes and the frozen
+7B screen is complete. The pilot then trains `outcome_only` and
+`explicit_handoff` through one shared rank-16 LoRA runner. Each condition gets
+20,000 train and 2,000 validation forwards per epoch, exactly 2,281,200 active
+train tokens and 5,120,000 fixed-padding compute tokens. Loss-masked control
+tokens follow the only target token, so causal attention prevents them from
+changing that target. Training uses h1/h2; held-out evaluation uses h2/h4/h8
+over 30 unseen program contexts.
+
+Pinned hashes are:
+
+- 32B source dataset: `f2e02e2a4d826d7b635e8f7229fdd3abd3357fbdb6e54f0be4017d2e624d4a1d`.
+- Frozen 7B screen: `2d551239e72c9bd160a05813d6895da11db86bdd57b6f2135c38947f91cc10d0`.
+- Pilot train: `b27623034cabce19fe9dcea3dd047728f28a1423e0cda408a18e814de614612a`.
+- Pilot validation: `63fca3627a32042ca82b8a93b92968e6632bbffaad6280416bf73e8299f7cd7b`.
+- Pilot test: `8c4215684ad19ea63a6d9998bbd3fe29a4f1e6cfbf9625a1613aae0b321cb50c`.
+
+The tiny CPU smoke covers finite state and answer losses, adapter save/reload,
+resume without duplicate metrics, and evaluation without the training dataset:
+
+```bash
+.venv/bin/python scripts/experiments/run_state_handoff_training.py smoke \
+  runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
+```
+
+Primary outputs are `depth_relief/explicit_handoff/summary.json`,
+`evaluation/<condition>/{cases.jsonl,summary.json}`,
+`evaluation/comparison_summary.json`, `evaluation/horizon_accuracy.png`, and
+`evaluation/handoff_gap.png`. Opaque codes, causal code interchange, full-scale
+three-seed training, and `interchange_matrix.png` remain blocked until the pilot
+gate passes.
+
 ## Latent solution-object extraction
 
 The plan-driven A-H protocol uses a controlled isomorphic bank for extraction,
