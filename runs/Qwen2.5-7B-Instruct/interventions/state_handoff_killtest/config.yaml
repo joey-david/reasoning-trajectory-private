@@ -1,0 +1,44 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_materialization:
+  decision:
+    min_control_accuracy_lower: 0.85
+    min_candidate_mass_lower: 0.80
+    min_admitted_cases: 50
+    min_update_minus_synthesize_lower: 0.30
+    max_synthesize_compose_gap: 0.15
+    min_format_update_minus_synthesize_lower: 0.20
+    min_routing_cases: 50
+    max_compose_given_synthesize_upper: 0.25
+    min_synthesize_minus_compose_lower: 0.20
+    min_format_synthesize_minus_compose_lower: 0.15
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.
+
+state_abstraction:
+  benchmark:
+    bits: 3
+    history_steps: [1, 2, 4, 8]
+    groups_per_horizon: 15
+    paths_per_state: 8
+    formats: [prose]
+    seed: 7212026
+
+explicit_handoff:
+  gate:
+    min_gold_accuracy: 0.90
+    min_h2_self_improvement: 0.20
+    min_h4_stepwise_accuracy: 0.90
+  prompt:
+    mode: chat
+    system: Execute the state program exactly and return one decimal integer.

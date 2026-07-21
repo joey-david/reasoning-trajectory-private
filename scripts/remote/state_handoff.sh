@@ -22,8 +22,30 @@ phase1-32b)
   "$PYTHON" scripts/experiments/depth_relief.py \
     analyze-explicit-handoff "$run"
   ;;
+screen-7b)
+  run="runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest"
+  nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  devices="${STATE_HANDOFF_7B_DEVICES:-0}"
+  "$PYTHON" scripts/experiments/depth_relief.py prepare-abstraction "$run"
+  "$PYTHON" scripts/experiments/depth_relief.py validate-factorization "$run"
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_materialization \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$run"
+  "$PYTHON" scripts/experiments/depth_relief.py analyze-factorization "$run"
+  "$PYTHON" scripts/experiments/depth_relief.py \
+    analyze-explicit-handoff "$run"
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_explicit_handoff \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$run"
+  "$PYTHON" scripts/experiments/depth_relief.py \
+    analyze-explicit-handoff "$run"
+  ;;
 *)
-  echo "usage: scripts/remote/state_handoff.sh phase1-32b" >&2
+  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b" >&2
   exit 2
   ;;
 esac

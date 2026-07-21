@@ -72,6 +72,28 @@ def test_arbitrary_state_update_prompt_uses_supplied_state() -> None:
     assert prompt["expected_next_state"] == 2
 
 
+def test_horizon_one_matched_histories_reach_each_state() -> None:
+    cases = build_state_abstraction_benchmark(
+        {
+            "bits": 3,
+            "history_steps": [1],
+            "groups_per_horizon": 3,
+            "paths_per_state": 8,
+            "formats": ["prose"],
+            "seed": 23,
+        }
+    )
+    group = [case for case in cases if case["abstraction_group"] == "h1_g0"]
+    assert len(group) == 64
+    assert all(len(case["history"]) == 1 for case in group)
+    assert all(case["state_path"][-1] == case["current_state"] for case in group)
+    assert {
+        case["history"][0]["value"]
+        for case in group
+        if case["current_state"] == 0
+    } == {(-int(group[0]["initial_state"])) % 8 + 8 * path for path in range(8)}
+
+
 def test_oracle_handoff_applies_final_to_recorded_synthesis() -> None:
     case = _case()
     predicted_state = (int(case["current_state"]) + 1) % 8

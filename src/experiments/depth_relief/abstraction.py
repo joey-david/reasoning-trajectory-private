@@ -44,6 +44,9 @@ def _history_for_target(
     group_index: int,
     modulus: int,
 ) -> list[dict[str, Any]]:
+    if history_steps == 1:
+        value = (target - initial) % modulus + path_code * modulus
+        return [{"kind": "add", "value": value}]
     values = [path_code]
     values.extend(
         (3 * group_index + 2 * step + 1) % modulus
@@ -85,8 +88,8 @@ def build_state_abstraction_benchmark(config: dict[str, Any]) -> list[dict[str, 
         raise ValueError("Groups per horizon must balance equally across splits")
     if path_count != modulus:
         raise ValueError("Paths per state must equal the state count for balance")
-    if any(value < 2 for value in history_steps_values):
-        raise ValueError("Matched histories require at least two operations")
+    if any(value < 1 for value in history_steps_values):
+        raise ValueError("Matched histories require at least one operation")
     if not set(formats).issubset(FORMATS):
         raise ValueError(f"Unknown factorization formats: {formats}")
 
