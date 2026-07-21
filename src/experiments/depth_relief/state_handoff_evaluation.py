@@ -453,7 +453,7 @@ def compare_state_handoff_conditions(run_path: Path) -> dict[str, Any]:
         )
         >= float(gate["min_same_state_agreement"]),
         "matched_compute": bool(
-            compute["matched_forward_passes_and_compute_tokens"]
+            compute["matched_forward_passes_and_tokens"]
         ),
     }
     summary = {

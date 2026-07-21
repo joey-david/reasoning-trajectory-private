@@ -365,7 +365,7 @@ def train_state_handoff_condition(
             prompt_config=prompt,
             max_length=max_length,
         )
-        if not compute["matched_forward_passes_and_compute_tokens"]:
+        if not compute["matched_forward_passes_and_tokens"]:
             raise RuntimeError("Training conditions do not have matched compute")
         write_json(compute_path, compute)
     pair_batch_size = microbatch // 2

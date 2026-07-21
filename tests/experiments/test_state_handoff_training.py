@@ -84,7 +84,11 @@ def test_training_sequences_mask_every_prompt_token(tmp_path) -> None:
     )
     assert [row["mapping"] for row in pair] == ["state", "answer"]
     assert all(sum(label != -100 for label in row["labels"]) == 1 for row in pair)
-    assert all(row["labels"][-1] == row["target_token_id"] for row in pair)
+    assert all(
+        next(label for label in row["labels"] if label != -100)
+        == row["target_token_id"]
+        for row in pair
+    )
 
 
 def test_outcome_and_handoff_training_compute_is_matched(tmp_path) -> None:
@@ -98,7 +102,7 @@ def test_outcome_and_handoff_training_compute_is_matched(tmp_path) -> None:
         prompt_config={"prompt": {"mode": "plain"}},
         max_length=1000,
     )
-    assert manifest["matched_forward_passes_and_compute_tokens"] is True
+    assert manifest["matched_forward_passes_and_tokens"] is True
     outcome = manifest["conditions"]["outcome_only"]
     handoff = manifest["conditions"]["explicit_handoff"]
     assert outcome["forward_passes"] == handoff["forward_passes"] == 16

@@ -322,40 +322,58 @@ def training_sequence_pair(
             tokenizer=tokenizer, case=case, config=prompt_config
         )
     }
-    if condition == "outcome_only":
-        pair = [
-            _sequence(
-                tokenizer=tokenizer,
-                case=case,
-                prompt=prompts["compose"],
-                mapping="answer",
-            )
-            for _ in range(2)
-        ]
-    else:
-        answer_prompt = render_factorization_update_prompt(
+    outcome_pair = [
+        _sequence(
             tokenizer=tokenizer,
             case=case,
-            config=prompt_config,
-            state=int(case["current_state"]),
-            rule=case["final_rule"],
-            name="handoff_answer",
-            label="FINAL",
+            prompt=prompts["compose"],
+            mapping="answer",
         )
-        pair = [
-            _sequence(
-                tokenizer=tokenizer,
-                case=case,
-                prompt=prompts["synthesize"],
-                mapping="state",
-            ),
-            _sequence(
-                tokenizer=tokenizer,
-                case=case,
-                prompt=answer_prompt,
-                mapping="answer",
-            ),
-        ]
+        for _ in range(2)
+    ]
+    answer_prompt = render_factorization_update_prompt(
+        tokenizer=tokenizer,
+        case=case,
+        config=prompt_config,
+        state=int(case["current_state"]),
+        rule=case["final_rule"],
+        name="handoff_answer",
+        label="FINAL",
+    )
+    handoff_pair = [
+        _sequence(
+            tokenizer=tokenizer,
+            case=case,
+            prompt=prompts["synthesize"],
+            mapping="state",
+        ),
+        _sequence(
+            tokenizer=tokenizer,
+            case=case,
+            prompt=answer_prompt,
+            mapping="answer",
+        ),
+    ]
+    pairs = {
+        "outcome_only": outcome_pair,
+        "explicit_handoff": handoff_pair,
+    }
+    target_tokens = max(
+        sum(len(row["input_ids"]) for row in pair) for pair in pairs.values()
+    )
+    for pair in pairs.values():
+        remaining = target_tokens - sum(len(row["input_ids"]) for row in pair)
+        for row in reversed(pair):
+            added = min(remaining, max_length - len(row["input_ids"]))
+            row["input_ids"].extend([int(tokenizer.pad_token_id)] * added)
+            row["labels"].extend([-100] * added)
+            row["control_tail_tokens"] = added
+            remaining -= added
+        if remaining:
+            raise ValueError(
+                f"Matched token padding for {case['id']} exceeds max length {max_length}"
+            )
+    pair = pairs[condition]
     if any(len(sequence["input_ids"]) > max_length for sequence in pair):
         raise ValueError(f"Training case {case['id']} exceeds max length {max_length}")
     return pair
@@ -415,13 +433,23 @@ def matched_compute_manifest(
     left, right = (summaries[name] for name in TRAINING_CONDITIONS)
     matched = all(
         left[key] == right[key]
-        for key in ("semantic_programs", "forward_passes", "fixed_padding_compute_tokens")
+        for key in (
+            "semantic_programs",
+            "forward_passes",
+            "fixed_padding_compute_tokens",
+            "active_input_tokens",
+        )
     )
     return {
         "schema_version": 1,
         "max_length": max_length,
         "conditions": summaries,
+        "matched_forward_passes_and_tokens": matched,
         "matched_forward_passes_and_compute_tokens": matched,
+        "token_matching_contract": (
+            "Loss-masked control tokens follow the only supervised target and cannot "
+            "affect it under causal attention."
+        ),
     }
 
 
@@ -449,7 +477,7 @@ def validate_state_handoff_training_data(run_path: Path) -> dict[str, Any]:
         prompt_config=prompt,
         max_length=max_length,
     )
-    if not compute["matched_forward_passes_and_compute_tokens"]:
+    if not compute["matched_forward_passes_and_tokens"]:
         raise ValueError("Pilot training compute is not matched")
     test_max = 0
     for case in test:
