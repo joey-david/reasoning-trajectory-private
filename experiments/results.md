@@ -28,7 +28,7 @@ Status meanings:
 
 Explicit-handoff local validation covers deterministic artifact analysis, all
 29,760 frozen-screen prompt contracts, all pilot tokenizer and hash contracts,
-39 focused tests, Ruff, compile checks, and a two-step tiny CPU LoRA resume
+41 focused tests, Ruff, compile checks, and a two-step tiny CPU LoRA resume
 smoke. No Qwen inference or training ran locally. Remote 32B handoff inference,
 the frozen 7B screen, both pilot adapters, pilot evaluation, GPU type, throughput,
 runtime, and peak memory remain unmeasured.

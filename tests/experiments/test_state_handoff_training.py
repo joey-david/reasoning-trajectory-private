@@ -14,9 +14,11 @@ from src.experiments.depth_relief.state_handoff_data import (
     training_sequence_pair,
 )
 from src.experiments.depth_relief.state_handoff_evaluation import (
+    _frozen_screen_summary,
     build_code_donors,
 )
 from src.experiments.depth_relief.state_handoff_training import (
+    _flush_checkpoint_metrics,
     read_training_metrics,
 )
 from src.experiments.depth_relief.state_handoff_smoke import run_tiny_smoke
@@ -127,6 +129,57 @@ def test_same_and_different_state_donors_obey_contract(tmp_path) -> None:
         assert different["current_state"] == (recipient["current_state"] + 1) % 8
 
 
+def test_frozen_screen_summary_reuses_saved_analysis(tmp_path) -> None:
+    run_path = tmp_path / "run"
+    handoff_path = run_path / "depth_relief/explicit_handoff"
+    handoff_path.mkdir(parents=True)
+    accuracy = {"n": 8, "mean": 0.75, "ci95": [0.5, 1.0]}
+    factorization = {
+        "controls": {
+            "read": accuracy,
+            "update": accuracy,
+            "constituent_steps": accuracy,
+        },
+        "by_history": {
+            "2": {
+                "accuracy": {
+                    "compose": accuracy,
+                    "synthesize": accuracy,
+                }
+            }
+        },
+    }
+    handoff = {
+        "by_horizon": {
+            "2": {
+                "conditions": {
+                    condition: {"accuracy": accuracy}
+                    for condition in (
+                        "gold_handoff",
+                        "lm_self_handoff",
+                        "stepwise_explicit",
+                    )
+                }
+            }
+        }
+    }
+    (run_path / "depth_relief/factorization_summary.json").write_text(
+        json.dumps(factorization)
+    )
+    (handoff_path / "summary.json").write_text(json.dumps(handoff))
+
+    summary = _frozen_screen_summary(run_path)
+
+    assert summary["read_accuracy"] == accuracy
+    assert summary["by_horizon"]["2"] == {
+        "one_pass_compose_accuracy": accuracy,
+        "synthesize_accuracy": accuracy,
+        "gold_handoff_accuracy": accuracy,
+        "self_handoff_accuracy": accuracy,
+        "stepwise_handoff_accuracy": accuracy,
+    }
+
+
 def test_duplicate_resumed_metrics_are_rejected(tmp_path) -> None:
     path = tmp_path / "training/outcome_only/metrics.jsonl"
     path.parent.mkdir(parents=True)
@@ -134,6 +187,28 @@ def test_duplicate_resumed_metrics_are_rejected(tmp_path) -> None:
     path.write_text(json.dumps(row) + "\n" + json.dumps(row) + "\n")
     with pytest.raises(ValueError, match="Duplicate optimizer steps"):
         read_training_metrics(tmp_path, "outcome_only")
+
+
+def test_checkpoint_metrics_recover_partial_flush_without_duplicates(tmp_path) -> None:
+    metrics = [
+        {"optimizer_step": 1, "total_loss": 2.0},
+        {"optimizer_step": 2, "total_loss": 1.0},
+    ]
+    path = tmp_path / "training/outcome_only/metrics.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(metrics[0]) + "\n")
+
+    recovered = _flush_checkpoint_metrics(tmp_path, "outcome_only", metrics)
+    repeated = _flush_checkpoint_metrics(tmp_path, "outcome_only", metrics)
+
+    assert recovered == repeated == metrics
+    assert read_training_metrics(tmp_path, "outcome_only") == metrics
+    with pytest.raises(ValueError, match="changed at optimizer step 2"):
+        _flush_checkpoint_metrics(
+            tmp_path,
+            "outcome_only",
+            [{"optimizer_step": 2, "total_loss": 9.0}],
+        )
 
 
 def test_tiny_lora_resume_save_reload_and_evaluation_smoke(tmp_path) -> None:

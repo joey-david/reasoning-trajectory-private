@@ -79,6 +79,30 @@ def read_training_metrics(run_path: Path, condition: str) -> list[dict[str, Any]
     return rows
 
 
+def _flush_checkpoint_metrics(
+    run_path: Path, condition: str, pending: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Append checkpoint-owned metrics once and recover a partial flush."""
+    rows = read_training_metrics(run_path, condition)
+    by_step = {int(row["optimizer_step"]): row for row in rows}
+    last_step = int(rows[-1]["optimizer_step"]) if rows else 0
+    path = condition_training_dir(run_path, condition) / "metrics.jsonl"
+    for metric in pending:
+        step = int(metric["optimizer_step"])
+        existing = by_step.get(step)
+        if existing is not None:
+            if existing != metric:
+                raise ValueError(f"Checkpoint metric changed at optimizer step {step}")
+            continue
+        if step != last_step + 1:
+            raise ValueError(f"Checkpoint metrics have a gap before optimizer step {step}")
+        append_jsonl(path, metric)
+        rows.append(metric)
+        by_step[step] = metric
+        last_step = step
+    return rows
+
+
 def _collate(
     *, sequences: list[dict[str, Any]], tokenizer: Any, max_length: int, device: Any
 ) -> dict[str, Any]:
@@ -254,7 +278,7 @@ def _load_resume_state(
 
 
 def _base_and_adapter(
-    *, run_path: Path, condition: str, checkpoint: Path | None, model: Any | None, tokenizer: Any | None
+    *, run_path: Path, checkpoint: Path | None, model: Any | None, tokenizer: Any | None
 ) -> tuple[Any, Any]:
     config = load_config(run_path)
     if model is None or tokenizer is None:
@@ -302,6 +326,10 @@ def train_state_handoff_condition(
     config = load_config(run_path)
     experiment = config.get("state_handoff_training", {})
     training = experiment.get("training", {})
+    seed = int(training.get("seed", 721_401))
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     output = condition_training_dir(run_path, condition)
     manifest_path = output / "checkpoint_manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
@@ -310,7 +338,6 @@ def train_state_handoff_condition(
     checkpoint = Path(manifest["last_checkpoint"]) if manifest.get("last_checkpoint") else None
     model, tokenizer = _base_and_adapter(
         run_path=run_path,
-        condition=condition,
         checkpoint=checkpoint,
         model=model,
         tokenizer=tokenizer,
@@ -335,10 +362,7 @@ def train_state_handoff_condition(
     epochs = int(training.get("epochs", 2))
     if not 1 <= epochs <= 2:
         raise ValueError("Pilot training is capped at two epochs")
-    seed = int(training.get("seed", 721_401))
-    torch.manual_seed(seed)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
         torch.cuda.reset_peak_memory_stats()
     train_cases = read_programs(run_path / TRAIN_PATH)
     validation_cases = read_programs(run_path / VALIDATION_PATH)
@@ -394,7 +418,8 @@ def train_state_handoff_condition(
         state = _load_resume_state(
             model=model, optimizer=optimizer, scheduler=scheduler, checkpoint=checkpoint
         )
-    metrics = read_training_metrics(run_path, condition)
+    pending_metrics = list(state.pop("pending_metrics", []))
+    metrics = _flush_checkpoint_metrics(run_path, condition, pending_metrics)
     if metrics and int(metrics[-1]["optimizer_step"]) != int(state["optimizer_step"]):
         raise ValueError("Checkpoint and metrics disagree on the last optimizer step")
     skip_microbatches = int(state["microbatch_index"])
@@ -406,7 +431,10 @@ def train_state_handoff_condition(
     running_counts: defaultdict[str, int] = defaultdict(int)
     interval_started = time.monotonic()
     eval_interval = int(training.get("evaluation_interval", 250))
+    if eval_interval < 1:
+        raise ValueError("Evaluation interval must be positive")
     max_grad_norm = float(training.get("max_gradient_norm", 1.0))
+    checkpoint_metrics: list[dict[str, Any]] = []
     for microbatch_index, pair_batch in enumerate(batches):
         if microbatch_index < skip_microbatches:
             continue
@@ -506,7 +534,7 @@ def train_state_handoff_condition(
             or (key == "state_token_loss" and value is not None)
         ):
             raise FloatingPointError("State-handoff training produced a non-finite metric")
-        append_jsonl(output / "metrics.jsonl", metric)
+        checkpoint_metrics.append(metric)
         running.clear()
         running_counts.clear()
         interval_started = time.monotonic()
@@ -517,6 +545,7 @@ def train_state_handoff_condition(
             ):
                 state["best_validation_accuracy"] = validation_answer
                 state["best_checkpoint"] = str(checkpoint_dir)
+            state["pending_metrics"] = checkpoint_metrics
             _save_checkpoint(
                 model=model,
                 optimizer=optimizer,
@@ -541,6 +570,9 @@ def train_state_handoff_condition(
                 ),
             }
             write_json(manifest_path, manifest)
+            _flush_checkpoint_metrics(run_path, condition, checkpoint_metrics)
+            checkpoint_metrics = []
+            state.pop("pending_metrics", None)
     final_adapter = output / "adapter" / "final"
     model.save_pretrained(final_adapter, safe_serialization=True)
     manifest = {
