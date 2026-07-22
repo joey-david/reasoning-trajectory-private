@@ -28,6 +28,13 @@ from src.experiments.depth_relief.state_handoff_training import (
     _flush_checkpoint_metrics,
     read_training_metrics,
 )
+from src.experiments.depth_relief.state_handoff_information import (
+    conditional_entropy,
+    discrete_entropy,
+    mutual_information,
+    rate_capacity_table,
+    summarize_code_information,
+)
 from src.experiments.depth_relief.state_handoff_smoke import run_tiny_smoke
 
 
@@ -294,3 +301,36 @@ def test_continuation_summary_separates_local_closure_from_global_state() -> Non
     assert summary["state_accuracy"]["mean"] == 1.0
     assert summary["local_closure_accuracy"]["mean"] == 1.0
     assert summary["same_state_code_agreement"]["mean"] == 1.0
+
+
+def test_exact_information_metrics_separate_state_and_path_bits() -> None:
+    rows = []
+    for state in range(8):
+        for path in range(2):
+            rows.append(
+                {
+                    "current_state": state,
+                    "conditions": {
+                        "state": {"unconstrained_prediction": state}
+                    },
+                    "path_code": path,
+                }
+            )
+    summary = summarize_code_information(rows)
+
+    assert discrete_entropy(range(8)) == 3.0
+    assert conditional_entropy((state, state) for state in range(8)) == 0.0
+    assert mutual_information((state, state) for state in range(8)) == 3.0
+    assert summary["state_information_bits"] == 3.0
+    assert summary["code_given_state_bits"] == 0.0
+    assert summary["path_invariance_exact"] is True
+
+
+def test_rate_table_has_exact_three_bit_threshold() -> None:
+    table = {row["codebook_size"]: row for row in rate_capacity_table()}
+
+    assert table[4]["deterministic_balanced_state_accuracy_ceiling"] == 0.5
+    assert table[4]["lossless_possible"] is False
+    assert table[8]["capacity_bits"] == 3.0
+    assert table[8]["lossless_possible"] is True
+    assert table[16]["deterministic_balanced_state_accuracy_ceiling"] == 1.0

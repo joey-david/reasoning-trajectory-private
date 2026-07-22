@@ -24,6 +24,9 @@ from src.experiments.depth_relief.state_handoff_evaluation import (
     compare_state_handoff_conditions,
     evaluate_state_handoff_condition,
 )
+from src.experiments.depth_relief.state_handoff_information import (
+    analyze_state_handoff_information,
+)
 from src.experiments.depth_relief.state_handoff_training import (
     state_handoff_training_status,
     train_state_handoff_condition,
@@ -45,6 +48,7 @@ def main() -> int:
             "prepare-continuation",
             "evaluate-continuation",
             "status-continuation",
+            "analyze-information",
         ),
     )
     parser.add_argument("run_path", type=Path)
@@ -87,6 +91,10 @@ def main() -> int:
         )
     elif args.command == "status-continuation":
         result = continuation_status(args.run_path)
+    elif args.command == "analyze-information":
+        result = analyze_state_handoff_information(
+            args.run_path, continuation_profile=args.profile
+        )
     else:
         result = state_handoff_training_status(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))
