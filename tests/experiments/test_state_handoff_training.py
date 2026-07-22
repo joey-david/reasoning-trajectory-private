@@ -14,6 +14,7 @@ from src.experiments.depth_relief.state_handoff_data import (
     training_sequence_pair,
 )
 from src.experiments.depth_relief.state_handoff_continuation import (
+    apply_continuation_gate,
     block_case,
     continuation_case_id,
     prepare_continuation_programs,
@@ -313,6 +314,34 @@ def test_continuation_summary_separates_local_closure_from_global_state() -> Non
     assert summary["state_accuracy"]["mean"] == 1.0
     assert summary["local_closure_accuracy"]["mean"] == 1.0
     assert summary["same_state_code_agreement"]["mean"] == 1.0
+
+
+def test_continuation_confirmation_gate_uses_saved_probe(tmp_path) -> None:
+    run_path = tmp_path / "run"
+    _write_config(run_path)
+    output = run_path / "evaluation/continuation/probe"
+    output.mkdir(parents=True)
+    metric = {"mean": 1.0}
+    (output / "summary.json").write_text(
+        json.dumps(
+            {
+                "complete": True,
+                "by_cell": {
+                    "block2_h8": {"answer_accuracy": metric},
+                    "block2_h16": {
+                        "answer_accuracy": metric,
+                        "local_closure_accuracy": metric,
+                        "final_follows_supplied_state": metric,
+                    },
+                },
+            }
+        )
+    )
+
+    gate = apply_continuation_gate(run_path)
+
+    assert gate["status"] == "passed"
+    assert all(gate["checks"].values())
 
 
 def test_exact_information_metrics_separate_state_and_path_bits() -> None:

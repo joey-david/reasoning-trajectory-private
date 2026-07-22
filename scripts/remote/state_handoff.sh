@@ -79,7 +79,23 @@ continuation-probe-7b)
     --devices "$devices" \
     --run "$run"
   "$PYTHON" scripts/experiments/run_state_handoff_training.py \
-    status-continuation "$run"
+    analyze-information "$run" --profile probe
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    gate-continuation "$run"
+  ;;
+continuation-confirm-7b)
+  run="runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest"
+  nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  devices="${STATE_HANDOFF_7B_DEVICES:-0}"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    prepare-continuation "$run" --profile confirmation
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_handoff_continuation \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$run"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    analyze-information "$run" --profile confirmation
   ;;
 interface-pilot-7b)
   run="runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls"
@@ -98,7 +114,7 @@ interface-pilot-7b)
     compare-interfaces "$run"
   ;;
 *)
-  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | interface-pilot-7b" >&2
+  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b" >&2
   exit 2
   ;;
 esac

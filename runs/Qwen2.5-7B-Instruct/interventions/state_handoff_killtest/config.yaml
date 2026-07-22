@@ -87,6 +87,11 @@ state_handoff_training:
     system: Execute the state program exactly and return one decimal integer.
 
 state_handoff_continuation:
+  gate:
+    min_h8_answer_accuracy: 0.90
+    min_h16_answer_accuracy: 0.80
+    min_h16_local_closure: 0.98
+    min_final_follows_state: 0.95
   profiles:
     probe:
       horizons: [2, 4, 8, 16]

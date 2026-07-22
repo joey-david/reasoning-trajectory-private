@@ -16,6 +16,7 @@ from src.experiments.depth_relief.state_handoff_data import (
     validate_state_handoff_training_data,
 )
 from src.experiments.depth_relief.state_handoff_continuation import (
+    apply_continuation_gate,
     continuation_status,
     evaluate_continuation_profile,
     prepare_continuation_programs,
@@ -60,6 +61,7 @@ def main() -> int:
             "compare-interfaces",
             "smoke-interfaces",
             "analyze-interchange",
+            "gate-continuation",
         ),
     )
     parser.add_argument("run_path", type=Path)
@@ -124,6 +126,8 @@ def main() -> int:
         if args.condition is None:
             parser.error("analyze-interchange requires --condition")
         result = analyze_interface_interchange(args.run_path, args.condition)
+    elif args.command == "gate-continuation":
+        result = apply_continuation_gate(args.run_path)
     else:
         result = state_handoff_training_status(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))

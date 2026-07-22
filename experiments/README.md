@@ -179,11 +179,11 @@ run and never regenerates its inference. The local artifact-only analysis is:
   runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
 ```
 
-At horizon 2, deterministic execution of the recorded Synthesize state scores
-76.98%, versus 13.44% for one-pass Compose. The program-context-paired gain is
-+63.54 points with a 95% interval of +58.33 to +68.75. At horizon 4, both paths
-score 12.71% because state synthesis itself has failed. This is an oracle result,
-not a passed handoff gate: no LM self, gold, or stepwise inference rows exist.
+The 32B Phase 1 gate passed. At h2, two-call self handoff scores 76.98% versus
+13.44% one-pass Compose, a context-paired +63.54 points with a 95% interval of
++57.92 to +68.75. Gold and stepwise handoff are 100% at h2 and h4. At h4,
+self handoff remains at 12.71% because the first history-to-state call has
+already failed.
 
 The large steps run in this order from the shared checkout on `lamgate`:
 
@@ -192,6 +192,9 @@ scripts/remote/state_handoff.sh phase1-32b
 scripts/remote/state_handoff.sh screen-7b
 scripts/remote/state_handoff.sh prepare-pilot-7b
 scripts/remote/state_handoff.sh pilot-7b
+scripts/remote/state_handoff.sh continuation-probe-7b
+scripts/remote/state_handoff.sh continuation-confirm-7b
+scripts/remote/state_handoff.sh interface-pilot-7b
 ```
 
 `phase1-32b` runs history-free self, gold, and stepwise calls with
@@ -203,14 +206,33 @@ Qwen2.5-7B-Instruct revision
 SDPA if unavailable. The 32B job uses one two-GPU worker; each 7B job uses one
 A100. All jobs resume from append-only rows.
 
-The trainer refuses to start unless the 32B Phase 1 gate passes and the frozen
-7B screen is complete. The pilot then trains `outcome_only` and
-`explicit_handoff` through one shared rank-16 LoRA runner. Each condition gets
-20,000 train and 2,000 validation forwards per epoch, exactly 2,281,200 active
-train tokens and 5,120,000 fixed-padding compute tokens. Loss-masked control
-tokens follow the only target token, so causal attention prevents them from
-changing that target. Training uses h1/h2; held-out evaluation uses h2/h4/h8
-over 30 unseen program contexts.
+The first 7B pilot is complete and failed its OOD gate. `explicit_handoff`
+reaches 100% on unseen-context h2, versus 12.08% outcome-only, but returns to
+12.08% at h4 and 11.77% at h8. Gold-code continuation is 100% throughout.
+The adapter therefore learned a perfect fixed-length state map and consumer,
+not a closed transition interface. Exact artifact analysis finds 3.00 retained
+state bits at h2, 0.28 at h4, and 0.04 at h8.
+
+`continuation-probe-7b` reuses that saved adapter without training. It applies
+the learned h2 mapping recursively at h2/h4/h8/h16 and writes local closure,
+end-to-end accuracy, same-state agreement, and information measures under
+`evaluation/continuation/probe/`.
+
+`interface-pilot-7b` owns the nontrivial follow-up in
+`state_interface_rate_controls`. Two A100 workers train four rank-16 adapters:
+
+- `canonical_opaque`: one global opaque eight-code contract, exactly three bits;
+- `context_bound`: eight codes with a different permutation per context;
+- `compressed_2bit`: four codes, with a 50% exact-state ceiling;
+- `redundant_4bit`: sixteen codes carrying state plus one path bit.
+
+Every condition gets 10,000 semantic pairs, 20,000 forwards, 20,000 target
+tokens, and 5,120,000 fixed-padding tokens per epoch. State producers use 25
+training contexts and code consumers use the other 25; the 30 test contexts are
+new to both. Training sees only h1/h2 blocks. Evaluation recursively composes
+h2 blocks at h2/h4/h8/h16, measures global and context-conditional mutual
+information, and builds same-state/different-state interchange matrices from
+history-free consumer calls.
 
 Pinned hashes are:
 
@@ -219,6 +241,9 @@ Pinned hashes are:
 - Pilot train: `b27623034cabce19fe9dcea3dd047728f28a1423e0cda408a18e814de614612a`.
 - Pilot validation: `63fca3627a32042ca82b8a93b92968e6632bbffaad6280416bf73e8299f7cd7b`.
 - Pilot test: `8c4215684ad19ea63a6d9998bbd3fe29a4f1e6cfbf9625a1613aae0b321cb50c`.
+- Interface train: `4c7c62c04ffcec8ceaa62b5347086f70b0bb372fe847ce65177a26bafccb98ec`.
+- Interface validation: `2cc06eaf70955ec76941de40e439631045e5865f8d33f7a00071c153cdb8dd2d`.
+- Interface test: `de35ab315505f6b6e524b1d4b4950e43309b21a23271cd1f304c71038589e781`.
 
 The tiny CPU smoke covers finite state and answer losses, adapter save/reload,
 resume without duplicate metrics, and evaluation without the training dataset:
@@ -226,14 +251,17 @@ resume without duplicate metrics, and evaluation without the training dataset:
 ```bash
 .venv/bin/python scripts/experiments/run_state_handoff_training.py smoke \
   runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
+.venv/bin/python scripts/experiments/run_state_handoff_training.py smoke-interfaces \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls
 ```
 
-Primary outputs are `depth_relief/explicit_handoff/summary.json`,
-`evaluation/<condition>/{cases.jsonl,summary.json}`,
-`evaluation/comparison_summary.json`, `evaluation/horizon_accuracy.png`, and
-`evaluation/handoff_gap.png`. Opaque codes, causal code interchange, full-scale
-three-seed training, and `interchange_matrix.png` remain blocked until the pilot
-gate passes.
+New outputs are `evaluation/information_summary.json`,
+`evaluation/{rate_capacity,state_information}.png`,
+`evaluation/continuation/<profile>/{cases,summary}.json*`, and
+`evaluation/interfaces/<condition>/{cases,summary,interchange_summary}.json*`.
+The interface comparison owns `comparison_summary.json`,
+`interface_accuracy.png`, and one `interchange_matrix.png` per condition. Full
+three-seed confirmation remains gated on the one-seed interface result.
 
 ## Causal depth relief
 

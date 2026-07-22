@@ -41,6 +41,12 @@ DEFAULT_PROFILES = {
         "seed": 721_601,
     },
 }
+DEFAULT_CONTINUATION_GATE = {
+    "min_h8_answer_accuracy": 0.90,
+    "min_h16_answer_accuracy": 0.80,
+    "min_h16_local_closure": 0.98,
+    "min_final_follows_state": 0.95,
+}
 
 
 def continuation_dir(run_path: Path, profile: str) -> Path:
@@ -76,6 +82,10 @@ def continuation_profile(run_path: Path, profile: str) -> dict[str, Any]:
 
 def prepare_continuation_programs(run_path: Path, profile: str) -> dict[str, Any]:
     """Write a deterministic, balanced bank without changing pilot test data."""
+    if profile == "confirmation":
+        gate = apply_continuation_gate(run_path)
+        if gate["status"] != "passed":
+            raise RuntimeError("Continuation confirmation is blocked by the probe gate")
     values = continuation_profile(run_path, profile)
     width = int(
         load_config(run_path)
@@ -396,3 +406,38 @@ def continuation_status(run_path: Path) -> dict[str, Any]:
         summary = json.loads((path / "summary.json").read_text()) if (path / "summary.json").exists() else None
         profiles[path.name] = {"manifest": manifest, "summary": summary}
     return {"run_path": str(run_path), "profiles": profiles}
+
+
+def apply_continuation_gate(run_path: Path) -> dict[str, Any]:
+    """Gate the larger recursive confirmation on the saved probe."""
+    path = continuation_dir(run_path, "probe") / "summary.json"
+    if not path.exists():
+        raise RuntimeError("Continuation probe summary is missing")
+    summary = json.loads(path.read_text())
+    if not summary.get("complete"):
+        raise RuntimeError("Continuation probe is incomplete")
+    cells = summary["by_cell"]
+    h8 = cells["block2_h8"]
+    h16 = cells["block2_h16"]
+    configured = load_config(run_path).get("state_handoff_continuation", {}).get(
+        "gate", {}
+    )
+    thresholds = {**DEFAULT_CONTINUATION_GATE, **configured}
+    checks = {
+        "h8_answer_accuracy": h8["answer_accuracy"]["mean"]
+        >= float(thresholds["min_h8_answer_accuracy"]),
+        "h16_answer_accuracy": h16["answer_accuracy"]["mean"]
+        >= float(thresholds["min_h16_answer_accuracy"]),
+        "h16_local_closure": h16["local_closure_accuracy"]["mean"]
+        >= float(thresholds["min_h16_local_closure"]),
+        "final_follows_state": h16["final_follows_supplied_state"]["mean"]
+        >= float(thresholds["min_final_follows_state"]),
+    }
+    gate = {
+        "schema_version": 1,
+        "status": "passed" if all(checks.values()) else "failed",
+        "thresholds": thresholds,
+        "checks": checks,
+    }
+    write_json(run_path / CONTINUATION_ROOT / "gate.json", gate)
+    return gate
