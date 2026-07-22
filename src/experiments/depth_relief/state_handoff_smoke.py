@@ -263,7 +263,7 @@ def run_tiny_interface_smoke(_source_run_path: Path) -> dict[str, Any]:
         evaluation = evaluate_state_interface_condition(
             run_path,
             "canonical_opaque",
-            max_cases=1,
+            max_cases=17,
             model=model.eval(),
             tokenizer=tokenizer,
         )
@@ -273,7 +273,8 @@ def run_tiny_interface_smoke(_source_run_path: Path) -> dict[str, Any]:
                 math.isfinite(float(metrics[0][key]))
                 for key in ("total_loss", "state_token_loss", "answer_loss")
             ),
-            "evaluation_without_training_dataset": evaluation["case_count"] == 1,
+            "evaluation_without_training_dataset": evaluation["case_count"] == 17,
+            "recursive_h4_path_exercised": "4" in evaluation["by_horizon"],
             "matched_interface_compute": json.loads(
                 (run_path / "training/compute_manifest.json").read_text()
             )["matched_forward_passes_and_tokens"],

@@ -490,4 +490,5 @@ def test_tiny_opaque_interface_training_and_evaluation_smoke(tmp_path) -> None:
         "finite_losses": True,
         "evaluation_without_training_dataset": True,
         "matched_interface_compute": True,
+        "recursive_h4_path_exercised": True,
     }
