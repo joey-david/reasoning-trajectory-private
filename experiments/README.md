@@ -203,6 +203,16 @@ Qwen2.5-7B-Instruct revision
 SDPA if unavailable. The 32B job uses one two-GPU worker; each 7B job uses one
 A100. All jobs resume from append-only rows.
 
+From the `upnquick` checkout, queue the bounded gated sequence with:
+
+```bash
+bash scripts/remote/queue_state_handoff.sh
+```
+
+It waits for both GPUs only for the 32B Phase 1 job, releases them after that
+job, and then queues the one-GPU 7B screen and pilot. It stops if Phase 1 fails
+or after the pilot gate; it never reserves an idle GPU.
+
 The trainer refuses to start unless the 32B Phase 1 gate passes and the frozen
 7B screen is complete. The pilot then trains `outcome_only` and
 `explicit_handoff` through one shared rank-16 LoRA runner. Each condition gets
