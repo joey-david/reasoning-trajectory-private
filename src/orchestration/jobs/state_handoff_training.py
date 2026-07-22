@@ -8,7 +8,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.experiments.depth_relief.state_handoff_data import TRAINING_CONDITIONS
+from src.experiments.depth_relief.state_handoff_data import (
+    INTERFACE_CONDITIONS,
+    configured_training_conditions,
+)
 from src.experiments.depth_relief.state_handoff_evaluation import (
     condition_evaluation_dir,
     evaluate_state_handoff_condition,
@@ -23,7 +26,14 @@ from src.orchestration.jobs.contract import Task, TaskResult
 
 def _condition_complete(run_path: Path, condition: str) -> bool:
     training_path = condition_training_dir(run_path, condition) / "checkpoint_manifest.json"
-    evaluation_path = condition_evaluation_dir(run_path, condition) / "summary.json"
+    if condition in INTERFACE_CONDITIONS:
+        from src.experiments.depth_relief.state_interface_evaluation import (
+            interface_evaluation_dir,
+        )
+
+        evaluation_path = interface_evaluation_dir(run_path, condition) / "summary.json"
+    else:
+        evaluation_path = condition_evaluation_dir(run_path, condition) / "summary.json"
     if not training_path.exists() or not evaluation_path.exists():
         return False
     training = json.loads(training_path.read_text())
@@ -35,10 +45,11 @@ def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
     """Return unfinished training-plus-evaluation conditions."""
     pending = [
         {"condition": condition}
-        for condition in TRAINING_CONDITIONS
+        for condition in configured_training_conditions(run_path)
         if not _condition_complete(run_path, condition)
     ]
-    return pending, len(TRAINING_CONDITIONS), len(TRAINING_CONDITIONS) - len(pending)
+    total = len(configured_training_conditions(run_path))
+    return pending, total, total - len(pending)
 
 
 def setup_worker(run_path: Path) -> "StateHandoffTrainingWorker":
@@ -73,7 +84,16 @@ class StateHandoffTrainingWorker:
         except ImportError:
             pass
         progress.set_description(f"state handoff evaluation {condition}")
-        summary = evaluate_state_handoff_condition(
-            self.run_path, condition, on_progress=progress.set_description
-        )
+        if condition in INTERFACE_CONDITIONS:
+            from src.experiments.depth_relief.state_interface_evaluation import (
+                evaluate_state_interface_condition,
+            )
+
+            summary = evaluate_state_interface_condition(
+                self.run_path, condition, on_progress=progress.set_description
+            )
+        else:
+            summary = evaluate_state_handoff_condition(
+                self.run_path, condition, on_progress=progress.set_description
+            )
         return TaskResult(units=int(summary["case_count"]), unit="evaluation case")

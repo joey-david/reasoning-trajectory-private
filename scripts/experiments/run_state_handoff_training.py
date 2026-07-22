@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.experiments.depth_relief.state_handoff_data import (
-    TRAINING_CONDITIONS,
+    ALL_TRAINING_CONDITIONS,
     prepare_state_handoff_datasets,
     validate_state_handoff_training_data,
 )
@@ -31,6 +31,13 @@ from src.experiments.depth_relief.state_handoff_training import (
     state_handoff_training_status,
     train_state_handoff_condition,
 )
+from src.experiments.depth_relief.state_interface_evaluation import (
+    compare_state_interface_conditions,
+    evaluate_state_interface_condition,
+)
+from src.experiments.depth_relief.state_interface_interchange import (
+    analyze_interface_interchange,
+)
 
 
 def main() -> int:
@@ -49,10 +56,14 @@ def main() -> int:
             "evaluate-continuation",
             "status-continuation",
             "analyze-information",
+            "evaluate-interface",
+            "compare-interfaces",
+            "smoke-interfaces",
+            "analyze-interchange",
         ),
     )
     parser.add_argument("run_path", type=Path)
-    parser.add_argument("--condition", choices=TRAINING_CONDITIONS)
+    parser.add_argument("--condition", choices=ALL_TRAINING_CONDITIONS)
     parser.add_argument("--max-cases", type=int)
     parser.add_argument("--max-optimizer-steps", type=int)
     parser.add_argument("--profile", default="probe")
@@ -95,6 +106,24 @@ def main() -> int:
         result = analyze_state_handoff_information(
             args.run_path, continuation_profile=args.profile
         )
+    elif args.command == "evaluate-interface":
+        if args.condition is None:
+            parser.error("evaluate-interface requires --condition")
+        result = evaluate_state_interface_condition(
+            args.run_path, args.condition, max_cases=args.max_cases
+        )
+    elif args.command == "compare-interfaces":
+        result = compare_state_interface_conditions(args.run_path)
+    elif args.command == "smoke-interfaces":
+        from src.experiments.depth_relief.state_handoff_smoke import (
+            run_tiny_interface_smoke,
+        )
+
+        result = run_tiny_interface_smoke(args.run_path)
+    elif args.command == "analyze-interchange":
+        if args.condition is None:
+            parser.error("analyze-interchange requires --condition")
+        result = analyze_interface_interchange(args.run_path, args.condition)
     else:
         result = state_handoff_training_status(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))

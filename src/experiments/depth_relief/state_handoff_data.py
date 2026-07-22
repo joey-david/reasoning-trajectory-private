@@ -27,6 +27,29 @@ TEST_PATH = Path("evaluation/test_programs.jsonl")
 DATA_MANIFEST_PATH = Path("training/data/manifest.json")
 COMPUTE_MANIFEST_PATH = Path("training/compute_manifest.json")
 TRAINING_CONDITIONS = ("outcome_only", "explicit_handoff")
+INTERFACE_CONDITIONS = (
+    "canonical_opaque",
+    "context_bound",
+    "compressed_2bit",
+    "redundant_4bit",
+)
+ALL_TRAINING_CONDITIONS = TRAINING_CONDITIONS + INTERFACE_CONDITIONS
+
+
+def configured_training_conditions(run_path: Path) -> tuple[str, ...]:
+    """Return and validate the conditions owned by one run configuration."""
+    configured = tuple(
+        str(value)
+        for value in load_config(run_path)
+        .get("state_handoff_training", {})
+        .get("conditions", TRAINING_CONDITIONS)
+    )
+    unknown = sorted(set(configured) - set(ALL_TRAINING_CONDITIONS))
+    if unknown:
+        raise ValueError(f"Unknown state-handoff training conditions: {unknown}")
+    if not configured or len(configured) != len(set(configured)):
+        raise ValueError("State-handoff training conditions must be unique and nonempty")
+    return configured
 
 
 def _state_path(
@@ -457,6 +480,13 @@ def matched_compute_manifest(
 
 def validate_state_handoff_training_data(run_path: Path) -> dict[str, Any]:
     """Validate tokenizer, length, and matched-compute contracts before GPU use."""
+    conditions = configured_training_conditions(run_path)
+    if set(conditions).issubset(INTERFACE_CONDITIONS):
+        from .state_interface_data import validate_state_interface_training_data
+
+        return validate_state_interface_training_data(run_path)
+    if not set(conditions).issubset(TRAINING_CONDITIONS):
+        raise ValueError("A run cannot mix terminal and code-interface conditions")
     from src.models.hf_loader import load_hf_tokenizer
 
     config = load_config(run_path)

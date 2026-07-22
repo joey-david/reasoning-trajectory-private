@@ -15,6 +15,7 @@ from src.runtime.artifact_store import append_jsonl, write_json
 from src.runtime.config import load_config
 
 from .state_handoff_data import (
+    ALL_TRAINING_CONDITIONS,
     COMPUTE_MANIFEST_PATH,
     DATA_MANIFEST_PATH,
     TRAINING_CONDITIONS,
@@ -23,6 +24,7 @@ from .state_handoff_data import (
     build_training_pairs,
     matched_compute_manifest,
     read_programs,
+    configured_training_conditions,
 )
 
 
@@ -39,7 +41,7 @@ DEFAULT_TARGET_MODULES = (
 
 def condition_training_dir(run_path: Path, condition: str) -> Path:
     """Return the artifact owner for one training condition."""
-    if condition not in TRAINING_CONDITIONS:
+    if condition not in ALL_TRAINING_CONDITIONS:
         raise ValueError(f"Unknown state-handoff training condition: {condition!r}")
     return run_path / "training" / condition
 
@@ -54,8 +56,9 @@ def require_phase1_training_gate(run_path: Path) -> None:
     status = json.loads(summary_path.read_text())["phase1_gate"]["status"]
     if status != "passed":
         raise RuntimeError(f"Phase 1 gate is {status!r}; LoRA training is blocked")
-    factorization_path = run_path / "depth_relief/factorization_summary.json"
-    screen_path = run_path / "depth_relief/explicit_handoff/summary.json"
+    screen_source = Path(str(config.get("frozen_screen_source_run", run_path)))
+    factorization_path = screen_source / "depth_relief/factorization_summary.json"
+    screen_path = screen_source / "depth_relief/explicit_handoff/summary.json"
     if not factorization_path.exists() or not screen_path.exists():
         raise RuntimeError("Frozen 7B factorization and handoff screens must run first")
     screen = json.loads(screen_path.read_text())
@@ -317,7 +320,7 @@ def train_state_handoff_condition(
     on_progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Train or resume one matched-compute LoRA condition."""
-    if condition not in TRAINING_CONDITIONS:
+    if condition not in ALL_TRAINING_CONDITIONS:
         raise ValueError(f"Unknown state-handoff training condition: {condition!r}")
     if enforce_phase1_gate:
         require_phase1_training_gate(run_path)
@@ -368,28 +371,64 @@ def train_state_handoff_condition(
     train_cases = read_programs(run_path / TRAIN_PATH)
     validation_cases = read_programs(run_path / VALIDATION_PATH)
     prompt = experiment.get("prompt", {})
-    pairs = build_training_pairs(
-        tokenizer=tokenizer,
-        cases=train_cases,
-        prompt_config=prompt,
-        condition=condition,
-        max_length=max_length,
-    )
-    validation_pairs = build_training_pairs(
-        tokenizer=tokenizer,
-        cases=validation_cases,
-        prompt_config=prompt,
-        condition=condition,
-        max_length=max_length,
-    )
-    compute_path = run_path / COMPUTE_MANIFEST_PATH
-    if not compute_path.exists():
-        compute = matched_compute_manifest(
+    if condition in TRAINING_CONDITIONS:
+        pairs = build_training_pairs(
             tokenizer=tokenizer,
             cases=train_cases,
             prompt_config=prompt,
+            condition=condition,
             max_length=max_length,
         )
+        validation_pairs = build_training_pairs(
+            tokenizer=tokenizer,
+            cases=validation_cases,
+            prompt_config=prompt,
+            condition=condition,
+            max_length=max_length,
+        )
+    else:
+        from .state_interface_data import build_interface_training_pairs
+
+        interface = experiment.get("interfaces", {})
+        pairs = build_interface_training_pairs(
+            tokenizer=tokenizer,
+            cases=train_cases,
+            prompt_config=prompt,
+            condition=condition,
+            interface_config=interface,
+            max_length=max_length,
+        )
+        validation_pairs = build_interface_training_pairs(
+            tokenizer=tokenizer,
+            cases=validation_cases,
+            prompt_config=prompt,
+            condition=condition,
+            interface_config=interface,
+            max_length=max_length,
+        )
+    compute_path = run_path / COMPUTE_MANIFEST_PATH
+    if not compute_path.exists():
+        if condition in TRAINING_CONDITIONS:
+            compute = matched_compute_manifest(
+                tokenizer=tokenizer,
+                cases=train_cases,
+                prompt_config=prompt,
+                max_length=max_length,
+            )
+        else:
+            from .state_interface_data import matched_interface_compute_manifest
+
+            conditions = configured_training_conditions(run_path)
+            if not set(conditions).issubset(set(ALL_TRAINING_CONDITIONS) - set(TRAINING_CONDITIONS)):
+                raise ValueError("Interface runs cannot mix terminal and code conditions")
+            compute = matched_interface_compute_manifest(
+                tokenizer=tokenizer,
+                cases=train_cases,
+                prompt_config=prompt,
+                conditions=conditions,
+                interface_config=experiment.get("interfaces", {}),
+                max_length=max_length,
+            )
         if not compute["matched_forward_passes_and_tokens"]:
             raise RuntimeError("Training conditions do not have matched compute")
         write_json(compute_path, compute)
@@ -606,7 +645,7 @@ def train_state_handoff_condition(
 def state_handoff_training_status(run_path: Path) -> dict[str, Any]:
     """Report data and per-condition checkpoint state without loading a model."""
     conditions = {}
-    for condition in TRAINING_CONDITIONS:
+    for condition in configured_training_conditions(run_path):
         path = condition_training_dir(run_path, condition) / "checkpoint_manifest.json"
         conditions[condition] = json.loads(path.read_text()) if path.exists() else {
             "status": "not_started"

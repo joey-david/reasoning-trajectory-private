@@ -51,6 +51,20 @@ def mutual_information(values: Iterable[tuple[Hashable, Hashable]]) -> float:
     return discrete_entropy(left for left, _ in rows) - conditional_entropy(rows)
 
 
+def conditional_mutual_information(
+    values: Iterable[tuple[Hashable, Hashable, Hashable]],
+) -> float:
+    """Return I(left; middle | right) from exact discrete counts."""
+    rows = list(values)
+    state_given_context = conditional_entropy(
+        (left, right) for left, _, right in rows
+    )
+    state_given_code_context = conditional_entropy(
+        (left, (middle, right)) for left, middle, right in rows
+    )
+    return state_given_context - state_given_code_context
+
+
 def rate_capacity_table(state_count: int = 8) -> list[dict[str, Any]]:
     """Return deterministic lossless ceilings around the true state entropy."""
     if state_count < 2 or state_count & (state_count - 1):

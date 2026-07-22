@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import json
 from pathlib import Path
 import tempfile
 from typing import Any
@@ -202,4 +203,78 @@ def run_tiny_smoke(_source_run_path: Path) -> dict[str, Any]:
             "evaluation_without_training_dataset": int(evaluation["case_count"]) == 2,
             "resume_metric_steps": [row["optimizer_step"] for row in metrics],
             "duplicate_metrics_or_cases": False,
+        }
+
+
+def run_tiny_interface_smoke(_source_run_path: Path) -> dict[str, Any]:
+    """Run one opaque-interface update and evaluate without training rows."""
+    import torch
+    from transformers import LlamaConfig, LlamaForCausalLM
+
+    from .state_interface_evaluation import evaluate_state_interface_condition
+
+    repository_tmp = Path(__file__).resolve().parents[3] / ".tmp"
+    repository_tmp.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="state_interface_smoke_", dir=repository_tmp
+    ) as directory:
+        run_path = Path(directory)
+        _write_smoke_config(run_path)
+        config_path = run_path / "config.yaml"
+        config_path.write_text(
+            config_path.read_text().replace(
+                "state_handoff_training:\n",
+                "state_handoff_training:\n"
+                "  conditions: [canonical_opaque]\n"
+                "  interfaces:\n"
+                "    independent_module_contexts: false\n",
+            )
+        )
+        prepare_state_handoff_datasets(run_path)
+        tokenizer = _CharacterTokenizer()
+        torch.manual_seed(11)
+        model = LlamaForCausalLM(
+            LlamaConfig(
+                vocab_size=2048,
+                hidden_size=32,
+                intermediate_size=64,
+                num_hidden_layers=1,
+                num_attention_heads=4,
+                num_key_value_heads=2,
+                max_position_embeddings=1024,
+                pad_token_id=0,
+                bos_token_id=1,
+                eos_token_id=1,
+            )
+        )
+        base_path = run_path / "tiny_base"
+        model.config._name_or_path = str(base_path)
+        model.config.save_pretrained(base_path)
+        trained = train_state_handoff_condition(
+            run_path,
+            "canonical_opaque",
+            max_optimizer_steps=1,
+            model=model,
+            tokenizer=tokenizer,
+            enforce_phase1_gate=False,
+        )
+        metrics = read_training_metrics(run_path, "canonical_opaque")
+        (run_path / TRAIN_PATH).rename(run_path / "training/data/train.removed")
+        evaluation = evaluate_state_interface_condition(
+            run_path,
+            "canonical_opaque",
+            max_cases=1,
+            model=model.eval(),
+            tokenizer=tokenizer,
+        )
+        return {
+            "one_optimizer_step_completed": int(trained["optimizer_step"]) == 1,
+            "finite_losses": all(
+                math.isfinite(float(metrics[0][key]))
+                for key in ("total_loss", "state_token_loss", "answer_loss")
+            ),
+            "evaluation_without_training_dataset": evaluation["case_count"] == 1,
+            "matched_interface_compute": json.loads(
+                (run_path / "training/compute_manifest.json").read_text()
+            )["matched_forward_passes_and_tokens"],
         }

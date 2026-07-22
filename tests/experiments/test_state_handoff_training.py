@@ -30,12 +30,24 @@ from src.experiments.depth_relief.state_handoff_training import (
 )
 from src.experiments.depth_relief.state_handoff_information import (
     conditional_entropy,
+    conditional_mutual_information,
     discrete_entropy,
     mutual_information,
     rate_capacity_table,
     summarize_code_information,
 )
-from src.experiments.depth_relief.state_handoff_smoke import run_tiny_smoke
+from src.experiments.depth_relief.state_interface_data import (
+    CODEBOOK_SIZES,
+    build_interface_training_pairs,
+    interface_code_index,
+    interface_training_sequence_pair,
+    matched_interface_compute_manifest,
+    semantic_states_for_code,
+)
+from src.experiments.depth_relief.state_handoff_smoke import (
+    run_tiny_interface_smoke,
+    run_tiny_smoke,
+)
 
 
 class CharacterTokenizer:
@@ -324,6 +336,9 @@ def test_exact_information_metrics_separate_state_and_path_bits() -> None:
     assert summary["state_information_bits"] == 3.0
     assert summary["code_given_state_bits"] == 0.0
     assert summary["path_invariance_exact"] is True
+    assert conditional_mutual_information(
+        (state, state, "context") for state in range(8)
+    ) == 3.0
 
 
 def test_rate_table_has_exact_three_bit_threshold() -> None:
@@ -334,3 +349,116 @@ def test_rate_table_has_exact_three_bit_threshold() -> None:
     assert table[8]["capacity_bits"] == 3.0
     assert table[8]["lossless_possible"] is True
     assert table[16]["deterministic_balanced_state_accuracy_ceiling"] == 1.0
+
+
+def test_interface_code_contracts_have_expected_rate_and_invariance(tmp_path) -> None:
+    run_path = tmp_path / "run"
+    _write_config(run_path)
+    prepare_state_handoff_datasets(run_path)
+    case = read_programs(run_path / TRAIN_PATH)[0]
+    config = {}
+
+    canonical = [
+        interface_code_index(
+            condition="canonical_opaque",
+            case=case,
+            state=state,
+            interface_config=config,
+        )
+        for state in range(8)
+    ]
+    compressed = semantic_states_for_code(
+        condition="compressed_2bit",
+        case=case,
+        code_index=0,
+        interface_config=config,
+    )
+    redundant = {
+        interface_code_index(
+            condition="redundant_4bit",
+            case=case,
+            state=3,
+            variant=variant,
+            interface_config=config,
+        )
+        for variant in (0, 1)
+    }
+
+    assert sorted(canonical) == list(range(8))
+    assert compressed == (0, 4)
+    assert redundant == {6, 7}
+    assert CODEBOOK_SIZES == {
+        "canonical_opaque": 8,
+        "context_bound": 8,
+        "compressed_2bit": 4,
+        "redundant_4bit": 16,
+    }
+
+
+def test_interface_training_pairs_mask_prompts_and_match_compute(tmp_path) -> None:
+    run_path = tmp_path / "run"
+    _write_config(run_path)
+    prepare_state_handoff_datasets(run_path)
+    cases = read_programs(run_path / TRAIN_PATH)
+    tokenizer = CharacterTokenizer()
+    pair = interface_training_sequence_pair(
+        tokenizer=tokenizer,
+        case=cases[0],
+        prompt_config={"mode": "plain"},
+        condition="canonical_opaque",
+        interface_config={"independent_module_contexts": False},
+        max_length=1000,
+    )
+    manifest = matched_interface_compute_manifest(
+        tokenizer=tokenizer,
+        cases=cases[:8],
+        prompt_config={"mode": "plain"},
+        conditions=(
+            "canonical_opaque",
+            "context_bound",
+            "compressed_2bit",
+            "redundant_4bit",
+        ),
+        interface_config={"independent_module_contexts": False},
+        max_length=1000,
+    )
+
+    assert [row["mapping"] for row in pair] == ["state", "answer"]
+    assert all(sum(label != -100 for label in row["labels"]) == 1 for row in pair)
+    assert all(len(row["input_ids"]) == 1000 for row in pair)
+    assert manifest["matched_forward_passes_and_tokens"] is True
+    assert {
+        values["fixed_padding_compute_tokens"]
+        for values in manifest["conditions"].values()
+    } == {16_000}
+
+
+def test_interface_producers_and_consumers_use_disjoint_contexts(tmp_path) -> None:
+    run_path = tmp_path / "run"
+    _write_config(run_path)
+    prepare_state_handoff_datasets(run_path)
+    cases = read_programs(run_path / TRAIN_PATH)
+    pairs = build_interface_training_pairs(
+        tokenizer=CharacterTokenizer(),
+        cases=cases,
+        prompt_config={"mode": "plain"},
+        condition="canonical_opaque",
+        interface_config={"independent_module_contexts": True},
+        max_length=1000,
+    )
+    producer_contexts = {pair[0]["program_context"] for pair in pairs}
+    consumer_contexts = {pair[1]["program_context"] for pair in pairs}
+
+    assert producer_contexts.isdisjoint(consumer_contexts)
+    assert len(pairs) == len(cases)
+
+
+def test_tiny_opaque_interface_training_and_evaluation_smoke(tmp_path) -> None:
+    result = run_tiny_interface_smoke(tmp_path)
+
+    assert result == {
+        "one_optimizer_step_completed": True,
+        "finite_losses": True,
+        "evaluation_without_training_dataset": True,
+        "matched_interface_compute": True,
+    }
