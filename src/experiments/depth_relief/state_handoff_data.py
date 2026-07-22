@@ -157,20 +157,22 @@ def _balanced_programs(
     return rows
 
 
-def _test_programs(
+def build_test_programs(
     *,
     horizons: tuple[int, ...],
     context_count: int,
     paths_per_state: int,
     width: int,
     seed: int,
+    split: str = "test",
 ) -> list[dict[str, Any]]:
+    """Build a balanced fixed test bank for any named artifact split."""
     contexts = _program_contexts(
-        split="test", count=context_count, width=width, seed=seed
+        split=split, count=context_count, width=width, seed=seed
     )
     return [
         _program_case(
-            split="test",
+            split=split,
             context=context,
             horizon=horizon,
             target=target,
@@ -231,7 +233,7 @@ def prepare_state_handoff_datasets(run_path: Path) -> dict[str, Any]:
         width=width,
         seed=seed,
     )
-    test = _test_programs(
+    test = build_test_programs(
         horizons=tuple(int(value) for value in dataset.get("test_horizons", (2, 4, 8))),
         context_count=int(dataset.get("test_program_contexts", 30)),
         paths_per_state=int(dataset.get("test_paths_per_state", 4)),

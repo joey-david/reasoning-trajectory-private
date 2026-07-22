@@ -15,6 +15,11 @@ from src.experiments.depth_relief.state_handoff_data import (
     prepare_state_handoff_datasets,
     validate_state_handoff_training_data,
 )
+from src.experiments.depth_relief.state_handoff_continuation import (
+    continuation_status,
+    evaluate_continuation_profile,
+    prepare_continuation_programs,
+)
 from src.experiments.depth_relief.state_handoff_evaluation import (
     compare_state_handoff_conditions,
     evaluate_state_handoff_condition,
@@ -37,12 +42,16 @@ def main() -> int:
             "compare",
             "status",
             "smoke",
+            "prepare-continuation",
+            "evaluate-continuation",
+            "status-continuation",
         ),
     )
     parser.add_argument("run_path", type=Path)
     parser.add_argument("--condition", choices=TRAINING_CONDITIONS)
     parser.add_argument("--max-cases", type=int)
     parser.add_argument("--max-optimizer-steps", type=int)
+    parser.add_argument("--profile", default="probe")
     args = parser.parse_args()
     if args.command in {"train", "evaluate"} and args.condition is None:
         parser.error(f"{args.command} requires --condition")
@@ -68,6 +77,16 @@ def main() -> int:
         from src.experiments.depth_relief.state_handoff_smoke import run_tiny_smoke
 
         result = run_tiny_smoke(args.run_path)
+    elif args.command == "prepare-continuation":
+        result = prepare_continuation_programs(args.run_path, args.profile)
+    elif args.command == "evaluate-continuation":
+        result = evaluate_continuation_profile(
+            args.run_path,
+            args.profile,
+            max_cases=args.max_cases,
+        )
+    elif args.command == "status-continuation":
+        result = continuation_status(args.run_path)
     else:
         result = state_handoff_training_status(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))

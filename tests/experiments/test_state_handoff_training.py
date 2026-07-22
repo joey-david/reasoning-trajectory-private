@@ -13,6 +13,13 @@ from src.experiments.depth_relief.state_handoff_data import (
     read_programs,
     training_sequence_pair,
 )
+from src.experiments.depth_relief.state_handoff_continuation import (
+    block_case,
+    continuation_case_id,
+    prepare_continuation_programs,
+    read_continuation_programs,
+    summarize_continuation_rows,
+)
 from src.experiments.depth_relief.state_handoff_evaluation import (
     _frozen_screen_summary,
     build_code_donors,
@@ -221,3 +228,69 @@ def test_tiny_lora_resume_save_reload_and_evaluation_smoke(tmp_path) -> None:
         "resume_metric_steps": [1, 2],
         "duplicate_metrics_or_cases": False,
     }
+
+
+def test_continuation_programs_do_not_replace_pilot_test_data(tmp_path) -> None:
+    run_path = tmp_path / "run"
+    _write_config(run_path)
+    prepare_state_handoff_datasets(run_path)
+    original = (run_path / TEST_PATH).read_bytes()
+
+    manifest = prepare_continuation_programs(run_path, "probe")
+    cases = read_continuation_programs(run_path, "probe")
+
+    assert (run_path / TEST_PATH).read_bytes() == original
+    assert manifest["horizons"] == [2, 4, 8, 16]
+    assert manifest["case_count"] == 10 * 4 * 8 * 2
+    assert len(cases) == manifest["case_count"]
+
+
+def test_recursive_blocks_accept_the_previous_block_state(tmp_path) -> None:
+    run_path = tmp_path / "run"
+    _write_config(run_path)
+    prepare_state_handoff_datasets(run_path)
+    case = next(
+        row
+        for row in read_programs(run_path / TEST_PATH)
+        if row["history_steps"] == 4
+    )
+    first = block_case(
+        case, input_state=case["initial_state"], start=0, block_size=2
+    )
+    second = block_case(
+        case, input_state=first["current_state"], start=2, block_size=2
+    )
+
+    assert first["current_state"] == case["state_path"][2]
+    assert second["current_state"] == case["current_state"]
+    assert continuation_case_id(case, 2).endswith("__block2")
+
+
+def test_continuation_summary_separates_local_closure_from_global_state() -> None:
+    rows = []
+    for path_code, final_state in enumerate((3, 3)):
+        rows.append(
+            {
+                "id": f"case_{path_code}",
+                "program_context": "context",
+                "history_steps": 4,
+                "block_size": 2,
+                "current_state": 3,
+                "predicted_state": final_state,
+                "state_correct": True,
+                "predicted_steps": [
+                    {"locally_correct": True},
+                    {"locally_correct": True},
+                ],
+                "final": {
+                    "is_expected_unconstrained": True,
+                    "follows_supplied_state": True,
+                },
+            }
+        )
+
+    summary = summarize_continuation_rows(rows)["by_cell"]["block2_h4"]
+
+    assert summary["state_accuracy"]["mean"] == 1.0
+    assert summary["local_closure_accuracy"]["mean"] == 1.0
+    assert summary["same_state_code_agreement"]["mean"] == 1.0

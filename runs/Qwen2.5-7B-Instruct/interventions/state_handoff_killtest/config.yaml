@@ -85,3 +85,18 @@ state_handoff_training:
   prompt:
     mode: chat
     system: Execute the state program exactly and return one decimal integer.
+
+state_handoff_continuation:
+  profiles:
+    probe:
+      horizons: [2, 4, 8, 16]
+      context_count: 10
+      paths_per_state: 2
+      block_sizes: [2]
+      seed: 721501
+    confirmation:
+      horizons: [2, 4, 8, 16, 32]
+      context_count: 30
+      paths_per_state: 4
+      block_sizes: [1, 2]
+      seed: 721601
