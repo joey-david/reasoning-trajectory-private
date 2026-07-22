@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.models.hf_loader import load_hf_model_and_tokenizer
 from src.runtime.artifact_store import append_jsonl, write_json
@@ -201,6 +201,7 @@ def evaluate_state_handoff_condition(
     max_cases: int | None = None,
     model: Any | None = None,
     tokenizer: Any | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Resume test inference for one adapter and write its summary."""
     if model is None or tokenizer is None:
@@ -212,7 +213,7 @@ def evaluate_state_handoff_condition(
     if max_cases is not None:
         pending = pending[:max_cases]
     output = condition_evaluation_dir(run_path, condition) / "cases.jsonl"
-    for case in pending:
+    for index, case in enumerate(pending, 1):
         append_jsonl(
             output,
             evaluate_program_hf(
@@ -223,6 +224,12 @@ def evaluate_state_handoff_condition(
                 condition=condition,
             ),
         )
+        if on_progress is not None and (
+            index == 1 or index == len(pending) or index % 25 == 0
+        ):
+            on_progress(
+                f"state handoff evaluation {condition} {index}/{len(pending)} cases"
+            )
     rows = read_evaluation_cases(run_path, condition)
     summary = summarize_evaluation_rows(rows, condition)
     summary["expected_case_count"] = len(cases)

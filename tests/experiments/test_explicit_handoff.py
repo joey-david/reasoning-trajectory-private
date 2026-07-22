@@ -111,6 +111,7 @@ def test_oracle_handoff_applies_final_to_recorded_synthesis() -> None:
 def test_all_handoff_calls_delete_original_history(monkeypatch: pytest.MonkeyPatch) -> None:
     case = _case()
     prompts: list[str] = []
+    progress: list[str] = []
 
     def score_prompt(*, prompt: dict, **_kwargs: object) -> dict:
         prompts.append(str(prompt["text"]))
@@ -127,6 +128,7 @@ def test_all_handoff_calls_delete_original_history(monkeypatch: pytest.MonkeyPat
         case=case,
         factorization_row=_factorization_row(case),
         config={"prompt": {"mode": "plain"}},
+        on_progress=progress.append,
     )
     assert record["prompt_contract"]["original_history_deleted"] is True
     assert len(prompts) == int(case["history_steps"]) + 3
@@ -134,6 +136,13 @@ def test_all_handoff_calls_delete_original_history(monkeypatch: pytest.MonkeyPat
     assert all("Step 1:" not in prompt for prompt in prompts)
     assert record["conditions"]["stepwise_explicit"][
         "is_expected_unconstrained"
+    ]
+    assert progress == [
+        "gold handoff",
+        "self handoff",
+        "stepwise history 1/2",
+        "stepwise history 2/2",
+        "stepwise final",
     ]
 
 

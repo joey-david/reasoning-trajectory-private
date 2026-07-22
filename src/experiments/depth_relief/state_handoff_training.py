@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 import random
 import time
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from src.models.hf_loader import load_hf_model_and_tokenizer
 from src.runtime.artifact_store import append_jsonl, write_json
@@ -314,6 +314,7 @@ def train_state_handoff_condition(
     model: Any | None = None,
     tokenizer: Any | None = None,
     enforce_phase1_gate: bool = True,
+    on_progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Train or resume one matched-compute LoRA condition."""
     if condition not in TRAINING_CONDITIONS:
@@ -483,6 +484,10 @@ def train_state_handoff_condition(
         elapsed = max(time.monotonic() - interval_started, 1e-9)
         step = int(state["optimizer_step"])
         should_evaluate = step % eval_interval == 0 or step == stop_after_steps
+        if should_evaluate and on_progress is not None:
+            on_progress(
+                f"state handoff training {condition} validating at step {step}"
+            )
         validation = (
             _evaluate_training_pairs(
                 model=model,
@@ -535,6 +540,11 @@ def train_state_handoff_condition(
         ):
             raise FloatingPointError("State-handoff training produced a non-finite metric")
         checkpoint_metrics.append(metric)
+        if on_progress is not None:
+            on_progress(
+                f"state handoff training {condition} step {step}/{stop_after_steps} "
+                f"loss={metric['total_loss']:.4f}"
+            )
         running.clear()
         running_counts.clear()
         interval_started = time.monotonic()
@@ -573,6 +583,10 @@ def train_state_handoff_condition(
             _flush_checkpoint_metrics(run_path, condition, checkpoint_metrics)
             checkpoint_metrics = []
             state.pop("pending_metrics", None)
+            if on_progress is not None:
+                on_progress(
+                    f"state handoff training {condition} saved step {step}"
+                )
     final_adapter = output / "adapter" / "final"
     model.save_pretrained(final_adapter, safe_serialization=True)
     manifest = {

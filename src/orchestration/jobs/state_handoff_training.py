@@ -61,7 +61,9 @@ class StateHandoffTrainingWorker:
     def run_task(self, task: Task, progress: Any) -> TaskResult:
         condition = str(task["condition"])
         progress.set_description(f"state handoff training {condition}")
-        train_state_handoff_condition(self.run_path, condition)
+        train_state_handoff_condition(
+            self.run_path, condition, on_progress=progress.set_description
+        )
         gc.collect()
         try:
             import torch
@@ -71,5 +73,7 @@ class StateHandoffTrainingWorker:
         except ImportError:
             pass
         progress.set_description(f"state handoff evaluation {condition}")
-        summary = evaluate_state_handoff_condition(self.run_path, condition)
+        summary = evaluate_state_handoff_condition(
+            self.run_path, condition, on_progress=progress.set_description
+        )
         return TaskResult(units=int(summary["case_count"]), unit="evaluation case")

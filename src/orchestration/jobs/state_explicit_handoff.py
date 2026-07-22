@@ -78,15 +78,18 @@ class StateExplicitHandoffWorker:
 
     def run_task(self, task: Task, progress: Any) -> TaskResult:
         """Evaluate one case and append its inference event."""
-        case = self.cases[int(task["case_index"])]
+        case_index = int(task["case_index"])
+        case = self.cases[case_index]
         case_id = str(case["id"])
-        progress.set_description(f"explicit handoff {case_id}")
+        prefix = f"explicit handoff {case_index + 1}/{len(self.cases)}"
+        progress.set_description(f"{prefix} preparing {case_id}")
         row = evaluate_explicit_handoff_case_hf(
             model=self.model,
             tokenizer=self.tokenizer,
             case=case,
             factorization_row=self.factorization[case_id],
             config=self.config,
+            on_progress=lambda stage: progress.set_description(f"{prefix} {stage}"),
         )
         append_jsonl(explicit_handoff_output_path(self.run_path), row)
         return TaskResult(

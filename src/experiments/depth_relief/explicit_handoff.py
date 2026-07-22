@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.runtime.artifact_store import append_jsonl, write_json
 from src.runtime.config import load_config
@@ -155,6 +155,7 @@ def evaluate_explicit_handoff_case_hf(
     case: dict[str, Any],
     factorization_row: dict[str, Any],
     config: dict[str, Any],
+    on_progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Run history-free self, gold, and sequential explicit-state calls."""
     if str(case["id"]) != str(factorization_row["id"]):
@@ -169,6 +170,11 @@ def evaluate_explicit_handoff_case_hf(
     if capacity != 3:
         raise ValueError("Explicit handoff requires an exact three-bit state code")
 
+    def score(stage: str, prompt: dict[str, Any]) -> dict[str, Any]:
+        if on_progress is not None:
+            on_progress(stage)
+        return _score_prompt(model=model, tokenizer=tokenizer, prompt=prompt, case=case)
+
     gold_prompt = render_factorization_update_prompt(
         tokenizer=tokenizer,
         case=case,
@@ -178,9 +184,7 @@ def evaluate_explicit_handoff_case_hf(
         name="gold_handoff",
         label="FINAL",
     )
-    gold = _score_prompt(
-        model=model, tokenizer=tokenizer, prompt=gold_prompt, case=case
-    )
+    gold = score("gold handoff", gold_prompt)
 
     if predicted_state is None:
         self_handoff = _invalid_condition(
@@ -197,9 +201,7 @@ def evaluate_explicit_handoff_case_hf(
             name="lm_self_handoff",
             label="FINAL",
         )
-        self_raw = _score_prompt(
-            model=model, tokenizer=tokenizer, prompt=self_prompt, case=case
-        )
+        self_raw = score("self handoff", self_prompt)
         self_handoff = _end_to_end_record(
             self_raw,
             true_target=true_target,
@@ -222,9 +224,7 @@ def evaluate_explicit_handoff_case_hf(
             name=f"history_step_{index}",
             label="Operation",
         )
-        step = _score_prompt(
-            model=model, tokenizer=tokenizer, prompt=prompt, case=case
-        )
+        step = score(f"stepwise history {index}/{len(case['history'])}", prompt)
         step["gold_expected_next_state"] = int(case["state_path"][index])
         step["is_gold_expected_unconstrained"] = (
             _actual_prediction(step) == int(case["state_path"][index])
@@ -247,9 +247,7 @@ def evaluate_explicit_handoff_case_hf(
             name="stepwise_final",
             label="FINAL",
         )
-        final_raw = _score_prompt(
-            model=model, tokenizer=tokenizer, prompt=final_prompt, case=case
-        )
+        final_raw = score("stepwise final", final_prompt)
         stepwise = _end_to_end_record(
             final_raw,
             true_target=true_target,
