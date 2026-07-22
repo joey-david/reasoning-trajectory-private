@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>What the state-handoff pilot trains</title>
+  <meta name="description" content="A visual guide to the matched outcome-only and explicit-state LoRA pilot.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="state-handoff-training.css">
+  <script type="module" src="js/state-handoff-training.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-logo" aria-hidden="true">3b</span>
+      <div>
+        <strong>Causal state handoff</strong>
+        <span>Visual guide to the 7B LoRA pilot</span>
+      </div>
+    </div>
+    <nav class="article-nav" aria-label="Page links">
+      <a href="#one-case">One case</a>
+      <a href="#training">Training</a>
+      <a href="#evaluation">Evaluation</a>
+      <a href="index.html">Explorer</a>
+    </nav>
+  </header>
+
+  <main id="main-content" class="handoff-main">
+    <article class="handoff-page">
+      <section class="handoff-hero" aria-labelledby="page-title">
+        <p class="eyebrow">The question behind the run</p>
+        <h1 id="page-title">Can one explicit state token turn local skill into long-range composition?</h1>
+        <p class="hero-deck">
+          Qwen can apply one state update and use a supplied state. It often fails when it must
+          compress a whole history and then use the result. We train two adapters with the same
+          data and compute. Only one must pass through an explicit three-bit state.
+        </p>
+        <div class="hero-facts" aria-label="Pilot facts">
+          <div><strong>7B</strong><span>Qwen2.5-Instruct</span></div>
+          <div><strong>20k</strong><span>training sequences</span></div>
+          <div><strong>1–2</strong><span>training horizons</span></div>
+          <div><strong>4–8</strong><span>unseen horizons</span></div>
+          <div><strong>3 bits</strong><span>one state token</span></div>
+        </div>
+      </section>
+
+      <section id="one-case" class="blog-section" aria-labelledby="case-title">
+        <div class="section-intro">
+          <p class="eyebrow">Start with one semantic program</p>
+          <h2 id="case-title">The same case feeds both training conditions</h2>
+          <p>Change the start and updates. The page computes the true current state and final answer exactly as the Python verifier does.</p>
+        </div>
+
+        <div class="case-lab">
+          <form class="case-controls" aria-label="Example program controls">
+            <label>
+              <span>Start state</span>
+              <select id="start-state" data-testid="start-state"></select>
+            </label>
+            <label>
+              <span>Step 1: add</span>
+              <select id="step-one" data-testid="step-one"></select>
+            </label>
+            <label>
+              <span>Step 2: add</span>
+              <select id="step-two" data-testid="step-two"></select>
+            </label>
+          </form>
+
+          <div class="state-track" aria-label="State computation" aria-live="polite">
+            <div class="state-node">
+              <span>start</span>
+              <strong id="state-zero">2</strong>
+            </div>
+            <div class="operation-edge"><span id="op-one">+0 mod 8</span></div>
+            <div class="state-node">
+              <span>after step 1</span>
+              <strong id="state-one">2</strong>
+            </div>
+            <div class="operation-edge"><span id="op-two">+6 mod 8</span></div>
+            <div class="state-node state-node-accent">
+              <span>current state</span>
+              <strong id="current-state">0</strong>
+            </div>
+            <div class="operation-edge final-edge"><span>FINAL table</span></div>
+            <div class="state-node answer-node">
+              <span>answer</span>
+              <strong id="final-answer">3</strong>
+            </div>
+          </div>
+
+          <div class="program-card">
+            <div class="program-header">
+              <span>Rendered task</span>
+              <span class="mono-note">pointer table = [3, 6, 0, 4, 7, 2, 1, 5]</span>
+            </div>
+            <pre id="program-text">Start state: 2
+Step 1: add 0 modulo 8
+Step 2: add 6 modulo 8
+FINAL: look up the state in [3, 6, 0, 4, 7, 2, 1, 5]</pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="training" class="blog-section" aria-labelledby="training-title">
+        <div class="section-intro">
+          <p class="eyebrow">The controlled comparison</p>
+          <h2 id="training-title">What changes between the two adapters?</h2>
+          <p>Select a condition to inspect its two forward passes. Gold boxes mark the only tokens that receive cross-entropy loss.</p>
+        </div>
+
+        <div class="condition-tabs" role="tablist" aria-label="Training condition">
+          <button id="outcome-tab" type="button" role="tab" aria-selected="true" aria-controls="condition-panel" data-condition="outcome" data-testid="outcome-tab">Outcome only</button>
+          <button id="handoff-tab" type="button" role="tab" aria-selected="false" aria-controls="condition-panel" data-condition="handoff" data-testid="handoff-tab">Explicit handoff</button>
+        </div>
+
+        <div id="condition-panel" class="condition-panel" role="tabpanel" aria-live="polite">
+          <div class="condition-summary">
+            <p id="condition-kicker" class="eyebrow">Control condition</p>
+            <h3 id="condition-name">Outcome-only LoRA</h3>
+            <p id="condition-description">The model sees the full history and FINAL rule, then learns only the answer. There is no state target.</p>
+          </div>
+
+          <div class="forward-passes" aria-label="Two training forward passes">
+            <article class="forward-card">
+              <header><span>Forward pass 1</span><strong id="pass-one-label">Compose</strong></header>
+              <div id="pass-one-flow" class="token-flow"></div>
+              <p id="pass-one-note" class="pass-note"></p>
+            </article>
+            <article class="forward-card">
+              <header><span>Forward pass 2</span><strong id="pass-two-label">Compose again</strong></header>
+              <div id="pass-two-flow" class="token-flow"></div>
+              <p id="pass-two-note" class="pass-note"></p>
+            </article>
+          </div>
+
+          <div class="loss-equation" aria-label="Training loss">
+            <span>Optimized loss</span>
+            <strong id="loss-equation">L = CE(answer)</strong>
+          </div>
+        </div>
+
+        <aside class="fairness-box" aria-labelledby="fairness-title">
+          <div>
+            <p class="eyebrow">Why the comparison is fair</p>
+            <h3 id="fairness-title">Both conditions spend the same budget</h3>
+          </div>
+          <dl>
+            <div><dt>Semantic programs</dt><dd>10,000 each</dd></div>
+            <div><dt>Forward passes</dt><dd>20,000 each</dd></div>
+            <div><dt>Supervised tokens</dt><dd>20,000 each</dd></div>
+            <div><dt>Fixed compute</dt><dd>5.12M tokens each</dd></div>
+          </dl>
+          <p>Loss-masked padding equalizes active input length. It comes after the target token, so causal attention prevents it from changing that prediction.</p>
+        </aside>
+      </section>
+
+      <section class="blog-section" aria-labelledby="loop-title">
+        <div class="section-intro">
+          <p class="eyebrow">What one epoch means</p>
+          <h2 id="loop-title">10,000 programs become 20,000 sequences</h2>
+        </div>
+        <div class="training-loop">
+          <div class="loop-step"><strong>10,000</strong><span>balanced h1/h2 programs</span></div>
+          <div class="loop-arrow" aria-hidden="true">→</div>
+          <div class="loop-step"><strong>20,000</strong><span>sequences: two per program</span></div>
+          <div class="loop-arrow" aria-hidden="true">→</div>
+          <div class="loop-step"><strong>2,500</strong><span>microbatches of 8</span></div>
+          <div class="loop-arrow" aria-hidden="true">→</div>
+          <div class="loop-step"><strong>313</strong><span>optimizer steps per epoch</span></div>
+        </div>
+        <p class="loop-caption">Gradient accumulation combines eight microbatches into an effective batch of 64 sequences. Accumulation continues across the epoch boundary, so two epochs total 625 optimizer steps per adapter.</p>
+      </section>
+
+      <section id="evaluation" class="blog-section" aria-labelledby="evaluation-title">
+        <div class="section-intro">
+          <p class="eyebrow">Training is not the result</p>
+          <h2 id="evaluation-title">The held-out test asks whether the interface transfers</h2>
+          <p>Train, validation, and test use separate pointer-table program contexts. The adapter never trains on the confirmatory cases.</p>
+        </div>
+
+        <div class="split-map">
+          <article>
+            <span class="split-label train-label">Train</span>
+            <h3>Learn short programs</h3>
+            <p>Horizons 1 and 2<br>50 program contexts<br>10,000 semantic programs</p>
+          </article>
+          <article>
+            <span class="split-label validation-label">Validation</span>
+            <h3>Choose a checkpoint</h3>
+            <p>Horizons 1 and 2<br>15 new contexts<br>1,000 semantic programs</p>
+          </article>
+          <article>
+            <span class="split-label test-label">Test</span>
+            <h3>Measure composition</h3>
+            <p>Horizons 2, 4, and 8<br>30 new contexts<br>2,880 fixed programs</p>
+          </article>
+        </div>
+
+        <div class="evaluation-paths">
+          <article>
+            <p class="eyebrow">Outcome-only evaluation</p>
+            <div class="mini-flow"><span>history + FINAL</span><b>model</b><mark>answer</mark></div>
+          </article>
+          <article>
+            <p class="eyebrow">Predicted-state handoff</p>
+            <div class="mini-flow"><span>history</span><b>model</b><mark>state</mark><i>history deleted</i><span>state + FINAL</span><b>model</b><mark>answer</mark></div>
+          </article>
+          <article>
+            <p class="eyebrow">Gold-state upper bound</p>
+            <div class="mini-flow"><span>true state + FINAL</span><b>model</b><mark>answer</mark></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="blog-section gate-section" aria-labelledby="gate-title">
+        <div class="section-intro">
+          <p class="eyebrow">The pilot gate</p>
+          <h2 id="gate-title">What would count as evidence?</h2>
+        </div>
+        <div class="gate-grid">
+          <div><strong>+10 points</strong><span>Explicit handoff beats outcome-only at h4 or h8.</span></div>
+          <div><strong>CI &gt; 0</strong><span>The context-level bootstrap lower bound stays positive.</span></div>
+          <div><strong>≥90%</strong><span>Histories ending at the same state yield the same token.</span></div>
+          <div><strong>Closes gap</strong><span>Predicted-state use moves well toward gold-state use.</span></div>
+        </div>
+        <p class="bottom-line"><strong>The key test:</strong> not whether extra training helps, but whether forcing the model through one interchangeable three-bit state helps more than the matched outcome-only control on longer, unseen programs.</p>
+      </section>
+    </article>
+  </main>
+</body>
+</html>
