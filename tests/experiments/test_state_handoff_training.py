@@ -28,6 +28,7 @@ from src.experiments.depth_relief.state_handoff_evaluation import (
 from src.experiments.depth_relief.state_handoff_training import (
     _flush_checkpoint_metrics,
     read_training_metrics,
+    validation_checkpoint_score,
 )
 from src.experiments.depth_relief.state_handoff_information import (
     conditional_entropy,
@@ -57,6 +58,18 @@ class CharacterTokenizer:
     def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
         assert add_special_tokens is False
         return [ord(character) + 1 for character in text]
+
+
+def test_checkpoint_selection_uses_the_producer_target() -> None:
+    validation = {
+        "1": {"state": 0.75, "answer": 1.0},
+        "2": {"state": 0.5, "answer": 1.0},
+    }
+    assert validation_checkpoint_score(validation, "outcome_only") == ("answer", 1.0)
+    assert validation_checkpoint_score(validation, "canonical_opaque") == (
+        "state",
+        0.625,
+    )
 
 
 def _write_config(run_path) -> None:

@@ -46,6 +46,19 @@ def condition_training_dir(run_path: Path, condition: str) -> Path:
     return run_path / "training" / condition
 
 
+def validation_checkpoint_score(
+    validation: dict[str, dict[str, float]] | None, condition: str
+) -> tuple[str, float | None]:
+    """Score checkpoints on the target needed from the trained producer."""
+    metric = "answer" if condition == "outcome_only" else "state"
+    values = [
+        horizon[metric]
+        for horizon in (validation or {}).values()
+        if metric in horizon
+    ]
+    return metric, (sum(values) / len(values) if values else None)
+
+
 def require_phase1_training_gate(run_path: Path) -> None:
     """Block adapter training until Phase 1 passes and the 7B screen completes."""
     config = load_config(run_path).get("state_handoff_training", {})
@@ -538,13 +551,8 @@ def train_state_handoff_condition(
             if should_evaluate
             else None
         )
-        answer_values = [
-            values["answer"]
-            for values in (validation or {}).values()
-            if "answer" in values
-        ]
-        validation_answer = (
-            sum(answer_values) / len(answer_values) if answer_values else None
+        selection_metric, validation_score = validation_checkpoint_score(
+            validation, condition
         )
         metric = {
             "optimizer_step": step,
@@ -589,10 +597,11 @@ def train_state_handoff_condition(
         interval_started = time.monotonic()
         if should_evaluate:
             checkpoint_dir = output / "checkpoints" / f"step_{step:06d}"
-            if validation_answer is not None and validation_answer > float(
+            if validation_score is not None and validation_score > float(
                 state["best_validation_accuracy"]
             ):
-                state["best_validation_accuracy"] = validation_answer
+                state["best_validation_accuracy"] = validation_score
+                state["best_validation_metric"] = selection_metric
                 state["best_checkpoint"] = str(checkpoint_dir)
             state["pending_metrics"] = checkpoint_metrics
             _save_checkpoint(

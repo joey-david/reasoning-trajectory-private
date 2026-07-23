@@ -17,7 +17,7 @@ state_handoff_training:
     - context_bound
     - compressed_2bit
     - redundant_4bit
-  evaluation_adapter: best
+  evaluation_adapter: final
   dataset:
     bits: 3
     seed: 721801

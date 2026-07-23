@@ -113,8 +113,25 @@ interface-pilot-7b)
   "$PYTHON" scripts/experiments/run_state_handoff_training.py \
     compare-interfaces "$run"
   ;;
+interface-final-eval-7b)
+  run="runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls"
+  nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  devices="${STATE_HANDOFF_7B_DEVICES:-0,1}"
+  current="$run/evaluation/interfaces"
+  archive="$run/evaluation/interfaces_step250"
+  if [[ -d "$current" && ! -e "$archive" ]]; then
+    mv "$current" "$archive"
+  fi
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_handoff_training \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$run"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    compare-interfaces "$run"
+  ;;
 *)
-  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b" >&2
+  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b | interface-final-eval-7b" >&2
   exit 2
   ;;
 esac
