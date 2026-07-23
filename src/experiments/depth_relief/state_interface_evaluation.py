@@ -387,9 +387,8 @@ def compare_state_interface_conditions(run_path: Path) -> dict[str, Any]:
         if not summary.get("complete"):
             raise RuntimeError(f"Interface evaluation is incomplete: {condition}")
         summaries[condition] = summary
-    required = set(INTERFACE_CONDITIONS)
-    if not required.issubset(summaries):
-        raise ValueError(f"Interface comparison requires {sorted(required)}")
+    if "canonical_opaque" not in summaries:
+        raise ValueError("Interface comparison requires canonical_opaque")
     accuracy = {
         condition: {
             horizon: values["predicted_answer_accuracy"]["mean"]
@@ -404,15 +403,16 @@ def compare_state_interface_conditions(run_path: Path) -> dict[str, Any]:
     checks = {
         "canonical_h8": accuracy["canonical_opaque"].get("8", 0.0) >= min_h8,
         "canonical_h16": accuracy["canonical_opaque"].get("16", 0.0) >= min_h16,
-        "canonical_beats_context_bound": (
-            accuracy["canonical_opaque"].get("8", 0.0)
-            - accuracy["context_bound"].get("8", 0.0)
-            >= min_context_gap
-        ),
         "canonical_gold_consumer": summaries["canonical_opaque"]["by_horizon"]["8"]
         ["gold_code_answer_accuracy"]["mean"]
         >= 0.95,
     }
+    if "context_bound" in accuracy:
+        checks["canonical_beats_context_bound"] = (
+            accuracy["canonical_opaque"].get("8", 0.0)
+            - accuracy["context_bound"].get("8", 0.0)
+            >= min_context_gap
+        )
     result = {
         "schema_version": 1,
         "conditions": list(conditions),
@@ -432,6 +432,12 @@ def compare_state_interface_conditions(run_path: Path) -> dict[str, Any]:
 
     result["interchange"] = {
         condition: analyze_interface_interchange(run_path, condition)
+        for condition in conditions
+    }
+    from .state_interface_equivalence import analyze_predicted_code_equivalence
+
+    result["predicted_equivalence"] = {
+        condition: analyze_predicted_code_equivalence(run_path, condition)
         for condition in conditions
     }
     write_json(run_path / INTERFACE_EVALUATION_ROOT / "comparison_summary.json", result)

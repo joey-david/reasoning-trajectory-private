@@ -9,6 +9,7 @@ Status meanings:
 - `pilot`: useful but incomplete or exploratory.
 - `failed`: prespecified or investigated path with a negative result.
 - `active`: current follow-up not yet reduced to a final headline.
+- `prepared`: implemented and locally validated, but not yet run on the target GPU.
 
 ## Canonical and Active Results
 
@@ -24,14 +25,30 @@ Status meanings:
 | H3 process-isomer patching | failed | Does causal patching of process-isomer components rescue target behavior? | `runs/SmolLM3-3B/failed/h3_process_isomer_replay`; `runs/SmolLM3-3B/failed/h3_process_isomer_patching`; `runs/SmolLM3-3B/failed/h3_process_isomer_patching_mlp18` | `H3_DEVICES=0,1 scripts/experiments/run_h3_protocol.sh primary` | `runs/SmolLM3-3B/failed/h3_process_isomer_patching/analysis/report.json` | Prespecified attention-18 primary and MLP-18 fallback are kept as failed-hypothesis artifacts. |
 | Solution-object extraction | active | Can latent solution objects be extracted, decoded, and used causally? | `runs/SmolLM3-3B/interventions/solution_object_extraction_small`; `runs/SmolLM3-3B/interventions/solution_object_extraction_medium` | `.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py run runs/SmolLM3-3B/interventions/solution_object_extraction_medium` | `runs/SmolLM3-3B/interventions/solution_object_extraction_medium/analysis/experiments/solution_object_extraction/` | Medium validation passes the improved artifact contract; retrieval and low-leakage causal evidence are promising, but real mixed-success trajectory G/H remains the next decisive stage. |
 | State materialization | canonical | Does a history collapse into a reusable current state? | `runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history` | `.venv/bin/python scripts/experiments/depth_relief.py analyze-abstraction-information runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history` | `runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history/depth_relief/state_abstraction/{information_summary,interchange_summary}.json` | Read, Update, and constituent steps are perfect, but h2 Compose is 13.44% despite 76.98% Synthesize; h4 Synthesize and Compose are 12.71%. Explicit state is invariant and decodable, while implicit endpoints retain path information. The tested late-layer state subspace does not beat its random control. |
-| Explicit state handoff | active | Does a rate-limited, interchangeable state contract enable reusable reasoning modules? | 32B source run above; `runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `scripts/remote/state_handoff.sh continuation-probe-7b`; `scripts/remote/state_handoff.sh interface-pilot-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest/evaluation/{comparison_summary,information_summary}.json`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/evaluation/interfaces/comparison_summary.json` | Phase 1 passes: 32B h2 self handoff is 76.98% versus 13.44% Compose, while gold and stepwise reach 100%. The first 7B LoRA learns unseen-context h2 perfectly but fails length OOD at chance; its code retains 3.00 state bits at h2, 0.28 at h4, and 0.04 at h8. Recursive reuse and equal-compute 2/3/4-bit opaque-code controls are prepared next. |
+| Explicit state handoff | active | Does a rate-limited, interchangeable state contract enable reusable reasoning modules? | 32B source run above; `runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `scripts/remote/state_handoff.sh continuation-confirm-7b`; `scripts/remote/state_handoff.sh interface-final-eval-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest/evaluation/{comparison_summary,information_summary}.json`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/evaluation/interfaces/comparison_summary.json` | Recursive decimal reuse is perfect through h32 on 9,600 cases. The final opaque adapters show an exact rate result: the 2-bit code has perfect closure and exactly 50% answer accuracy. Canonical 3-bit reaches 74.27/58.65/42.19/42.19% at h2/4/8/16; redundant 4-bit reaches 97.71/80.63/63.85/59.48%. Context-bound codes remain near chance. |
+| Predicted-code equivalence | pilot | Do independently emitted tokens share causal meaning even when their surface forms differ? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `.venv/bin/python scripts/experiments/run_state_handoff_training.py compare-interfaces runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/evaluation/interfaces/*/predicted_equivalence_summary.json` | Artifact-only predicted-donor analysis separates exact token agreement from agreement after grouping codes by downstream behavior. Redundant same-state agreement rises from 36.02% exact to 61.81% by behavior; predicted-donor preservation is 71.42%, versus 12.37% for frequency-free random codes. This is evidence for partial code equivalence, not full interchangeability. |
+| Out-of-template state stress | prepared | Does recursive state use survive histories that break the matched generator's positional pattern? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_stress` | `scripts/remote/state_handoff.sh interface-stress-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_stress/evaluation/stress/probe/comparison_summary.json` | Inference-only comparison of the saved decimal, canonical 3-bit, compressed 2-bit, and redundant 4-bit adapters on 1,600 balanced structured, IID, shuffled, cancellation, and repeated-operation cases. No new weights are trained. |
+| Transition closure fine-tune | prepared | Does spending matched supervision on reusable transitions improve long-horizon composition beyond more endpoint fitting? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_finetune`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_endpoint_control` | `scripts/remote/state_handoff.sh interface-closure-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_finetune/evaluation/closure_comparison.json` | Both runs start from the same final adapters and use byte-identical data, one epoch, 20,000 forwards, 20,000 targets, and 5,120,000 padded tokens per condition. The only change is transition-only versus encoder-only producer supervision. The gate requires at least +10 points at h8 and h16 with context-paired intervals above zero. |
+| Closure stress confirmation | prepared | If closure training helps, does the gain survive non-template histories and retain the predicted-code meaning? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_stress` | `scripts/remote/state_handoff.sh interface-closure-stress-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_stress/evaluation/stress/probe/comparison_summary.json` | Gated follow-up comparing decimal reuse, closure-trained canonical/redundant adapters, and their endpoint-only controls on the same five stress families. Run only after the paired closure comparison finishes. |
 
 Explicit-handoff local validation covers deterministic analysis of the completed
-32B and 7B artifacts, the recursive continuation bank, all four interface
-alphabets and matched budgets with the pinned Qwen tokenizer, focused tests,
-Ruff, compile checks, the original resume smoke, and a one-step opaque-interface
-LoRA smoke. The new continuation and interface jobs have not run on an A100;
-their accuracy, throughput, runtime, and peak memory remain unmeasured.
+32B and 7B artifacts, predicted-code equivalence, the recursive continuation
+bank, all four interface alphabets, the five-family stress bank, and matched
+closure/control budgets with the pinned Qwen tokenizer. Heavy stress and
+closure runs remain prepared rather than completed evidence.
+
+### State-interface execution order
+
+1. Run `interface-stress-7b` on the existing adapters. If decimal recursion
+   fails on IID or shuffled histories, narrow the current headline before any
+   more training.
+2. Run `interface-closure-7b`. Continue only if transition supervision beats
+   the byte-identical endpoint control at h8 and h16 with positive paired
+   intervals.
+3. Run `interface-closure-stress-7b` only after step 2. Require gains on IID,
+   shuffled, and cancellation histories, not only the original generator.
+4. Scale to three seeds, a second operation family, and a second 7--8B model
+   only if the first three steps establish closure outside the matched template.
 
 ## Supporting Manifests
 

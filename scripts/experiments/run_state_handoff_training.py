@@ -11,7 +11,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.experiments.depth_relief.state_handoff_data import (
-    ALL_TRAINING_CONDITIONS,
     prepare_state_handoff_datasets,
     validate_state_handoff_training_data,
 )
@@ -39,6 +38,17 @@ from src.experiments.depth_relief.state_interface_evaluation import (
 from src.experiments.depth_relief.state_interface_interchange import (
     analyze_interface_interchange,
 )
+from src.experiments.depth_relief.state_interface_equivalence import (
+    analyze_predicted_code_equivalence,
+)
+from src.experiments.depth_relief.state_interface_stress import (
+    compare_stress_conditions,
+    evaluate_stress_condition,
+    prepare_stress_profile,
+)
+from src.experiments.depth_relief.state_interface_closure import (
+    compare_closure_finetuning,
+)
 
 
 def main() -> int:
@@ -61,11 +71,16 @@ def main() -> int:
             "compare-interfaces",
             "smoke-interfaces",
             "analyze-interchange",
+            "analyze-predicted-equivalence",
             "gate-continuation",
+            "prepare-stress",
+            "evaluate-stress",
+            "compare-stress",
+            "compare-closure",
         ),
     )
     parser.add_argument("run_path", type=Path)
-    parser.add_argument("--condition", choices=ALL_TRAINING_CONDITIONS)
+    parser.add_argument("--condition")
     parser.add_argument("--max-cases", type=int)
     parser.add_argument("--max-optimizer-steps", type=int)
     parser.add_argument("--profile", default="probe")
@@ -126,8 +141,27 @@ def main() -> int:
         if args.condition is None:
             parser.error("analyze-interchange requires --condition")
         result = analyze_interface_interchange(args.run_path, args.condition)
+    elif args.command == "analyze-predicted-equivalence":
+        if args.condition is None:
+            parser.error("analyze-predicted-equivalence requires --condition")
+        result = analyze_predicted_code_equivalence(args.run_path, args.condition)
     elif args.command == "gate-continuation":
         result = apply_continuation_gate(args.run_path)
+    elif args.command == "prepare-stress":
+        result = prepare_stress_profile(args.run_path, args.profile)
+    elif args.command == "evaluate-stress":
+        if args.condition is None:
+            parser.error("evaluate-stress requires --condition")
+        result = evaluate_stress_condition(
+            args.run_path,
+            args.profile,
+            args.condition,
+            max_cases=args.max_cases,
+        )
+    elif args.command == "compare-stress":
+        result = compare_stress_conditions(args.run_path, args.profile)
+    elif args.command == "compare-closure":
+        result = compare_closure_finetuning(args.run_path)
     else:
         result = state_handoff_training_status(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))

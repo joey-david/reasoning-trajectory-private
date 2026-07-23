@@ -195,6 +195,10 @@ scripts/remote/state_handoff.sh pilot-7b
 scripts/remote/state_handoff.sh continuation-probe-7b
 scripts/remote/state_handoff.sh continuation-confirm-7b
 scripts/remote/state_handoff.sh interface-pilot-7b
+scripts/remote/state_handoff.sh interface-final-eval-7b
+scripts/remote/state_handoff.sh interface-stress-7b
+scripts/remote/state_handoff.sh interface-closure-7b
+scripts/remote/state_handoff.sh interface-closure-stress-7b
 ```
 
 `phase1-32b` runs history-free self, gold, and stepwise calls with
@@ -217,6 +221,14 @@ state bits at h2, 0.28 at h4, and 0.04 at h8.
 the learned h2 mapping recursively at h2/h4/h8/h16 and writes local closure,
 end-to-end accuracy, same-state agreement, and information measures under
 `evaluation/continuation/probe/`.
+
+`interface-stress-7b` does not train. It tests the saved decimal and opaque
+adapters on structured, IID, shuffled, cancellation, and repeated-operation
+histories. `interface-closure-7b` then continues the saved canonical and
+redundant adapters for one matched epoch. Its transition condition and
+endpoint-only control have identical program files and compute budgets.
+`interface-closure-stress-7b` is the gated out-of-template comparison of those
+new adapters.
 
 `interface-pilot-7b` owns the nontrivial follow-up in
 `state_interface_rate_controls`. Two A100 workers train four rank-16 adapters:

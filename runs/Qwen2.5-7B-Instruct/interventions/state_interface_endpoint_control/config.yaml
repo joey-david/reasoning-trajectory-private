@@ -1,0 +1,63 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_handoff_training:
+  phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
+  frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
+  conditions: [canonical_opaque, redundant_4bit]
+  evaluation_adapter: final
+  dataset:
+    bits: 3
+    seed: 724101
+    train_examples: 20000
+    validation_examples: 2000
+    train_horizons: [2]
+    validation_horizons: [2]
+    test_horizons: [2, 4, 8, 16]
+    train_program_contexts: 50
+    validation_program_contexts: 16
+    test_program_contexts: 30
+    test_paths_per_state: 4
+  interfaces:
+    independent_module_contexts: true
+    canonical_opaque:
+      permutation: [5, 2, 7, 1, 6, 0, 3, 4]
+    producer_modes:
+      canonical_opaque: encoder
+      redundant_4bit: encoder
+    initial_adapters:
+      canonical_opaque: runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/training/canonical_opaque/adapter/final
+      redundant_4bit: runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/training/redundant_4bit/adapter/final
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  training:
+    seed: 724201
+    max_sequence_length: 256
+    microbatch: 8
+    gradient_accumulation: 8
+    effective_batch: 64
+    optimizer: adamw
+    learning_rate: 0.00005
+    weight_decay: 0
+    warmup_ratio: 0.03
+    epochs: 1
+    evaluation_interval: 156
+    max_gradient_norm: 1.0
+    gradient_checkpointing: true
+  interface_gate:
+    min_canonical_h8: 0.90
+    min_canonical_h16: 0.80
+  prompt:
+    mode: chat
+    system: Execute the state-interface program exactly and return one token.

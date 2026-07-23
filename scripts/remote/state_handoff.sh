@@ -130,8 +130,55 @@ interface-final-eval-7b)
   "$PYTHON" scripts/experiments/run_state_handoff_training.py \
     compare-interfaces "$run"
   ;;
+interface-stress-7b)
+  run="runs/Qwen2.5-7B-Instruct/interventions/state_interface_stress"
+  nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  devices="${STATE_HANDOFF_7B_DEVICES:-0,1}"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    prepare-stress "$run" --profile probe
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_interface_stress \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$run"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    compare-stress "$run" --profile probe
+  ;;
+interface-closure-7b)
+  closure="runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_finetune"
+  control="runs/Qwen2.5-7B-Instruct/interventions/state_interface_endpoint_control"
+  nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  devices="${STATE_HANDOFF_7B_DEVICES:-0,1}"
+  for run in "$closure" "$control"; do
+    "$PYTHON" scripts/experiments/run_state_handoff_training.py prepare-data "$run"
+    "$PYTHON" scripts/experiments/run_state_handoff_training.py validate-data "$run"
+    "$PYTHON" scripts/orchestrate.py \
+      --job state_handoff_training \
+      --nodes "$nodes" \
+      --devices "$devices" \
+      --run "$run"
+    "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+      compare-interfaces "$run"
+  done
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    compare-closure "$closure"
+  ;;
+interface-closure-stress-7b)
+  run="runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_stress"
+  nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  devices="${STATE_HANDOFF_7B_DEVICES:-0,1}"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    prepare-stress "$run" --profile probe
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_interface_stress \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$run"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    compare-stress "$run" --profile probe
+  ;;
 *)
-  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b | interface-final-eval-7b" >&2
+  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b | interface-final-eval-7b | interface-stress-7b | interface-closure-7b | interface-closure-stress-7b" >&2
   exit 2
   ;;
 esac

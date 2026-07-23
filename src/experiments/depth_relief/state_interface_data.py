@@ -211,6 +211,7 @@ def interface_training_sequence_pair(
     condition: str,
     interface_config: dict[str, Any],
     max_length: int,
+    producer_mode: str = "mixed",
 ) -> list[dict[str, Any]]:
     """Render one state-contract target and one consumer target."""
     symbols = interface_code_symbols(condition, interface_config)
@@ -229,8 +230,13 @@ def interface_training_sequence_pair(
         interface_config=interface_config,
         variant=variant,
     )
+    if producer_mode not in {"mixed", "encoder", "transition"}:
+        raise ValueError(f"Unknown interface producer mode: {producer_mode!r}")
     mapping_selector = hashlib.sha256(str(case["id"]).encode()).digest()[0] % 2
-    if mapping_selector == 0:
+    use_encoder = producer_mode == "encoder" or (
+        producer_mode == "mixed" and mapping_selector == 0
+    )
+    if use_encoder:
         state_prompt = render_interface_encoder_prompt(
             tokenizer=tokenizer,
             case=case,
@@ -252,6 +258,10 @@ def interface_training_sequence_pair(
         target_symbol=symbols[output_index],
         candidates=symbols,
         mapping="state",
+    )
+    state_sequence["producer_mode"] = producer_mode
+    state_sequence["producer_prompt_kind"] = (
+        "encoder" if use_encoder else "transition"
     )
     consumer_prompt = render_interface_consumer_prompt(
         tokenizer=tokenizer,
@@ -294,6 +304,9 @@ def build_interface_training_pairs(
 ) -> list[list[dict[str, Any]]]:
     """Tokenize producer and consumer pairs, with disjoint contexts by default."""
     cases = list(cases)
+    producer_mode = str(
+        interface_config.get("producer_modes", {}).get(condition, "mixed")
+    )
     if not bool(interface_config.get("independent_module_contexts", True)):
         return [
             interface_training_sequence_pair(
@@ -303,6 +316,7 @@ def build_interface_training_pairs(
                 condition=condition,
                 interface_config=interface_config,
                 max_length=max_length,
+                producer_mode=producer_mode,
             )
             for case in cases
         ]
@@ -324,6 +338,7 @@ def build_interface_training_pairs(
             condition=condition,
             interface_config=interface_config,
             max_length=max_length,
+            producer_mode=producer_mode,
         )
         consumer_pair = interface_training_sequence_pair(
             tokenizer=tokenizer,
@@ -332,6 +347,7 @@ def build_interface_training_pairs(
             condition=condition,
             interface_config=interface_config,
             max_length=max_length,
+            producer_mode=producer_mode,
         )
         pairs.append([producer_pair[0], consumer_pair[1]])
     return pairs
@@ -370,6 +386,9 @@ def matched_interface_compute_manifest(
             "capacity_bits": math.log2(CODEBOOK_SIZES[condition]),
             "independent_module_contexts": bool(
                 interface_config.get("independent_module_contexts", True)
+            ),
+            "producer_mode": str(
+                interface_config.get("producer_modes", {}).get(condition, "mixed")
             ),
         }
     comparable = list(summaries.values())

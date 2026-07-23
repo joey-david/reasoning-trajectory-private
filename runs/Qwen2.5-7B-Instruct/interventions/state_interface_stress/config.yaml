@@ -1,0 +1,26 @@
+state_interface_stress:
+  conditions:
+    decimal_explicit:
+      kind: decimal
+      source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
+      source_condition: explicit_handoff
+    canonical_opaque:
+      kind: interface
+      source_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls
+      source_condition: canonical_opaque
+    compressed_2bit:
+      kind: interface
+      source_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls
+      source_condition: compressed_2bit
+    redundant_4bit:
+      kind: interface
+      source_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls
+      source_condition: redundant_4bit
+  profiles:
+    probe:
+      bits: 3
+      seed: 723401
+      context_count: 5
+      paths_per_state: 2
+      horizons: [2, 4, 8, 16]
+      families: [structured, iid, shuffled, cancellation, repeated]

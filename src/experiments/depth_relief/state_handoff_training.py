@@ -294,16 +294,31 @@ def _load_resume_state(
 
 
 def _base_and_adapter(
-    *, run_path: Path, checkpoint: Path | None, model: Any | None, tokenizer: Any | None
+    *,
+    run_path: Path,
+    condition: str,
+    checkpoint: Path | None,
+    model: Any | None,
+    tokenizer: Any | None,
 ) -> tuple[Any, Any]:
     config = load_config(run_path)
     if model is None or tokenizer is None:
         model, tokenizer = load_hf_model_and_tokenizer(config["model"])
     from peft import LoraConfig, PeftModel, TaskType, get_peft_model
 
+    initial_adapter = (
+        config.get("state_handoff_training", {})
+        .get("interfaces", {})
+        .get("initial_adapters", {})
+        .get(condition)
+    )
     if checkpoint is not None:
         model = PeftModel.from_pretrained(
             model, checkpoint / "adapter", is_trainable=True
+        )
+    elif initial_adapter:
+        model = PeftModel.from_pretrained(
+            model, Path(str(initial_adapter)), is_trainable=True
         )
     else:
         lora = config.get("state_handoff_training", {}).get("lora", {})
@@ -355,6 +370,7 @@ def train_state_handoff_condition(
     checkpoint = Path(manifest["last_checkpoint"]) if manifest.get("last_checkpoint") else None
     model, tokenizer = _base_and_adapter(
         run_path=run_path,
+        condition=condition,
         checkpoint=checkpoint,
         model=model,
         tokenizer=tokenizer,
@@ -621,6 +637,11 @@ def train_state_handoff_condition(
                 "dataset_manifest": str(run_path / DATA_MANIFEST_PATH),
                 "base_model": config["model"]["name"],
                 "base_model_revision": config["model"].get("revision"),
+                "initial_adapter": (
+                    experiment.get("interfaces", {})
+                    .get("initial_adapters", {})
+                    .get(condition)
+                ),
                 "training_sequences_per_epoch": 2 * len(pairs),
                 "planned_training_forward_passes": 2 * len(pairs) * epochs,
                 "planned_fixed_padding_compute_tokens": (
