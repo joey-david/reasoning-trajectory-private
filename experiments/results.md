@@ -56,8 +56,8 @@ second-model claims remain prepared rather than completed evidence.
    algebraic transfer, preserve the entry encoder, and move the interface into
    a reasoning-domain state machine before a second model family.
 5. Run joint entry/closure replay, then the first algebra and proof transfer
-   seeds. Run the four-bit sweep after algebra succeeds. Only then run Qwen
-   seeds 2–3 and the Mistral proof replication.
+   seeds. Confirm each passing transfer over Qwen seeds 2–3 before adding the
+   four-bit algebra sweep or Mistral proof replication.
 
 ## Supporting Manifests
 

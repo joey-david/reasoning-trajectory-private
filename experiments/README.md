@@ -319,17 +319,18 @@ scripts/remote.sh pull \
 ```
 
 Inspect `.gate.status` in each generalization summary. Joint closure does not
-gate the independent transfer tests. If the first algebra seed passes, run the
-four-bit rate shift. If a first transfer seed passes, run its two extra Qwen
-seeds. Run Mistral only after all three Qwen proof seeds pass:
+gate the independent transfer tests. If a first transfer seed passes, run its
+two extra Qwen seeds before adding breadth. Run the four-bit rate shift after
+all three Qwen algebra seeds pass, and Mistral after all three Qwen proof seeds
+pass:
 
 ```bash
-STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
-  bash scripts/remote/state_handoff.sh interface-width4-transfer-7b
 STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
   bash scripts/remote/state_handoff.sh interface-algebra-confirm-7b
 STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
   bash scripts/remote/state_handoff.sh interface-proof-confirm-7b
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+  bash scripts/remote/state_handoff.sh interface-width4-transfer-7b
 STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
   bash scripts/remote/state_handoff.sh interface-proof-second-model-7b
 ```
@@ -340,9 +341,6 @@ its normal `evaluation/generalization_summary.json`:
 
 ```bash
 scripts/remote.sh pull \
-  runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_algebra \
-  runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_outcome
-scripts/remote.sh pull \
   runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_transfer_seed2 \
   runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome_seed2 \
   runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_transfer_seed3 \
@@ -352,6 +350,9 @@ scripts/remote.sh pull \
   runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed2 \
   runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed3 \
   runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed3
+scripts/remote.sh pull \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_algebra \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_outcome
 scripts/remote.sh pull \
   runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_proof \
   runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_outcome
