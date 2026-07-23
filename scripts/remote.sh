@@ -33,6 +33,7 @@ pull_run() {
     fi
     if [[ "$include_pt" != true ]]; then
       rsync_args+=(--exclude "*.pt")
+      rsync_args+=(--exclude "*.safetensors")
     fi
     rsync "${rsync_args[@]}" "$host:$remote_root/$run_path/" "$run_path/"
   else
