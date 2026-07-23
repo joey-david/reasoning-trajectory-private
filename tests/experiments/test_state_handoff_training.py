@@ -27,6 +27,7 @@ from src.experiments.depth_relief.state_handoff_evaluation import (
 )
 from src.experiments.depth_relief.state_handoff_training import (
     _flush_checkpoint_metrics,
+    _load_resume_state,
     read_training_metrics,
     validation_checkpoint_score,
 )
@@ -58,6 +59,68 @@ class CharacterTokenizer:
     def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
         assert add_special_tokens is False
         return [ord(character) + 1 for character in text]
+
+
+def test_resume_moves_cuda_rng_states_back_to_cpu(tmp_path, monkeypatch) -> None:
+    torch = pytest.importorskip("torch")
+
+    class FakeCudaState:
+        def detach(self):
+            return self
+
+        def to(self, *, device):
+            assert device == "cpu"
+            return torch.arange(8, dtype=torch.uint8)
+
+    class Loadable:
+        def __init__(self) -> None:
+            self.loaded = None
+
+        def load_state_dict(self, state) -> None:
+            self.loaded = state
+
+    class Model:
+        def get_input_embeddings(self):
+            return type(
+                "Embeddings",
+                (),
+                {"weight": torch.zeros(1)},
+            )()
+
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "trainer_state.json").write_text('{"optimizer_step": 156}\n')
+    payload = {
+        "optimizer": {"optimizer": True},
+        "scheduler": {"scheduler": True},
+        "torch_rng": torch.get_rng_state(),
+        "cuda_rng": [FakeCudaState()],
+    }
+    restored = []
+    monkeypatch.setattr(torch, "load", lambda *args, **kwargs: payload)
+    monkeypatch.setattr(torch, "set_rng_state", lambda state: None)
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(
+        torch.cuda,
+        "set_rng_state_all",
+        lambda states: restored.extend(states),
+    )
+    optimizer = Loadable()
+    scheduler = Loadable()
+
+    state = _load_resume_state(
+        model=Model(),
+        optimizer=optimizer,
+        scheduler=scheduler,
+        checkpoint=checkpoint,
+    )
+
+    assert state["optimizer_step"] == 156
+    assert optimizer.loaded == payload["optimizer"]
+    assert scheduler.loaded == payload["scheduler"]
+    assert len(restored) == 1
+    assert restored[0].device.type == "cpu"
+    assert restored[0].dtype == torch.uint8
 
 
 def test_checkpoint_selection_uses_the_producer_target() -> None:

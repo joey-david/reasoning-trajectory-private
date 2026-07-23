@@ -289,7 +289,13 @@ def _load_resume_state(
     scheduler.load_state_dict(payload["scheduler"])
     torch.set_rng_state(payload["torch_rng"].cpu())
     if torch.cuda.is_available() and payload.get("cuda_rng") is not None:
-        torch.cuda.set_rng_state_all(payload["cuda_rng"])
+        cuda_rng = []
+        for state in payload["cuda_rng"]:
+            state = state.detach().to(device="cpu")
+            if state.dtype != torch.uint8:
+                raise TypeError("Saved CUDA RNG state is not a byte tensor")
+            cuda_rng.append(state)
+        torch.cuda.set_rng_state_all(cuda_rng)
     return json.loads((checkpoint / "trainer_state.json").read_text())
 
 
