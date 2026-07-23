@@ -96,11 +96,15 @@ for action in "${ACTIONS[@]}"; do
   action_run_paths "$action"
 done | awk '!seen[$0]++' >"$RUN_PATHS_PATH"
 
+if ! git_commit="$(git rev-parse HEAD 2>/dev/null)"; then
+  git_commit=unavailable
+fi
+
 {
   echo "schema_version=1"
   echo "session_id=$SESSION_ID"
   echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "git_commit=$(git rev-parse HEAD)"
+  echo "git_commit=$git_commit"
   echo "host=$(hostname)"
   echo "nodes=${STATE_HANDOFF_NODES:-upnquick}"
   echo "devices=${STATE_HANDOFF_7B_DEVICES:-0,1}"
