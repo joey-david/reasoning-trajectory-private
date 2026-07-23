@@ -352,6 +352,7 @@ def train_state_handoff_condition(
     tokenizer: Any | None = None,
     enforce_phase1_gate: bool = True,
     on_progress: Callable[[str], None] | None = None,
+    on_step: Callable[[int, int, str], None] | None = None,
 ) -> dict[str, Any]:
     """Train or resume one matched-compute LoRA condition."""
     if condition not in ALL_TRAINING_CONDITIONS:
@@ -510,6 +511,28 @@ def train_state_handoff_condition(
         raise ValueError("Evaluation interval must be positive")
     max_grad_norm = float(training.get("max_gradient_norm", 1.0))
     checkpoint_metrics: list[dict[str, Any]] = []
+
+    def report_step(loss: float | None = None) -> None:
+        if on_step is None:
+            return
+        microbatch_index = int(state["microbatch_index"])
+        epoch = min(
+            epochs,
+            microbatch_index // microbatches_per_epoch + 1,
+        )
+        description = (
+            f"state handoff training {condition} "
+            f"epoch {epoch}/{epochs}"
+        )
+        if loss is not None:
+            description += f" loss={loss:.4f}"
+        on_step(
+            int(state["optimizer_step"]),
+            stop_after_steps,
+            description,
+        )
+
+    report_step()
     for microbatch_index, pair_batch in enumerate(batches):
         if microbatch_index < skip_microbatches:
             continue
@@ -609,11 +632,12 @@ def train_state_handoff_condition(
         ):
             raise FloatingPointError("State-handoff training produced a non-finite metric")
         checkpoint_metrics.append(metric)
-        if on_progress is not None:
+        if on_progress is not None and on_step is None:
             on_progress(
                 f"state handoff training {condition} step {step}/{stop_after_steps} "
                 f"loss={metric['total_loss']:.4f}"
             )
+        report_step(metric["total_loss"])
         running.clear()
         running_counts.clear()
         interval_started = time.monotonic()

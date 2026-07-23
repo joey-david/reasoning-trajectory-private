@@ -73,7 +73,10 @@ class StateHandoffTrainingWorker:
         condition = str(task["condition"])
         progress.set_description(f"state handoff training {condition}")
         train_state_handoff_condition(
-            self.run_path, condition, on_progress=progress.set_description
+            self.run_path,
+            condition,
+            on_progress=progress.set_description,
+            on_step=progress.set_progress,
         )
         gc.collect()
         try:
@@ -83,6 +86,7 @@ class StateHandoffTrainingWorker:
                 torch.cuda.empty_cache()
         except ImportError:
             pass
+        progress.clear_progress()
         progress.set_description(f"state handoff evaluation {condition}")
         if condition in INTERFACE_CONDITIONS:
             from src.experiments.depth_relief.state_interface_evaluation import (

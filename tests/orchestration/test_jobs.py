@@ -26,10 +26,33 @@ from src.orchestration.jobs.state_abstraction_capture import (
 from src.orchestration.jobs.state_transfer_capture import (
     pending_tasks as pending_transfer_capture_tasks,
 )
-from src.orchestration.remote import parse_workers, worker_command
+from src.orchestration.remote import WorkerProgress, parse_workers, worker_command
 
 
 class OrchestrationJobTests(unittest.TestCase):
+    @patch("src.orchestration.remote.emit")
+    def test_worker_progress_forwards_numeric_training_progress(self, emit):
+        progress = WorkerProgress()
+
+        progress.set_progress(
+            174,
+            313,
+            "state handoff training canonical_opaque epoch 1/1 loss=0.0033",
+        )
+
+        emit.assert_called_once_with(
+            {
+                "type": "progress",
+                "text": (
+                    "state handoff training canonical_opaque "
+                    "epoch 1/1 loss=0.0033"
+                ),
+                "current": 174,
+                "total": 313,
+                "unit": "step",
+            }
+        )
+
     def test_job_loader_accepts_both_name_styles(self):
         self.assertIs(load_job("causal-patching"), load_job("causal_patching"))
         self.assertIs(

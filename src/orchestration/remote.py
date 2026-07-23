@@ -72,6 +72,31 @@ class WorkerProgress:
             description += f" | last gen {self.last_speed:.1f} tok/s"
         emit({"type": "progress", "text": description})
 
+    def set_progress(
+        self,
+        current: int,
+        total: int,
+        description: str,
+        *,
+        unit: str = "step",
+    ) -> None:
+        """Forward numeric progress so the coordinator can estimate time left."""
+        if not 0 <= current <= total:
+            raise ValueError(f"Progress {current}/{total} is outside its range")
+        emit(
+            {
+                "type": "progress",
+                "text": description,
+                "current": current,
+                "total": total,
+                "unit": unit,
+            }
+        )
+
+    def clear_progress(self) -> None:
+        """Return the worker line to text-only status updates."""
+        emit({"type": "progress", "text": "", "clear": True})
+
     def set_postfix(self, *_args: Any, **_kwargs: Any) -> None:
         """Accept the tqdm postfix API without emitting a duplicate update.
 
@@ -282,6 +307,7 @@ def run_worker(
     host, gpu_group = worker
     gpu_label = "+".join(str(gpu) for gpu in gpu_group)
     name = f"{host}:{gpu_label}"
+    progress_total: int | None = None
     log_path = load_job(job_name).log_path(run_path, host, gpu_label)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as log:
@@ -324,6 +350,9 @@ def run_worker(
                     task = tasks.get_nowait()
                 except Empty:
                     break
+                progress_total = None
+                worker_bar.bar_format = "{desc}"
+                worker_bar.reset(total=0)
                 assert process.stdin is not None
                 process.stdin.write(json.dumps({"type": "task", **task}) + "\n")
                 process.stdin.flush()
@@ -332,6 +361,28 @@ def run_worker(
                 while True:
                     event = receive(process, log)
                     if event["type"] == "progress":
+                        if event.get("clear"):
+                            progress_total = None
+                            worker_bar.bar_format = "{desc}"
+                            worker_bar.reset(total=0)
+                        elif "current" in event:
+                            current = int(event["current"])
+                            event_total = int(event["total"])
+                            if progress_total != event_total:
+                                progress_total = event_total
+                                worker_bar.bar_format = (
+                                    "{desc} {percentage:3.0f}%|{bar}| "
+                                    "{n_fmt}/{total_fmt} "
+                                    "[{elapsed}<{remaining}, {rate_fmt}]"
+                                )
+                                worker_bar.unit = str(event.get("unit", "step"))
+                                worker_bar.reset(total=event_total)
+                                worker_bar.initial = current
+                                worker_bar.n = current
+                                worker_bar.last_print_n = current
+                                worker_bar.last_print_t = time.time()
+                            else:
+                                worker_bar.update(current - worker_bar.n)
                         worker_bar.set_description_str(
                             f"{name:<20} {event['text']}", refresh=True
                         )
@@ -394,6 +445,11 @@ def orchestrate(
         unit="task",
         position=0,
         dynamic_ncols=True,
+        bar_format=(
+            "{desc}: {n_fmt}/{total_fmt} tasks complete"
+            if total <= len(workers)
+            else None
+        ),
     )
     bars = [
         tqdm(
