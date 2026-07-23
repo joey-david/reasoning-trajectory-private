@@ -20,7 +20,11 @@ from .state_handoff_data import (
     read_programs,
 )
 from .state_handoff_evaluation import read_evaluation_cases
-from .state_handoff_information import conditional_entropy, mutual_information
+from .state_handoff_information import (
+    conditional_entropy,
+    discrete_entropy,
+    mutual_information,
+)
 from .state_interface_contract import CODEBOOK_SIZES
 from .state_interface_evaluation import read_interface_evaluation_cases
 
@@ -63,11 +67,18 @@ def _information_metrics(
     ]
     state_information = mutual_information(pairs)
     state_given_code = conditional_entropy(pairs)
-    denominator = math.log2(max(semantic_count - 1, 2))
+    support = len({state for state, _ in pairs})
+    state_entropy = discrete_entropy(state for state, _ in pairs)
+    denominator = math.log2(max(support - 1, 2))
     fano_error_lower = max(0.0, (state_given_code - 1.0) / denominator)
     return {
+        "semantic_state_count": semantic_count,
+        "observed_state_support": support,
+        "state_entropy_bits": state_entropy,
         "state_information_bits": state_information,
-        "state_information_fraction": state_information / math.log2(semantic_count),
+        "state_information_fraction": (
+            state_information / state_entropy if state_entropy else 0.0
+        ),
         "state_given_code_bits": state_given_code,
         "fano_state_error_lower_bound": fano_error_lower,
     }
@@ -83,7 +94,7 @@ def _cell_keys(row: dict[str, Any]) -> tuple[tuple[str, str, int], ...]:
         return (
             base,
             (
-                "horn_proof_active_conjunction",
+                "horn_proof_causal_conjunction",
                 base[1],
                 base[2],
             ),

@@ -12,6 +12,7 @@ from .benchmark import apply_rule, hexadecimal_state_symbols
 
 
 PROGRAM_DOMAINS = ("addition", "mixed_algebra", "horn_proof", "reasoning_mixture")
+PROOF_STATE_SYMBOLS = tuple("абвгдежзийклмноп")
 ALGEBRA_FAMILIES = ("add", "xor", "affine")
 DEFAULT_SEEN_PAIRS = (
     ("add", "add"),
@@ -223,12 +224,16 @@ def _horn_history(
         composition_split,
     )
     target_bits = [bit for bit in range(width) if target & (1 << bit)]
-    reserve_conjunction = (
-        composition_split == "heldout" and len(target_bits) >= 2
+    reserve_conjunction = composition_split == "heldout" and len(target_bits) >= 3
+    reserved_conclusion = (
+        rng.choice(target_bits) if reserve_conjunction else None
     )
+    prefix_bits = [
+        bit for bit in target_bits if bit != reserved_conclusion
+    ]
     available_essential_steps = history_steps - int(reserve_conjunction)
-    minimum_initial = max(0, len(target_bits) - available_essential_steps)
-    shuffled = list(target_bits)
+    minimum_initial = max(0, len(prefix_bits) - available_essential_steps)
+    shuffled = list(prefix_bits)
     rng.shuffle(shuffled)
     initial_bits = set(shuffled[:minimum_initial])
     initial = sum(1 << bit for bit in initial_bits)
@@ -241,8 +246,13 @@ def _horn_history(
     for position in range(history_steps):
         established = [bit for bit in range(width) if state & (1 << bit)]
         if reserve_conjunction and position == history_steps - 1:
-            premises = sorted(rng.sample(target_bits, k=2))
-            conclusion = rng.choice(target_bits)
+            premises = sorted(
+                rng.sample(
+                    [bit for bit in target_bits if bit != reserved_conclusion],
+                    k=2,
+                )
+            )
+            conclusion = int(reserved_conclusion)
         elif position in essential_positions:
             conclusion = missing.pop(0)
             if composition_split == "heldout" and len(established) >= 2:
@@ -379,9 +389,11 @@ def _program_case(
         active_conjunction = any(
             len(rule.get("premises", ())) >= 2
             and all(state & (1 << int(bit)) for bit in rule["premises"])
+            and apply_rule(rule, state, modulus) != state
             for state, rule in zip(states, history)
         )
         extra.update(
+            answer_symbols=["0", "1"],
             proof_template=(
                 "active_conjunction"
                 if active_conjunction
@@ -409,7 +421,12 @@ def _program_case(
         "abstraction_split": split,
         **extra,
     }
-    if width == 4:
+    if domain == "horn_proof" and width == 4:
+        semantic.update(
+            state_representation="opaque_fact_set",
+            state_symbols=list(PROOF_STATE_SYMBOLS),
+        )
+    elif width == 4:
         semantic.update(
             state_representation="hexadecimal",
             state_symbols=list(hexadecimal_state_symbols(modulus)),

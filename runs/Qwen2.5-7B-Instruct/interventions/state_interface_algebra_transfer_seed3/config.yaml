@@ -3,23 +3,22 @@ model:
   revision: a09a35458c702b33eeacc393d103063234e8bc28
   backend: hf
   required_gpus: 1
-  device_map:
-    "": 0
+  device_map: {"": 0}
   dtype: bfloat16
   attn_implementation: flash_attention_2
   trust_remote_code: false
 
 state_handoff_training:
   linked_runs:
-    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome_seed3
   phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
   frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
-  conditions: [compressed_3bit, canonical_4bit, redundant_5bit]
+  conditions: [canonical_opaque, redundant_4bit]
   evaluation_adapter: final
   dataset:
-    domain: horn_proof
-    bits: 4
-    seed: 725701
+    domain: mixed_algebra
+    bits: 3
+    seed: 725301
     train_examples: 20000
     validation_examples: 2000
     train_horizons: [2]
@@ -30,25 +29,26 @@ state_handoff_training:
     validation_program_contexts: 16
     test_program_contexts: 30
     test_paths_per_state: 2
+    operation_pairs:
+      seen: [add+add, xor+xor, affine+affine, add+xor, xor+affine, affine+add]
+      heldout: [xor+add, affine+xor, add+affine]
   interfaces:
     independent_module_contexts: true
-    canonical_4bit:
-      permutation: [11, 2, 14, 5, 8, 0, 13, 7, 3, 15, 6, 9, 1, 12, 4, 10]
+    canonical_opaque:
+      permutation: [5, 2, 7, 1, 6, 0, 3, 4]
     producer_modes:
-      compressed_3bit: mixed
-      canonical_4bit: mixed
-      redundant_5bit: mixed
+      canonical_opaque: mixed
+      redundant_4bit: mixed
     producer_transition_fractions:
-      compressed_3bit: 0.75
-      canonical_4bit: 0.75
-      redundant_5bit: 0.75
+      canonical_opaque: 0.75
+      redundant_4bit: 0.75
   lora:
     rank: 16
     alpha: 32
     dropout: 0
     target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
   training:
-    seed: 725801
+    seed: 725403
     max_sequence_length: 256
     microbatch: 8
     gradient_accumulation: 8
@@ -62,18 +62,18 @@ state_handoff_training:
     max_gradient_norm: 1.0
     gradient_checkpointing: true
   interface_gate:
-    primary_condition: redundant_5bit
+    primary_condition: redundant_4bit
     min_primary_h8: 0.85
     min_primary_h16: 0.80
   prompt:
     mode: chat
-    system: Execute each proof-state update exactly and return one token.
+    system: Execute the state-interface program exactly and return one token.
 
 state_interface_generalization:
-  outcome_control_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome
-  primary_condition: redundant_5bit
+  outcome_control_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome_seed3
+  primary_condition: redundant_4bit
   gate:
-    domains: [horn_proof_causal_conjunction]
+    domains: [mixed_algebra]
     composition_split: heldout
     history_steps: 16
     min_accuracy: 0.80

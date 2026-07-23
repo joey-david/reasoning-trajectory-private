@@ -31,6 +31,31 @@ run_generalization_pair() {
     compare-generalization "$interface"
 }
 
+run_replication_pair() {
+  local seed2=$1
+  local control2=$2
+  local seed3=$3
+  local control3=$4
+  local nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  local devices="${STATE_HANDOFF_7B_DEVICES:-0,1}"
+  for run in "$seed2" "$control2" "$seed3" "$control3"; do
+    prepare_training_run "$run"
+  done
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_handoff_training \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$seed2"
+  for run in "$seed2" "$seed3"; do
+    "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+      compare-interfaces "$run"
+    "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+      compare-generalization "$run"
+  done
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    compare-replication "$seed2"
+}
+
 case "$action" in
 phase1-32b)
   run="runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history"
@@ -229,8 +254,27 @@ interface-proof-transfer-7b)
     "runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof" \
     "runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome"
   ;;
+interface-algebra-confirm-7b)
+  run_replication_pair \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_transfer_seed2" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome_seed2" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_transfer_seed3" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome_seed3"
+  ;;
+interface-proof-confirm-7b)
+  run_replication_pair \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed2" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed2" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed3" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed3"
+  ;;
+interface-proof-second-model-7b)
+  run_generalization_pair \
+    "runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_proof" \
+    "runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_outcome"
+  ;;
 *)
-  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b | interface-final-eval-7b | interface-stress-7b | interface-closure-7b | interface-closure-stress-7b | interface-joint-closure-7b | interface-algebra-transfer-7b | interface-width4-transfer-7b | interface-proof-transfer-7b" >&2
+  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b | interface-final-eval-7b | interface-stress-7b | interface-closure-7b | interface-closure-stress-7b | interface-joint-closure-7b | interface-algebra-transfer-7b | interface-width4-transfer-7b | interface-proof-transfer-7b | interface-algebra-confirm-7b | interface-proof-confirm-7b | interface-proof-second-model-7b" >&2
   exit 2
   ;;
 esac

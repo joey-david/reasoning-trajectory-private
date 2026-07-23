@@ -62,6 +62,24 @@ def state_text(case: dict[str, Any], state: int) -> str:
     return symbols[int(state)]
 
 
+def answer_symbols(case: dict[str, Any]) -> tuple[str, ...]:
+    """Return the output alphabet for FINAL, which may differ from state labels."""
+    symbols = tuple(
+        str(value) for value in case.get("answer_symbols", state_symbols(case))
+    )
+    if not symbols or len(set(symbols)) != len(symbols):
+        raise ValueError("Answer alphabet must contain unique symbols")
+    return symbols
+
+
+def answer_text(case: dict[str, Any], answer: int) -> str:
+    """Render one FINAL result through its case-owned answer alphabet."""
+    symbols = answer_symbols(case)
+    if not 0 <= int(answer) < len(symbols):
+        raise ValueError(f"Answer {answer} is outside [0, {len(symbols)})")
+    return symbols[int(answer)]
+
+
 def candidate_token_ids(
     tokenizer: Any, prompt: str, symbols: Sequence[str]
 ) -> list[int]:
@@ -85,7 +103,9 @@ def format_model_prompt(
     tokenizer: Any, text: str, config: dict[str, Any]
 ) -> str:
     """Place benchmark content in the model's native prompt contract."""
-    prompt_config = config.get("prompt", {})
+    prompt_config = config.get("prompt")
+    if prompt_config is None:
+        prompt_config = config if "mode" in config else {}
     if prompt_config.get("mode", "plain") == "plain":
         return text
     if prompt_config.get("mode") != "chat":
@@ -191,23 +211,27 @@ def rule_text(rule: dict[str, Any], width: int) -> str:
         return f"rotate the {width}-bit register left by {rule['amount']}"
     if kind == "horn":
         names = tuple(chr(ord("A") + bit) for bit in rule["premises"])
-        premise = " and ".join(f"fact {name}" for name in names) or "no premises"
         conclusion = chr(ord("A") + int(rule["conclusion"]))
-        return f"if {premise} is established, establish fact {conclusion}"
+        if not names:
+            return f"establish fact {conclusion} unconditionally"
+        if len(names) == 1:
+            return f"if fact {names[0]} is established, establish fact {conclusion}"
+        premise = " and ".join(names)
+        return f"if facts {premise} are established, establish fact {conclusion}"
     if kind == "proof_query":
         names = [
             chr(ord("A") + bit)
             for bit in range(width)
             if int(rule["required_mask"]) & (1 << bit)
         ]
-        facts = " and ".join(f"fact {name}" for name in names) or "no facts"
+        facts = " and ".join(names)
         mode = str(rule.get("mode", "all"))
         if mode == "all":
-            return f"return 1 exactly when all of {facts} are established, else 0"
+            return f"return 1 exactly when facts {facts} are all established, else 0"
         if mode == "any":
-            return f"return 1 when any of {facts} is established, else 0"
+            return f"return 1 when any of facts {facts} is established, else 0"
         if mode == "parity":
-            return f"return the parity of the established facts among {facts}"
+            return f"return the parity of established facts among {facts}"
         raise ValueError(f"Unknown proof-query mode: {mode!r}")
     raise ValueError(f"Unknown transition kind: {kind!r}")
 

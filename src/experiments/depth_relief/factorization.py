@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from .benchmark import (
+    answer_symbols,
     apply_rule,
     build_transition_case,
     candidate_token_ids,
@@ -231,6 +232,21 @@ def render_factorization_preamble(case: dict[str, Any]) -> str:
             f"register shown as one hexadecimal digit in [{alphabet}]. "
             "Operation constants are decimal.\n"
         )
+    if case.get("state_representation") == "opaque_fact_set":
+        labels = state_symbols(case)
+        facts = tuple(chr(ord("A") + bit) for bit in range(int(case["bits"])))
+        entries = []
+        for state, label in enumerate(labels):
+            present = ",".join(
+                facts[bit]
+                for bit in range(len(facts))
+                if state & (1 << bit)
+            ) or "none"
+            entries.append(f"{label}={{{present}}}")
+        return (
+            "Apply the proof rules exactly. The state label records established "
+            f"facts: {'; '.join(entries)}.\n"
+        )
     modulus = 2 ** int(case["bits"])
     if case.get("domain") == "horn_proof":
         facts = ", ".join(chr(ord("A") + bit) for bit in range(int(case["bits"])))
@@ -274,7 +290,7 @@ def _factorization_update_prompt(
     if label not in {"FINAL", "Operation"}:
         raise ValueError(f"Unsupported operation label: {label!r}")
     instruction = (
-        "Apply FINAL exactly once and return the resulting state."
+        "Apply FINAL exactly once and return the result."
         if label == "FINAL"
         else "Apply the operation exactly once and return the resulting state."
     )
@@ -289,6 +305,7 @@ def _factorization_update_prompt(
         "text": text,
         "input_state": int(state),
         "expected_next_state": apply_rule(rule, int(state), modulus),
+        "output_kind": "answer" if label == "FINAL" else "state",
     }
 
 
@@ -331,6 +348,7 @@ def render_factorization_prompts(
                 "Return the current state unchanged.\nAnswer="
             ),
             "expected_next_state": current,
+            "output_kind": "state",
         },
         {
             "name": "synthesize",
@@ -341,6 +359,7 @@ def render_factorization_prompts(
                 "Apply every numbered step in order and return the resulting state.\nAnswer="
             ),
             "expected_next_state": current,
+            "output_kind": "state",
         },
         {
             "name": "compose",
@@ -349,9 +368,10 @@ def render_factorization_prompts(
                 + f"Start state: {state_text(case, int(case['initial_state']))}.\n"
                 f"{history}\n"
                 + f"FINAL: {final}.\nApply every numbered step in order, then apply "
-                "FINAL exactly once, and return the resulting state.\nAnswer="
+                "FINAL exactly once, and return the result.\nAnswer="
             ),
             "expected_next_state": int(case["next_state"]),
+            "output_kind": "answer",
         },
     ]
     prompts.insert(
@@ -429,8 +449,12 @@ def validate_factorization_case(
     *, tokenizer: Any, case: dict[str, Any], config: dict[str, Any]
 ) -> dict[str, Any]:
     prompts = render_factorization_prompts(tokenizer=tokenizer, case=case, config=config)
-    candidates = state_symbols(case)
     for prompt in prompts:
+        candidates = (
+            answer_symbols(case)
+            if prompt.get("output_kind") == "answer"
+            else state_symbols(case)
+        )
         candidate_token_ids(tokenizer, prompt["text"], candidates)
     return {
         "id": case["id"],
@@ -454,6 +478,7 @@ def factorization_record(
         "bits": int(case["bits"]),
         "state_representation": str(case.get("state_representation", "decimal")),
         "state_symbols": list(state_symbols(case)),
+        "answer_symbols": list(answer_symbols(case)),
         "history_steps": int(case["history_steps"]),
         "initial_state": int(case["initial_state"]),
         "current_state": int(case["current_state"]),
@@ -468,30 +493,44 @@ def evaluate_factorization_case_hf(
     *, model: Any, tokenizer: Any, case: dict[str, Any], config: dict[str, Any]
 ) -> dict[str, Any]:
     prompts = render_factorization_prompts(tokenizer=tokenizer, case=case, config=config)
-    return factorization_record(
-        case,
-        evaluate_prompt_conditions_hf(
-            model=model,
-            tokenizer=tokenizer,
-            prompts=prompts,
-            candidate_symbols=state_symbols(case),
-        ),
-    )
+    conditions = {}
+    for prompt in prompts:
+        candidates = (
+            answer_symbols(case)
+            if prompt.get("output_kind") == "answer"
+            else state_symbols(case)
+        )
+        conditions.update(
+            evaluate_prompt_conditions_hf(
+                model=model,
+                tokenizer=tokenizer,
+                prompts=[prompt],
+                candidate_symbols=candidates,
+            )
+        )
+    return factorization_record(case, conditions)
 
 
 def evaluate_factorization_case_mlx(
     *, model: Any, tokenizer: Any, case: dict[str, Any], config: dict[str, Any]
 ) -> dict[str, Any]:
     prompts = render_factorization_prompts(tokenizer=tokenizer, case=case, config=config)
-    return factorization_record(
-        case,
-        evaluate_prompt_conditions_mlx(
-            model=model,
-            tokenizer=tokenizer,
-            prompts=prompts,
-            candidate_symbols=state_symbols(case),
-        ),
-    )
+    conditions = {}
+    for prompt in prompts:
+        candidates = (
+            answer_symbols(case)
+            if prompt.get("output_kind") == "answer"
+            else state_symbols(case)
+        )
+        conditions.update(
+            evaluate_prompt_conditions_mlx(
+                model=model,
+                tokenizer=tokenizer,
+                prompts=[prompt],
+                candidate_symbols=candidates,
+            )
+        )
+    return factorization_record(case, conditions)
 
 
 def _correct(row: dict[str, Any], name: str) -> bool:

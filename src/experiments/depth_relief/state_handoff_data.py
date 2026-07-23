@@ -10,7 +10,13 @@ from src.runtime.artifact_store import write_json
 from src.runtime.config import load_config
 from src.runtime.data import load_samples, write_jsonl
 
-from .benchmark import candidate_token_ids, state_symbols, state_text
+from .benchmark import (
+    answer_symbols,
+    answer_text,
+    candidate_token_ids,
+    state_symbols,
+    state_text,
+)
 from .factorization import (
     render_factorization_prompts,
     render_factorization_update_prompt,
@@ -159,9 +165,10 @@ def _sequence(
 ) -> dict[str, Any]:
     target = int(prompt["expected_next_state"])
     prompt_ids = tokenizer.encode(prompt["text"], add_special_tokens=False)
-    full_ids = tokenizer.encode(
-        prompt["text"] + state_text(case, target), add_special_tokens=False
+    target_text = (
+        answer_text(case, target) if mapping == "answer" else state_text(case, target)
     )
+    full_ids = tokenizer.encode(prompt["text"] + target_text, add_special_tokens=False)
     if full_ids[:-1] != prompt_ids or len(full_ids) != len(prompt_ids) + 1:
         raise ValueError("Training target does not extend the prompt by one token")
     target_id = int(full_ids[-1])
@@ -271,7 +278,7 @@ def build_training_pairs(
         candidate_token_ids(
             tokenizer,
             next(row["text"] for row in prompts if row["name"] == "compose"),
-            state_symbols(cases[0]),
+            answer_symbols(cases[0]),
         )
     return [
         training_sequence_pair(
@@ -405,8 +412,14 @@ def validate_state_handoff_training_data(run_path: Path) -> dict[str, Any]:
         )
         for row in (prompts["compose"], prompts["synthesize"], update):
             if not alphabet_validated:
-                candidate_token_ids(tokenizer, row["text"], state_symbols(case))
-                alphabet_validated = True
+                candidates = (
+                    answer_symbols(case)
+                    if row.get("output_kind") == "answer"
+                    else state_symbols(case)
+                )
+                candidate_token_ids(tokenizer, row["text"], candidates)
+                if row["name"] == "synthesize":
+                    alphabet_validated = True
             test_max = max(
                 test_max,
                 len(tokenizer.encode(row["text"], add_special_tokens=False)) + 1,

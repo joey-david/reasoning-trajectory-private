@@ -11,7 +11,7 @@ from src.models.hf_loader import load_hf_model_and_tokenizer
 from src.runtime.artifact_store import append_jsonl, write_json
 from src.runtime.config import load_config
 
-from .benchmark import apply_rule, state_symbols
+from .benchmark import answer_symbols, apply_rule, state_symbols
 from .factorization import (
     render_factorization_prompts,
     render_factorization_update_prompt,
@@ -65,7 +65,11 @@ def _score(
         model=model,
         tokenizer=tokenizer,
         prompts=[prompt],
-        candidate_symbols=state_symbols(case),
+        candidate_symbols=(
+            answer_symbols(case)
+            if prompt.get("output_kind") == "answer"
+            else state_symbols(case)
+        ),
     )[str(prompt["name"])]
 
 

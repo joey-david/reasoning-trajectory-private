@@ -72,6 +72,25 @@ def test_arbitrary_state_update_prompt_uses_supplied_state() -> None:
     assert prompt["expected_next_state"] == 2
 
 
+def test_prompt_subconfig_still_applies_the_chat_template() -> None:
+    class ChatTokenizer:
+        def apply_chat_template(self, messages, **_kwargs):
+            roles = ",".join(message["role"] for message in messages)
+            return f"<chat roles={roles}>"
+
+    prompt = render_factorization_update_prompt(
+        tokenizer=ChatTokenizer(),
+        case=_case(),
+        config={"mode": "chat", "system": "Return one token."},
+        state=7,
+        rule={"kind": "pointer", "mapping": list(range(8))},
+        name="final",
+        label="FINAL",
+    )
+    assert prompt["text"] == "<chat roles=system,user>Answer="
+    assert prompt["output_kind"] == "answer"
+
+
 def test_horizon_one_matched_histories_reach_each_state() -> None:
     cases = build_state_abstraction_benchmark(
         {

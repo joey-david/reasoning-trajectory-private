@@ -11,6 +11,8 @@ from src.runtime.artifact_store import write_json
 from src.runtime.config import load_config
 
 from .benchmark import (
+    answer_symbols,
+    answer_text,
     candidate_token_ids,
     format_model_prompt,
     state_symbols,
@@ -47,9 +49,20 @@ def _code_prompt_preamble(case: dict[str, Any], condition: str) -> str:
         else ""
     )
     if case.get("domain") == "horn_proof":
+        labels = state_symbols(case)
+        facts = tuple(chr(ord("A") + bit) for bit in range(int(case["bits"])))
+        entries = []
+        for state, label in enumerate(labels):
+            present = ",".join(
+                facts[bit]
+                for bit in range(len(facts))
+                if state & (1 << bit)
+            ) or "none"
+            entries.append(f"{label}={{{present}}}")
         semantics = (
             f"The hidden state is the established-fact bitmask for "
-            f"{case['bits']} facts."
+            f"{case['bits']} facts. Public state labels are "
+            f"{'; '.join(entries)}."
         )
     elif case.get("domain") == "mixed_algebra":
         semantics = f"The hidden state is a {case['bits']}-bit program register."
@@ -214,13 +227,13 @@ def interface_training_sequence_pair(
         condition=condition,
         code=symbols[output_index],
     )
-    answer_symbols = state_symbols(case)
+    candidates = answer_symbols(case)
     answer_sequence = _target_sequence(
         tokenizer=tokenizer,
         case=case,
         prompt=consumer_prompt,
-        target_symbol=state_text(case, int(case["next_state"])),
-        candidates=answer_symbols,
+        target_symbol=answer_text(case, int(case["next_state"])),
+        candidates=candidates,
         mapping="answer",
     )
     pair = [state_sequence, answer_sequence]
@@ -278,7 +291,7 @@ def build_interface_training_pairs(
                 condition=condition,
                 code=symbols[0],
             ),
-            state_symbols(sample),
+            answer_symbols(sample),
         )
     if not bool(interface_config.get("independent_module_contexts", True)):
         return [

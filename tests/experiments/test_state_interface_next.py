@@ -184,7 +184,7 @@ def test_reasoning_mixture_has_exact_program_and_proof_state_paths() -> None:
         horizons=(4,),
         context_count=4,
         paths_per_state=2,
-        width=3,
+        width=4,
         seed=37,
         dataset={
             "domain": "reasoning_mixture",
@@ -202,19 +202,20 @@ def test_reasoning_mixture_has_exact_program_and_proof_state_paths() -> None:
     heldout = [case for case in proof if case["composition_split"] == "heldout"]
     assert all(not case["proof_composition_active"] for case in seen)
     assert sum(case["proof_composition_active"] for case in heldout) == (
-        len(heldout) // 2
+        5 * 2 * 2
     )
     assert all(
         any(
             len(rule["premises"]) == 2
             and all(state & (1 << bit) for bit in rule["premises"])
+            and apply_rule(rule, state, 16) != state
             for state, rule in zip(case["state_path"], case["history"])
         )
         for case in heldout
         if case["proof_composition_active"]
     )
     assert all(
-        apply_rule(case["final_rule"], case["current_state"], 8)
+        apply_rule(case["final_rule"], case["current_state"], 16)
         == case["next_state"]
         for case in proof
     )

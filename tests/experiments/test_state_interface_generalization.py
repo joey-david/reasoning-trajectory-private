@@ -6,7 +6,11 @@ from src.experiments.depth_relief.state_handoff_programs import (
     build_test_programs,
 )
 from src.experiments.depth_relief.state_interface_generalization import (
+    _information_metrics,
     compare_state_interface_generalization,
+)
+from src.experiments.depth_relief.state_interface_replication import (
+    compare_state_interface_replications,
 )
 
 
@@ -137,3 +141,78 @@ state_interface_generalization:
     assert cell["outcome_answer_accuracy"]["mean"] == 0.0
     assert cell["state_information_bits"] == 3.0
     assert cell["same_state_quotient_agreement"]["mean"] == 1.0
+
+
+def test_replication_summary_requires_identical_three_seed_programs(
+    tmp_path,
+) -> None:
+    runs = [tmp_path / f"seed{seed}" for seed in range(3)]
+    for index, run in enumerate(runs):
+        run.mkdir()
+        config = {
+            "model": {"name": "tiny", "revision": "fixed"},
+        }
+        if index == 0:
+            config["state_interface_replication"] = {
+                "runs": [str(value) for value in runs],
+                "primary_condition": "redundant_4bit",
+                "domain": "mixed_algebra",
+                "composition_split": "heldout",
+                "history_steps": 16,
+                "min_accuracy": 0.8,
+                "min_improvement": 0.1,
+            }
+        (run / "config.yaml").write_text(json.dumps(config))
+        _write_jsonl(
+            run / "evaluation/test_programs.jsonl",
+            [{"id": "shared"}],
+        )
+        manifest = run / "training/data/manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"shared": true}\n')
+        summary = {
+            "gate": {"status": "passed"},
+            "cells": {
+                "redundant_4bit/mixed_algebra/heldout/h16": {
+                    "interface_answer_accuracy": {
+                        "mean": 0.90 + 0.01 * index
+                    },
+                    "outcome_answer_accuracy": {"mean": 0.50},
+                    "interface_minus_outcome": {
+                        "mean": 0.40 + 0.01 * index
+                    },
+                    "semantic_state_accuracy": {"mean": 0.92},
+                    "same_state_quotient_agreement": {"mean": 0.95},
+                    "state_information_fraction": 0.96,
+                    "state_given_code_bits": 0.12,
+                    "fano_state_error_lower_bound": 0.0,
+                }
+            },
+        }
+        path = run / "evaluation/generalization_summary.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(summary))
+
+    first = compare_state_interface_replications(runs[0])
+    second = compare_state_interface_replications(runs[0])
+    assert first == second
+    assert first["gate"]["status"] == "passed"
+    assert first["metrics"]["interface_answer_accuracy"]["per_seed"] == [
+        0.9,
+        0.91,
+        0.92,
+    ]
+
+
+def test_information_fraction_uses_the_selected_stratum_entropy() -> None:
+    rows = [
+        {"current_state": state, "predicted_code": index}
+        for index, state in enumerate((3, 5, 6, 7))
+        for _ in range(2)
+    ]
+    metrics = _information_metrics(rows, semantic_count=8)
+    assert metrics["semantic_state_count"] == 8
+    assert metrics["observed_state_support"] == 4
+    assert metrics["state_entropy_bits"] == 2.0
+    assert metrics["state_information_bits"] == 2.0
+    assert metrics["state_information_fraction"] == 1.0

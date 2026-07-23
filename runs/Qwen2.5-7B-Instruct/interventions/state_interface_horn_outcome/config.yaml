@@ -16,7 +16,7 @@ state_handoff_training:
   evaluation_adapter: final
   dataset:
     domain: horn_proof
-    bits: 3
+    bits: 4
     seed: 725701
     train_examples: 20000
     validation_examples: 2000

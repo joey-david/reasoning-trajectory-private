@@ -11,7 +11,7 @@ from typing import Any, Callable
 from src.runtime.artifact_store import append_jsonl, write_json
 from src.runtime.config import load_config
 
-from .benchmark import apply_rule, state_symbols
+from .benchmark import answer_symbols, apply_rule
 from .metrics import bootstrap_mean_ci, cluster_bootstrap_mean_ci
 from .qualification import evaluate_prompt_conditions_hf
 from .state_handoff_data import INTERFACE_CONDITIONS, TEST_PATH, read_programs
@@ -195,7 +195,7 @@ def evaluate_interface_program_hf(
         interface_config=interface_config,
         variant=variant,
     )
-    answer_symbols = state_symbols(case)
+    candidates = answer_symbols(case)
     predicted_final = None
     if predicted_code is not None:
         predicted_final = _score(
@@ -208,7 +208,7 @@ def evaluate_interface_program_hf(
                 condition=condition,
                 code=symbols[predicted_code],
             ),
-            candidates=answer_symbols,
+            candidates=candidates,
             expected=int(case["next_state"]),
             name="predicted_final",
         )
@@ -222,7 +222,7 @@ def evaluate_interface_program_hf(
             condition=condition,
             code=symbols[true_code],
         ),
-        candidates=answer_symbols,
+        candidates=candidates,
         expected=int(case["next_state"]),
         name="gold_final",
     )

@@ -3,18 +3,19 @@ model:
   revision: a09a35458c702b33eeacc393d103063234e8bc28
   backend: hf
   required_gpus: 1
-  device_map:
-    "": 0
+  device_map: {"": 0}
   dtype: bfloat16
   attn_implementation: flash_attention_2
   trust_remote_code: false
 
 state_handoff_training:
   linked_runs:
-    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed2
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed3
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed3
   phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
   frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
-  conditions: [compressed_3bit, canonical_4bit, redundant_5bit]
+  conditions: [canonical_4bit, redundant_5bit]
   evaluation_adapter: final
   dataset:
     domain: horn_proof
@@ -35,11 +36,9 @@ state_handoff_training:
     canonical_4bit:
       permutation: [11, 2, 14, 5, 8, 0, 13, 7, 3, 15, 6, 9, 1, 12, 4, 10]
     producer_modes:
-      compressed_3bit: mixed
       canonical_4bit: mixed
       redundant_5bit: mixed
     producer_transition_fractions:
-      compressed_3bit: 0.75
       canonical_4bit: 0.75
       redundant_5bit: 0.75
   lora:
@@ -48,7 +47,7 @@ state_handoff_training:
     dropout: 0
     target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
   training:
-    seed: 725801
+    seed: 725802
     max_sequence_length: 256
     microbatch: 8
     gradient_accumulation: 8
@@ -70,7 +69,7 @@ state_handoff_training:
     system: Execute each proof-state update exactly and return one token.
 
 state_interface_generalization:
-  outcome_control_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome
+  outcome_control_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed2
   primary_condition: redundant_5bit
   gate:
     domains: [horn_proof_causal_conjunction]
@@ -80,3 +79,15 @@ state_interface_generalization:
     min_improvement: 0.10
     min_state_information_fraction: 0.85
     min_quotient_agreement: 0.85
+
+state_interface_replication:
+  runs:
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed2
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed3
+  primary_condition: redundant_5bit
+  domain: horn_proof_causal_conjunction
+  composition_split: heldout
+  history_steps: 16
+  min_accuracy: 0.80
+  min_improvement: 0.10
