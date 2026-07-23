@@ -1,0 +1,149 @@
+\documentclass[9pt,twocolumn]{extarticle}
+\usepackage[letterpaper,margin=0.43in,columnsep=0.18in]{geometry}
+\usepackage{amsmath,amssymb,balance,booktabs,microtype,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1.6pt}
+\setlength{\abovecaptionskip}{2pt}
+\setlength{\belowcaptionskip}{-2pt}
+\setlength{\textfloatsep}{3pt}
+\setlength{\floatsep}{3pt}
+\setlist{nosep,leftmargin=9pt}
+\newcommand{\state}{S}
+\newcommand{\code}{C}
+
+\title{\vspace{-1.35em}\textbf{Closed State Channels Turn Local Language-Model
+Competence into Long-Horizon Computation}\vspace{-0.65em}}
+\author{\normalsize Anonymous authors}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.45em}
+\begin{abstract}
+\small
+Reasoning language models can execute one state update yet fail to compose the
+same update over a history.  We force Qwen models through a one-token discrete
+state channel and delete used history after each call.  A two-bit channel hits
+its exact 50\% information limit; direct transition-closure training makes a
+redundant four-bit channel 93.25\% accurate at horizon 16 under five shifted
+history distributions, versus 48.50\% for matched endpoint training.  Predicted
+codes carry a stable three-bit semantic quotient despite surface-token drift.
+\end{abstract}
+\vspace{-0.55em}
+\balance
+
+\section*{\fontsize{9}{10}\selectfont Question and contract}
+\vspace{-0.3em}
+A history $H$ induces the sufficient current state
+$\state=f(H)\in\{0,\ldots,7\}$; a held-out final rule $F$ gives
+$Y=g(\state,F)$.  Native one-pass execution receives $(H,F)$.
+Our interface instead emits one token $\code$, deletes $H$, and gives only
+$(\code,F)$ to a second call.  Repeated execution also requires a learned
+transition $\widehat T_u$ for each operation $u$:
+\[
+\underbrace{Y\perp H\mid(\code,F)}_{\text{sufficiency}},\qquad
+\underbrace{q(\widehat T_u(c))=T_u(q(c))}_{\text{semantic closure}},\qquad
+R=\log_2|\mathcal C|.
+\]
+Here $q$ decodes a token to state.  Exact canonicalization asks that equal
+states emit the same token; the weaker and more useful requirement allows a
+\emph{fiber} $q^{-1}(s)$ of equivalent tokens.  This is a finite, causal version
+of a predictive sufficient statistic \cite{shalizi2001}, with a declared
+channel rate rather than an unconstrained hidden vector
+\cite{shannon1948,tishby2000}.
+
+\section*{\fontsize{9}{10}\selectfont Method}
+\vspace{-0.3em}
+\textbf{Diagnosis.}  On 1,920 balanced modulo-eight programs, frozen
+Qwen2.5-32B has perfect Read, one-step Update, and supplied-state use, but only
+13.44\% h2 one-pass Compose.  A two-call self-handoff reaches 76.98\%; stepwise
+decimal execution remains perfect through h4.
+
+\textbf{Training.}  Rank-16 LoRA on Qwen2.5-7B uses group-disjoint program
+contexts.  Each semantic program supplies two 256-token forwards and two
+one-token targets: producer $(H\!\to\!\code)$ or
+$(\code,u\!\to\!\code')$, and consumer $(\code,F\!\to\!Y)$.  Prompt tokens
+carry no loss.  Endpoint controls use the same programs, forwards, target
+count, padding, and optimizer, but train $(H\!\to\!\code)$ rather than closure.
+Evaluation composes two-operation calls to h16, discarding each used block.
+
+\textbf{Controls and interventions.}  We compare four codes for eight states
+(2 bits), one opaque code per state (3 bits), and two tokens per state (4
+bits).  Producer and consumer contexts are disjoint; test contexts are unseen.
+We measure exact token accuracy, $I(\state;\code)$, closure after applying $q$,
+same-state agreement before/after quotienting, and whether an independently
+predicted donor code makes the recipient consumer follow the donor state.
+
+\begin{center}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+Interface / training & h8 & h16 & decisive check\\
+\midrule
+decimal recursive & 100.0 & 100.0 & also 100\% at h32\\
+2-bit compressed & 50.0 & 50.0 & exact rate limit\\
+3-bit endpoint & 35.0 & 24.5 & enough rate, no closure\\
+3-bit closure & 55.0 & 55.0 & entry encoder damaged\\
+4-bit endpoint & 54.0 & 52.5 & matched control\\
+4-bit closure & \textbf{97.8} & \textbf{97.1} & $+43.9,+44.6$ points\\
+\bottomrule
+\end{tabular}
+\par\vspace{0.15em}
+\parbox{0.98\columnwidth}{\scriptsize\textbf{Table 1:}
+Matched addition programs; accuracy (\%).  Context-paired
+95\% intervals for the 4-bit closure gains are $[36.5,51.0]$ at h8 and
+$[37.6,51.5]$ at h16.}
+\end{center}
+
+\section*{\fontsize{9}{10}\selectfont Findings and theory}
+\vspace{-0.3em}
+\textbf{Rate is causal.}  With uniform $\state$ and four deterministic code
+classes, every token aliases two states, so an arbitrary one-to-one final table
+permits at most $4/8=50\%$ exact recovery.  The trained two-bit channel achieves
+50\% at every horizon while closing perfectly.
+
+\textbf{Closure, not endpoint fit, produces reuse.}  Both 4-bit adapters fit
+short training, but only transition supervision survives recursive use.  Across
+structured, IID, shuffled, cancellation, and repeated histories, closure scores
+97.75/95.25/95.00/93.25\% at h2/4/8/16; endpoint training scores
+100/81.25/63.50/48.50\%.  At h16, every family remains 90--100\%.
+
+\textbf{The state is a quotient, not a token.}  In the matched h16 run, only
+2.92\% of 4-bit outputs have the wrong state, while 42.40\% change only the
+extra bit.  Thus exact-token accuracy is 54.69\%, but quotient agreement is
+95.10\%, $I(\state;\code)=2.83$ bits, and predicted donor codes cause the right
+state-dependent answer 97.50\% of the time (random controls: 12.3\%).  Extra
+rate supplies representational slack; success depends on closure over semantic
+classes, not surface invariance.
+
+\section*{\fontsize{9}{10}\selectfont Claim boundary and next tests}
+\vspace{-0.3em}
+The current result shows a learned, rate-limited, causally used computational
+interface; it does not yet show native internal state formation or broad
+reasoning.  The decisive next tests are: (i) preserve decimal-to-code entry
+while training closure; (ii) hold out operation pairs and scale state entropy
+to obtain a rate--reliability curve; (iii) replace addition with register
+programs and Horn-rule proof states whose next action depends on the compact
+frontier; and (iv) confirm three seeds and a second 7--8B family.  This connects
+algorithmic length generalization \cite{velickovic2021} to a measurable
+interface law: enough relevant bits, a shared decoder, and closure under every
+legal update.
+
+\vspace{-0.35em}
+\begin{thebibliography}{4}
+\scriptsize
+\setlength{\itemsep}{0pt}
+\bibitem{shannon1948} C. Shannon. A Mathematical Theory of Communication.
+\emph{BSTJ}, 1948.
+\bibitem{tishby2000} N. Tishby, F. Pereira, W. Bialek. The Information
+Bottleneck Method. 2000.
+\bibitem{shalizi2001} C. Shalizi, J. Crutchfield. Computational Mechanics:
+Pattern and Prediction, Structure and Simplicity. \emph{JSP}, 2001.
+\bibitem{velickovic2021} P. Veli\v{c}kovi\'c, C. Blundell. Neural Algorithmic
+Reasoning. 2021.
+\end{thebibliography}
+\end{document}
