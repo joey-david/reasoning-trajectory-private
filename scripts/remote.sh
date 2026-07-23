@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage="usage: scripts/remote.sh push | pull [-h] [runs/<model>/<experiment> ...] | pull-stats [runs/<model>/<experiment> ...]"
+usage="usage: scripts/remote.sh push | pull [-h|--hidden-states] [--pt] [runs/<model>/<experiment> ...] | pull-stats [runs/<model>/<experiment> ...]"
 action="${1:?$usage}"
 shift
 host="${SSH_SERVER:-lamgate}"
 remote_root="${REMOTE_REPO_ROOT:-/home/lamsade/jdavid/reasoning}"
 include_hidden_states=false
+include_pt=false
 pull_paths=()
 
 # Inputs: none; scans the local runs directory.
@@ -29,6 +30,9 @@ pull_run() {
       rsync_args+=(--exclude "*/activations/***")
       rsync_args+=(--exclude "layer_replications/*/checkpoints/***")
       rsync_args+=(--exclude "*.npz")
+    fi
+    if [[ "$include_pt" != true ]]; then
+      rsync_args+=(--exclude "*.pt")
     fi
     rsync "${rsync_args[@]}" "$host:$remote_root/$run_path/" "$run_path/"
   else
@@ -77,6 +81,9 @@ pull)
     case "$1" in
     -h|--hidden-states)
       include_hidden_states=true
+      ;;
+    --pt)
+      include_pt=true
       ;;
     -*)
       echo "unknown pull option: $1" >&2
