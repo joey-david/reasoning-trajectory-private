@@ -28,26 +28,28 @@ Status meanings:
 | Explicit state handoff | active | Does a rate-limited, interchangeable state contract enable reusable reasoning modules? | 32B source run above; `runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `scripts/remote/state_handoff.sh continuation-confirm-7b`; `scripts/remote/state_handoff.sh interface-final-eval-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest/evaluation/{comparison_summary,information_summary}.json`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/evaluation/interfaces/comparison_summary.json` | Recursive decimal reuse is perfect through h32 on 9,600 cases. The final opaque adapters show an exact rate result: the 2-bit code has perfect closure and exactly 50% answer accuracy. Canonical 3-bit reaches 74.27/58.65/42.19/42.19% at h2/4/8/16; redundant 4-bit reaches 97.71/80.63/63.85/59.48%. Context-bound codes remain near chance. |
 | Predicted-code equivalence | pilot | Do independently emitted tokens share causal meaning even when their surface forms differ? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `.venv/bin/python scripts/experiments/run_state_handoff_training.py compare-interfaces runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/evaluation/interfaces/*/predicted_equivalence_summary.json` | Artifact-only predicted-donor analysis separates exact token agreement from agreement after grouping codes by downstream behavior. Redundant same-state agreement rises from 36.02% exact to 61.81% by behavior; predicted-donor preservation is 71.42%, versus 12.37% for frequency-free random codes. This is evidence for partial code equivalence, not full interchangeability. |
 | Out-of-template state stress | pilot | Does recursive state use survive histories that break the matched generator's positional pattern? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_stress` | `scripts/remote/state_handoff.sh interface-stress-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_stress/evaluation/stress/probe/comparison_summary.json` | The saved decimal adapter remains 100% accurate on all 1,600 structured, IID, shuffled, cancellation, and repeated-operation cases through h16. The 2-bit code retains perfect quotient closure and exactly 50% answers under every family. Across the four non-structured families, canonical 3-bit answers score 76.88/63.75/40.62/36.88% at h2/4/8/16; redundant 4-bit scores 96.25/76.88/56.56/38.75%. At h16 their local transition accuracies remain 78.75% and 84.26%, so valid but wrong opaque updates compound. This five-context probe selects the next run; it is not a final confidence estimate. |
-| Transition closure fine-tune | active | Does spending matched supervision on reusable transitions improve long-horizon composition beyond more endpoint fitting? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_finetune`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_endpoint_control` | `scripts/remote/state_handoff.sh interface-closure-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_finetune/evaluation/closure_comparison.json` | Running. Both runs start from the same final adapters and use byte-identical data, one epoch, 20,000 forwards, 20,000 targets, and 5,120,000 padded tokens per condition. The only change is transition-only versus encoder-only producer supervision. The gate requires at least +10 points at h8 and h16 with context-paired intervals above zero. |
-| Closure stress confirmation | prepared | If closure training helps, does the gain survive non-template histories and retain the predicted-code meaning? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_stress` | `scripts/remote/state_handoff.sh interface-closure-stress-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_stress/evaluation/stress/probe/comparison_summary.json` | Gated follow-up comparing decimal reuse, closure-trained canonical/redundant adapters, and their endpoint-only controls on the same five stress families. Run only after the paired closure comparison finishes. |
+| Transition closure fine-tune | pilot | Does spending matched supervision on reusable transitions improve long-horizon composition beyond more endpoint fitting? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_finetune`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_endpoint_control` | `scripts/remote/state_handoff.sh interface-closure-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_finetune/evaluation/closure_comparison.json` | Passed the preset matched-control gate. Redundant closure reaches 97.81% h8 and 97.08% h16, beating endpoint-only training by +43.85 points (95% CI +36.46 to +51.04) and +44.58 (+37.60 to +51.46). Its exact h16 code is right only 54.69%, but 42.40% of cases differ only in the redundant bit and just 2.92% change semantic state. Canonical closure has perfect later transitions but its damaged encoder caps absolute accuracy at 55%. One seed and one addition algebra remain the main limits. |
+| Closure stress confirmation | pilot | If closure training helps, does the gain survive non-template histories and retain the predicted-code meaning? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_stress` | `scripts/remote/state_handoff.sh interface-closure-stress-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_stress/evaluation/stress/probe/comparison_summary.json` | Redundant closure averages 97.75/95.25/95.00/93.25% at h2/4/8/16 across structured, IID, shuffled, cancellation, and repeated histories, versus endpoint control at 100/81.25/63.50/48.50%. H16 accuracy remains 90–100% in every family and local semantic closure is 98.88%. Decimal recursion is 100%. Canonical closure does not transfer because its entry encoder fails. This rejects matched-path-template overfitting, but not finite addition-table or prompt-grammar overfitting; the probe has only five contexts. |
 
 Explicit-handoff local validation covers deterministic analysis of the completed
 32B and 7B artifacts, predicted-code equivalence, the recursive continuation
-bank, all four interface alphabets, the completed five-family stress probe, and
-matched closure/control budgets with the pinned Qwen tokenizer. Closure
-fine-tuning is running; its accuracy and gate remain unknown.
+bank, all four interface alphabets, the completed five-family stress probes, and
+the matched closure/control comparison. The remaining claim boundaries are
+multi-seed stability, operation-family transfer, larger state spaces, a second
+model, and a reasoning-domain task.
 
 ### State-interface execution order
 
 1. `interface-stress-7b` passed its selection test: decimal recursion stayed
    perfect on all five history families through h16.
-2. `interface-closure-7b` is running. Continue only if transition supervision
-   beats the byte-identical endpoint control at h8 and h16 with positive
-   paired intervals.
-3. Run `interface-closure-stress-7b` only after step 2. Require gains on IID,
-   shuffled, and cancellation histories, not only the original generator.
-4. Scale to three seeds, a second operation family, and a second 7--8B model
-   only if the first three steps establish closure outside the matched template.
+2. `interface-closure-7b` passed: transition supervision beats the
+   byte-identical endpoint control at h8 and h16 with positive paired intervals.
+3. `interface-closure-stress-7b` passed for the redundant interface on IID,
+   shuffled, cancellation, repeated, and structured histories. Canonical
+   closure failed because its entry encoder was overwritten.
+4. The next confirmation must separate finite transition-table fitting from
+   algebraic transfer, preserve the entry encoder, and move the interface into
+   a reasoning-domain state machine before a second model family.
 
 ## Supporting Manifests
 
