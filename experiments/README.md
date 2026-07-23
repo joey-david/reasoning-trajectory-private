@@ -303,6 +303,29 @@ validates token and compute contracts, trains the interface and outcome arms
 through one shared dynamic queue, evaluates every saved case, and writes
 `evaluation/generalization_summary.json`.
 
+For an unattended two-GPU sweep, use the resilient wrapper. It tries the
+breadth runs first, then confirmation seeds and the second model. A failed or
+timed-out action does not block the next action:
+
+```bash
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+STATE_HANDOFF_ACTION_TIMEOUT=7h \
+  bash scripts/remote/state_handoff_overnight.sh
+```
+
+Each action keeps its normal run folder. The wrapper also writes one log per
+action plus `status.jsonl`, `session.txt`, and `run_paths.txt` under
+`runs/_overnight/state_handoff/<session>/`. `Ctrl-C` or `TERM` stops the
+current process group and leaves all completed checkpoints and cases in place.
+Running the command again resumes incomplete training and evaluation and skips
+completed tasks. Pass action names as arguments to run a smaller ordered
+subset. Check the plan without starting work with:
+
+```bash
+STATE_HANDOFF_OVERNIGHT_DRY_RUN=true \
+  bash scripts/remote/state_handoff_overnight.sh
+```
+
 After each stage, pull only its light artifacts from the Mac. The default pull
 excludes `.pt` and `.safetensors`; use `--pt` only when adapter weights must
 move:
