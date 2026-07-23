@@ -3,21 +3,22 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
-import random
 from typing import Any, Iterable
 
 from src.runtime.artifact_store import write_json
 from src.runtime.config import load_config
 from src.runtime.data import load_samples, write_jsonl
 
-from .abstraction import matched_addition_history
-from .benchmark import apply_rule, candidate_token_ids, state_symbols, state_text
-from .explicit_handoff import discrete_capacity_bits
+from .benchmark import candidate_token_ids, state_symbols, state_text
 from .factorization import (
     render_factorization_prompts,
     render_factorization_update_prompt,
+)
+from .state_interface_contract import INTERFACE_CONDITIONS
+from .state_handoff_programs import (
+    _balanced_programs,
+    build_test_programs,
 )
 
 
@@ -27,12 +28,6 @@ TEST_PATH = Path("evaluation/test_programs.jsonl")
 DATA_MANIFEST_PATH = Path("training/data/manifest.json")
 COMPUTE_MANIFEST_PATH = Path("training/compute_manifest.json")
 TRAINING_CONDITIONS = ("outcome_only", "explicit_handoff")
-INTERFACE_CONDITIONS = (
-    "canonical_opaque",
-    "context_bound",
-    "compressed_2bit",
-    "redundant_4bit",
-)
 ALL_TRAINING_CONDITIONS = TRAINING_CONDITIONS + INTERFACE_CONDITIONS
 
 
@@ -52,178 +47,27 @@ def configured_training_conditions(run_path: Path) -> tuple[str, ...]:
     return configured
 
 
-def _state_path(
-    initial: int, history: list[dict[str, Any]], modulus: int
-) -> list[int]:
-    values = [initial]
-    for rule in history:
-        values.append(apply_rule(rule, values[-1], modulus))
-    return values
-
-
-def _program_contexts(
-    *, split: str, count: int, width: int, seed: int
-) -> list[dict[str, Any]]:
-    modulus = 2**width
-    contexts = []
-    signatures: set[tuple[int, tuple[int, ...]]] = set()
-    candidate = 0
-    while len(contexts) < count:
-        rng = random.Random(
-            seed + 1_000_003 * (sum(map(ord, split)) + 1) + 10_007 * candidate
-        )
-        candidate += 1
-        initial = rng.randrange(modulus)
-        mapping = list(range(modulus))
-        rng.shuffle(mapping)
-        signature = (initial, tuple(mapping))
-        if signature in signatures:
-            continue
-        signatures.add(signature)
-        contexts.append(
-            {
-                "id": f"{split}_c{len(contexts):03d}",
-                "index": len(contexts),
-                "initial_state": initial,
-                "final_rule": {"kind": "pointer", "mapping": mapping},
-            }
-        )
-    return contexts
-
-
-def _program_case(
-    *,
-    split: str,
-    context: dict[str, Any],
-    horizon: int,
-    target: int,
-    path_code: int,
-    width: int,
-) -> dict[str, Any]:
-    modulus = 2**width
-    initial = int(context["initial_state"])
-    history = matched_addition_history(
-        initial=initial,
-        target=target,
-        path_code=path_code,
-        history_steps=horizon,
-        group_index=int(context["index"]),
-        modulus=modulus,
-    )
-    states = _state_path(initial, history, modulus)
-    if states[-1] != target:
-        raise AssertionError("Training history missed its requested state")
-    final_rule = context["final_rule"]
-    semantic = {
-        "family": "add_to_pointer",
-        "history_family": "add",
-        "final_family": "pointer",
-        "format": "prose",
-        "bits": width,
-        "initial_state": initial,
-        "history": history,
-        "final_rule": final_rule,
-        "current_state": target,
-        "next_state": apply_rule(final_rule, target, modulus),
-        "history_steps": horizon,
-        "state_path": states,
-        "path_code": path_code,
-        "program_context": str(context["id"]),
-        "program_context_split": split,
-        "abstraction_group": str(context["id"]),
-        "abstraction_split": split,
-    }
-    digest = hashlib.sha256(
-        json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()[:12]
-    semantic["id"] = (
-        f"handoff_{split}_{context['id']}_h{horizon}_s{target}_"
-        f"p{path_code}_{digest}"
-    )
-    return semantic
-
-
-def _balanced_programs(
-    *,
-    split: str,
-    semantic_count: int,
-    horizons: tuple[int, ...],
-    context_count: int,
-    width: int,
-    seed: int,
-) -> list[dict[str, Any]]:
-    if semantic_count < context_count * len(horizons) * 2**width:
-        raise ValueError(f"{split} is too small to cover every context-state cell")
-    contexts = _program_contexts(
-        split=split, count=context_count, width=width, seed=seed
-    )
-    cells = [
-        (context, horizon, target)
-        for context in contexts
-        for horizon in horizons
-        for target in range(2**width)
-    ]
-    rows = []
-    for index in range(semantic_count):
-        context, horizon, target = cells[index % len(cells)]
-        path_code = index // len(cells)
-        rows.append(
-            _program_case(
-                split=split,
-                context=context,
-                horizon=horizon,
-                target=target,
-                path_code=path_code,
-                width=width,
-            )
-        )
-    return rows
-
-
-def build_test_programs(
-    *,
-    horizons: tuple[int, ...],
-    context_count: int,
-    paths_per_state: int,
-    width: int,
-    seed: int,
-    split: str = "test",
-) -> list[dict[str, Any]]:
-    """Build a balanced fixed test bank for any named artifact split."""
-    contexts = _program_contexts(
-        split=split, count=context_count, width=width, seed=seed
-    )
-    return [
-        _program_case(
-            split=split,
-            context=context,
-            horizon=horizon,
-            target=target,
-            path_code=path,
-            width=width,
-        )
-        for context in contexts
-        for horizon in horizons
-        for target in range(2**width)
-        for path in range(paths_per_state)
-    ]
-
-
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _split_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
+def _split_summary(rows: list[dict[str, Any]], width: int) -> dict[str, Any]:
+    result = {
         "semantic_program_count": len(rows),
         "program_context_count": len({row["program_context"] for row in rows}),
         "horizons": sorted({int(row["history_steps"]) for row in rows}),
         "states": sorted({int(row["current_state"]) for row in rows}),
         "minimum_histories_per_state": min(
             sum(int(row["current_state"]) == state for row in rows)
-            for state in range(8)
+            for state in range(2**width)
         ),
     }
+    if any("domain" in row for row in rows):
+        result["domains"] = sorted({str(row["domain"]) for row in rows})
+        result["composition_splits"] = sorted(
+            {str(row["composition_split"]) for row in rows}
+        )
+    return result
 
 
 def prepare_state_handoff_datasets(run_path: Path) -> dict[str, Any]:
@@ -231,8 +75,8 @@ def prepare_state_handoff_datasets(run_path: Path) -> dict[str, Any]:
     config = load_config(run_path).get("state_handoff_training", {})
     dataset = config.get("dataset", {})
     width = int(dataset.get("bits", 3))
-    if discrete_capacity_bits(slots=1, codebook_size=2**width) != 3:
-        raise ValueError("The first state-handoff training pass must use three bits")
+    if not 2 <= width <= 4:
+        raise ValueError("Discrete state-handoff training supports two to four bits")
     sequences_per_condition = int(dataset.get("train_examples", 20_000))
     validation_sequences = int(dataset.get("validation_examples", 2_000))
     if sequences_per_condition % 2 or validation_sequences % 2:
@@ -245,6 +89,7 @@ def prepare_state_handoff_datasets(run_path: Path) -> dict[str, Any]:
         context_count=int(dataset.get("train_program_contexts", 50)),
         width=width,
         seed=seed,
+        dataset=dataset,
     )
     validation = _balanced_programs(
         split="validation",
@@ -255,6 +100,7 @@ def prepare_state_handoff_datasets(run_path: Path) -> dict[str, Any]:
         context_count=int(dataset.get("validation_program_contexts", 15)),
         width=width,
         seed=seed,
+        dataset=dataset,
     )
     test = build_test_programs(
         horizons=tuple(int(value) for value in dataset.get("test_horizons", (2, 4, 8))),
@@ -262,6 +108,7 @@ def prepare_state_handoff_datasets(run_path: Path) -> dict[str, Any]:
         paths_per_state=int(dataset.get("test_paths_per_state", 4)),
         width=width,
         seed=seed,
+        dataset=dataset,
     )
     context_sets = {
         split: {row["program_context"] for row in rows}
@@ -285,11 +132,11 @@ def prepare_state_handoff_datasets(run_path: Path) -> dict[str, Any]:
         "bits": width,
         "state_slots": 1,
         "codebook_size": 2**width,
-        "capacity_bits": 3,
+        "capacity_bits": width,
         "training_sequences_per_condition": 2 * len(train),
         "validation_sequences_per_condition": 2 * len(validation),
         "splits": {
-            split: {**_split_summary(rows), "sha256": _sha256(paths[split])}
+            split: {**_split_summary(rows, width), "sha256": _sha256(paths[split])}
             for split, rows in (("train", train), ("validation", validation), ("test", test))
         },
         "group_disjoint": True,
@@ -311,14 +158,13 @@ def _sequence(
     *, tokenizer: Any, case: dict[str, Any], prompt: dict[str, Any], mapping: str
 ) -> dict[str, Any]:
     target = int(prompt["expected_next_state"])
-    symbols = state_symbols(case)
-    target_id = candidate_token_ids(tokenizer, prompt["text"], symbols)[target]
     prompt_ids = tokenizer.encode(prompt["text"], add_special_tokens=False)
     full_ids = tokenizer.encode(
         prompt["text"] + state_text(case, target), add_special_tokens=False
     )
-    if full_ids != [*prompt_ids, target_id]:
+    if full_ids[:-1] != prompt_ids or len(full_ids) != len(prompt_ids) + 1:
         raise ValueError("Training target does not extend the prompt by one token")
+    target_id = int(full_ids[-1])
     return {
         "case_id": str(case["id"]),
         "history_steps": int(case["history_steps"]),
@@ -337,6 +183,7 @@ def training_sequence_pair(
     prompt_config: dict[str, Any],
     condition: str,
     max_length: int,
+    fixed_sequence_padding: bool = False,
 ) -> list[dict[str, Any]]:
     """Render two matched forwards for one semantic program."""
     if condition not in TRAINING_CONDITIONS:
@@ -383,8 +230,10 @@ def training_sequence_pair(
         "outcome_only": outcome_pair,
         "explicit_handoff": handoff_pair,
     }
-    target_tokens = max(
-        sum(len(row["input_ids"]) for row in pair) for pair in pairs.values()
+    target_tokens = (
+        2 * max_length
+        if fixed_sequence_padding
+        else max(sum(len(row["input_ids"]) for row in pair) for pair in pairs.values())
     )
     for pair in pairs.values():
         remaining = target_tokens - sum(len(row["input_ids"]) for row in pair)
@@ -411,8 +260,19 @@ def build_training_pairs(
     prompt_config: dict[str, Any],
     condition: str,
     max_length: int,
+    fixed_sequence_padding: bool = False,
 ) -> list[list[dict[str, Any]]]:
     """Tokenize semantic programs into stable two-forward training pairs."""
+    cases = list(cases)
+    if cases:
+        prompts = render_factorization_prompts(
+            tokenizer=tokenizer, case=cases[0], config=prompt_config
+        )
+        candidate_token_ids(
+            tokenizer,
+            next(row["text"] for row in prompts if row["name"] == "compose"),
+            state_symbols(cases[0]),
+        )
     return [
         training_sequence_pair(
             tokenizer=tokenizer,
@@ -420,6 +280,7 @@ def build_training_pairs(
             prompt_config=prompt_config,
             condition=condition,
             max_length=max_length,
+            fixed_sequence_padding=fixed_sequence_padding,
         )
         for case in cases
     ]
@@ -431,6 +292,7 @@ def matched_compute_manifest(
     cases: list[dict[str, Any]],
     prompt_config: dict[str, Any],
     max_length: int,
+    fixed_sequence_padding: bool = False,
 ) -> dict[str, Any]:
     """Prove equal forward and fixed-padding token budgets across conditions."""
     summaries = {}
@@ -441,6 +303,7 @@ def matched_compute_manifest(
             prompt_config=prompt_config,
             condition=condition,
             max_length=max_length,
+            fixed_sequence_padding=fixed_sequence_padding,
         )
         sequences = [sequence for pair in pairs for sequence in pair]
         summaries[condition] = {
@@ -468,6 +331,7 @@ def matched_compute_manifest(
     return {
         "schema_version": 1,
         "max_length": max_length,
+        "fixed_sequence_padding": fixed_sequence_padding,
         "conditions": summaries,
         "matched_forward_passes_and_tokens": matched,
         "matched_forward_passes_and_compute_tokens": matched,
@@ -492,6 +356,14 @@ def validate_state_handoff_training_data(run_path: Path) -> dict[str, Any]:
     config = load_config(run_path)
     experiment = config.get("state_handoff_training", {})
     max_length = int(experiment.get("training", {}).get("max_sequence_length", 256))
+    evaluation_max_length = int(
+        experiment.get("evaluation", {}).get(
+            "max_sequence_length", max_length
+        )
+    )
+    fixed_sequence_padding = bool(
+        experiment.get("training", {}).get("fixed_sequence_padding", False)
+    )
     tokenizer = load_hf_tokenizer(config["model"])
     prompt = experiment.get("prompt", {})
     train = read_programs(run_path / TRAIN_PATH)
@@ -502,16 +374,19 @@ def validate_state_handoff_training_data(run_path: Path) -> dict[str, Any]:
         cases=train,
         prompt_config=prompt,
         max_length=max_length,
+        fixed_sequence_padding=fixed_sequence_padding,
     )
     validation_compute = matched_compute_manifest(
         tokenizer=tokenizer,
         cases=validation,
         prompt_config=prompt,
         max_length=max_length,
+        fixed_sequence_padding=fixed_sequence_padding,
     )
     if not compute["matched_forward_passes_and_tokens"]:
         raise ValueError("Pilot training compute is not matched")
     test_max = 0
+    alphabet_validated = False
     for case in test:
         prompts = {
             str(row["name"]): row
@@ -529,15 +404,21 @@ def validate_state_handoff_training_data(run_path: Path) -> dict[str, Any]:
             label="FINAL",
         )
         for row in (prompts["compose"], prompts["synthesize"], update):
-            candidate_token_ids(tokenizer, row["text"], state_symbols(case))
+            if not alphabet_validated:
+                candidate_token_ids(tokenizer, row["text"], state_symbols(case))
+                alphabet_validated = True
             test_max = max(
                 test_max,
                 len(tokenizer.encode(row["text"], add_special_tokens=False)) + 1,
             )
-    if test_max > max_length:
-        raise ValueError(f"Evaluation sequence length {test_max} exceeds {max_length}")
+    if test_max > evaluation_max_length:
+        raise ValueError(
+            f"Evaluation sequence length {test_max} exceeds "
+            f"{evaluation_max_length}"
+        )
     compute["validation"] = validation_compute["conditions"]
     compute["test_max_active_sequence_length"] = test_max
+    compute["evaluation_max_sequence_length"] = evaluation_max_length
     compute["validated"] = True
     write_json(run_path / COMPUTE_MANIFEST_PATH, compute)
     return compute

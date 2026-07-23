@@ -35,6 +35,13 @@ def decimal_state_symbols(count: int) -> tuple[str, ...]:
     return tuple(str(value) for value in range(count))
 
 
+def hexadecimal_state_symbols(count: int) -> tuple[str, ...]:
+    """Return one hexadecimal digit for state spaces of at most 16 values."""
+    if not 1 <= count <= 16:
+        raise ValueError("Hexadecimal state symbols support at most 16 values")
+    return tuple("０１２３４５６７８９ＡＢＣＤＥＦ"[:count])
+
+
 def state_symbols(case: dict[str, Any]) -> tuple[str, ...]:
     """Return and validate the one-to-one surface alphabet owned by a case."""
     count = 2 ** int(case["bits"])
@@ -116,9 +123,9 @@ def format_prompt_spec(
 
 
 def apply_rule(rule: dict[str, Any], state: int, modulus: int) -> int:
-    """Apply one serialized, bijective state transition."""
+    """Apply one serialized state transition or final state query."""
     kind = str(rule["kind"])
-    if kind == "pointer":
+    if kind in {"pointer", "register_dispatch", "proof_action"}:
         return int(rule["mapping"][state])
     if kind == "affine":
         return (int(rule["a"]) * state + int(rule["c"])) % modulus
@@ -131,6 +138,28 @@ def apply_rule(rule: dict[str, Any], state: int, modulus: int) -> int:
         amount = int(rule["amount"]) % width
         mask = modulus - 1
         return ((state << amount) & mask) | (state >> (width - amount))
+    if kind == "horn":
+        premises = tuple(int(value) for value in rule["premises"])
+        conclusion = int(rule["conclusion"])
+        if any(not 0 <= bit < modulus.bit_length() - 1 for bit in premises):
+            raise ValueError("Horn premise is outside the fact register")
+        if not 0 <= conclusion < modulus.bit_length() - 1:
+            raise ValueError("Horn conclusion is outside the fact register")
+        if all(state & (1 << bit) for bit in premises):
+            return state | (1 << conclusion)
+        return state
+    if kind == "proof_query":
+        required = int(rule["required_mask"])
+        mode = str(rule.get("mode", "all"))
+        if not 0 <= required < modulus:
+            raise ValueError("Proof query mask is outside the fact register")
+        if mode == "all":
+            return int((state & required) == required)
+        if mode == "any":
+            return int(bool(state & required))
+        if mode == "parity":
+            return int((state & required).bit_count() % 2)
+        raise ValueError(f"Unknown proof-query mode: {mode!r}")
     raise ValueError(f"Unknown transition kind: {kind!r}")
 
 
@@ -142,6 +171,16 @@ def rule_text(rule: dict[str, Any], width: int) -> str:
             f"{source}->{target}" for source, target in enumerate(rule["mapping"])
         )
         return f"look up the current decimal state in {{{entries}}}"
+    if kind == "register_dispatch":
+        entries = ", ".join(
+            f"{source}->{target}" for source, target in enumerate(rule["mapping"])
+        )
+        return f"dispatch the current register state through {{{entries}}}"
+    if kind == "proof_action":
+        entries = ", ".join(
+            f"{source}->{target}" for source, target in enumerate(rule["mapping"])
+        )
+        return f"choose the next proof action from {{{entries}}}"
     if kind == "affine":
         return f"state = ({rule['a']} * state + {rule['c']}) mod {2**width}"
     if kind == "xor":
@@ -150,6 +189,26 @@ def rule_text(rule: dict[str, Any], width: int) -> str:
         return f"add {rule['value']} modulo {2**width}"
     if kind == "rotate_left":
         return f"rotate the {width}-bit register left by {rule['amount']}"
+    if kind == "horn":
+        names = tuple(chr(ord("A") + bit) for bit in rule["premises"])
+        premise = " and ".join(f"fact {name}" for name in names) or "no premises"
+        conclusion = chr(ord("A") + int(rule["conclusion"]))
+        return f"if {premise} is established, establish fact {conclusion}"
+    if kind == "proof_query":
+        names = [
+            chr(ord("A") + bit)
+            for bit in range(width)
+            if int(rule["required_mask"]) & (1 << bit)
+        ]
+        facts = " and ".join(f"fact {name}" for name in names) or "no facts"
+        mode = str(rule.get("mode", "all"))
+        if mode == "all":
+            return f"return 1 exactly when all of {facts} are established, else 0"
+        if mode == "any":
+            return f"return 1 when any of {facts} is established, else 0"
+        if mode == "parity":
+            return f"return the parity of the established facts among {facts}"
+        raise ValueError(f"Unknown proof-query mode: {mode!r}")
     raise ValueError(f"Unknown transition kind: {kind!r}")
 
 

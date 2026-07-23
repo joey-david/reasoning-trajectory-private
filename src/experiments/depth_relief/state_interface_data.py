@@ -4,105 +4,34 @@ from __future__ import annotations
 
 import hashlib
 import math
-import random
 from pathlib import Path
 from typing import Any, Iterable
 
 from src.runtime.artifact_store import write_json
 from src.runtime.config import load_config
 
-from .benchmark import candidate_token_ids, format_model_prompt
-from .factorization import render_factorization_history
-from .state_handoff_data import INTERFACE_CONDITIONS
+from .benchmark import (
+    candidate_token_ids,
+    format_model_prompt,
+    state_symbols,
+    state_text,
+)
+from .factorization import render_factorization_history, render_factorization_rule
+from .state_interface_contract import (
+    CODEBOOK_SIZES,
+    INTERFACE_CONDITIONS,
+    interface_code_index,
+    interface_code_symbols,
+    semantic_states_for_code,
+)
 
-
-DEFAULT_CODE_SYMBOLS = tuple("αβγδεζηθικλμνξοπ")
-DEFAULT_CANONICAL_PERMUTATION = (5, 2, 7, 1, 6, 0, 3, 4)
-CODEBOOK_SIZES = {
-    "canonical_opaque": 8,
-    "context_bound": 8,
-    "compressed_2bit": 4,
-    "redundant_4bit": 16,
-}
-
-
-def interface_code_symbols(
-    condition: str, interface_config: dict[str, Any]
-) -> tuple[str, ...]:
-    """Return the declared one-token alphabet for one interface condition."""
-    if condition not in INTERFACE_CONDITIONS:
-        raise ValueError(f"Unknown state-interface condition: {condition!r}")
-    size = CODEBOOK_SIZES[condition]
-    configured = interface_config.get(condition, {}).get("symbols")
-    symbols = tuple(str(value) for value in configured) if configured else DEFAULT_CODE_SYMBOLS[:size]
-    if len(symbols) != size or len(set(symbols)) != size:
-        raise ValueError(f"{condition} requires {size} unique code symbols")
-    return symbols
-
-
-def _context_permutation(case: dict[str, Any], seed: int) -> tuple[int, ...]:
-    digest = hashlib.sha256(
-        f"{seed}:{case['program_context']}".encode()
-    ).digest()
-    values = list(range(8))
-    random.Random(int.from_bytes(digest[:8], "big")).shuffle(values)
-    return tuple(values)
-
-
-def interface_code_index(
-    *,
-    condition: str,
-    case: dict[str, Any],
-    state: int,
-    interface_config: dict[str, Any],
-    variant: int | None = None,
-) -> int:
-    """Map a semantic state to a rate-controlled code index."""
-    if not 0 <= int(state) < 8:
-        raise ValueError("Interface experiments require an eight-state process")
-    if condition == "canonical_opaque":
-        permutation = tuple(
-            int(value)
-            for value in interface_config.get(condition, {}).get(
-                "permutation", DEFAULT_CANONICAL_PERMUTATION
-            )
-        )
-        if sorted(permutation) != list(range(8)):
-            raise ValueError("Canonical opaque mapping must be a permutation of 0..7")
-        return permutation[int(state)]
-    if condition == "context_bound":
-        seed = int(interface_config.get(condition, {}).get("seed", 721_701))
-        return _context_permutation(case, seed)[int(state)]
-    if condition == "compressed_2bit":
-        return int(state) % 4
-    if condition == "redundant_4bit":
-        nuisance = int(case.get("path_code", 0)) % 2 if variant is None else int(variant)
-        if nuisance not in (0, 1):
-            raise ValueError("The redundant code variant must be one bit")
-        return 2 * int(state) + nuisance
-    raise ValueError(f"Unknown state-interface condition: {condition!r}")
-
-
-def semantic_states_for_code(
-    *,
-    condition: str,
-    case: dict[str, Any],
-    code_index: int,
-    interface_config: dict[str, Any],
-) -> tuple[int, ...]:
-    """Return every semantic state compatible with one code."""
-    return tuple(
-        state
-        for state in range(8)
-        if interface_code_index(
-            condition=condition,
-            case=case,
-            state=state,
-            interface_config=interface_config,
-            variant=code_index % 2,
-        )
-        == code_index
-    )
+__all__ = [
+    "CODEBOOK_SIZES",
+    "INTERFACE_CONDITIONS",
+    "interface_code_index",
+    "interface_code_symbols",
+    "semantic_states_for_code",
+]
 
 
 def _formatted_prompt(
@@ -117,10 +46,16 @@ def _code_prompt_preamble(case: dict[str, Any], condition: str) -> str:
         if condition == "context_bound"
         else ""
     )
-    return (
-        "States evolve modulo 8. Interface codes are opaque single tokens.\n"
-        + context
-    )
+    if case.get("domain") == "horn_proof":
+        semantics = (
+            f"The hidden state is the established-fact bitmask for "
+            f"{case['bits']} facts."
+        )
+    elif case.get("domain") == "mixed_algebra":
+        semantics = f"The hidden state is a {case['bits']}-bit program register."
+    else:
+        semantics = f"States evolve modulo {2 ** int(case['bits'])}."
+    return f"{semantics} Interface codes are opaque single tokens.\n" + context
 
 
 def render_interface_encoder_prompt(
@@ -133,7 +68,7 @@ def render_interface_encoder_prompt(
     """Render decimal start plus a short history to an opaque code."""
     text = (
         _code_prompt_preamble(case, condition)
-        + f"Start state: {case['initial_state']}.\n"
+        + f"Start state: {state_text(case, int(case['initial_state']))}.\n"
         + render_factorization_history(case)
         + "\nApply every step and return only the resulting interface code.\nAnswer="
     )
@@ -166,12 +101,12 @@ def render_interface_consumer_prompt(
     condition: str,
     code: str,
 ) -> str:
-    """Render an opaque code plus a decimal FINAL table to a decimal answer."""
-    table = ", ".join(str(value) for value in case["final_rule"]["mapping"])
+    """Render an opaque code plus a final rule to a decimal answer."""
+    final = render_factorization_rule(case, case["final_rule"])
     text = (
         _code_prompt_preamble(case, condition)
         + f"Current interface code: {code}.\n"
-        + f"FINAL: look up the decoded state in [{table}].\n"
+        + f"FINAL: {final}.\n"
         + "Apply FINAL exactly once and return only the decimal result.\nAnswer="
     )
     return _formatted_prompt(tokenizer, text, prompt_config)
@@ -186,20 +121,20 @@ def _target_sequence(
     candidates: tuple[str, ...],
     mapping: str,
 ) -> dict[str, Any]:
-    candidate_ids = candidate_token_ids(tokenizer, prompt, candidates)
-    target_index = candidates.index(target_symbol)
+    candidates.index(target_symbol)
     prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
     full_ids = tokenizer.encode(prompt + target_symbol, add_special_tokens=False)
-    if full_ids != [*prompt_ids, candidate_ids[target_index]]:
+    if full_ids[:-1] != prompt_ids or len(full_ids) != len(prompt_ids) + 1:
         raise ValueError("Interface target does not extend its prompt by one token")
+    target_token_id = int(full_ids[-1])
     return {
         "case_id": str(case["id"]),
         "history_steps": int(case["history_steps"]),
         "program_context": str(case["program_context"]),
         "mapping": mapping,
         "input_ids": full_ids,
-        "labels": [-100] * len(prompt_ids) + [candidate_ids[target_index]],
-        "target_token_id": candidate_ids[target_index],
+        "labels": [-100] * len(prompt_ids) + [target_token_id],
+        "target_token_id": target_token_id,
     }
 
 
@@ -212,6 +147,7 @@ def interface_training_sequence_pair(
     interface_config: dict[str, Any],
     max_length: int,
     producer_mode: str = "mixed",
+    transition_fraction: float = 0.5,
 ) -> list[dict[str, Any]]:
     """Render one state-contract target and one consumer target."""
     symbols = interface_code_symbols(condition, interface_config)
@@ -232,9 +168,16 @@ def interface_training_sequence_pair(
     )
     if producer_mode not in {"mixed", "encoder", "transition"}:
         raise ValueError(f"Unknown interface producer mode: {producer_mode!r}")
-    mapping_selector = hashlib.sha256(str(case["id"]).encode()).digest()[0] % 2
+    if not 0.0 <= transition_fraction <= 1.0:
+        raise ValueError("Interface transition fraction must be in [0, 1]")
+    digest = hashlib.sha256(str(case["id"]).encode()).digest()
+    if transition_fraction == 0.5:
+        selected_transition = digest[0] % 2 == 1
+    else:
+        draw = int.from_bytes(digest[:8], "big") / 2**64
+        selected_transition = draw < transition_fraction
     use_encoder = producer_mode == "encoder" or (
-        producer_mode == "mixed" and mapping_selector == 0
+        producer_mode == "mixed" and not selected_transition
     )
     if use_encoder:
         state_prompt = render_interface_encoder_prompt(
@@ -260,6 +203,7 @@ def interface_training_sequence_pair(
         mapping="state",
     )
     state_sequence["producer_mode"] = producer_mode
+    state_sequence["producer_transition_fraction"] = transition_fraction
     state_sequence["producer_prompt_kind"] = (
         "encoder" if use_encoder else "transition"
     )
@@ -270,12 +214,12 @@ def interface_training_sequence_pair(
         condition=condition,
         code=symbols[output_index],
     )
-    answer_symbols = tuple(str(value) for value in range(8))
+    answer_symbols = state_symbols(case)
     answer_sequence = _target_sequence(
         tokenizer=tokenizer,
         case=case,
         prompt=consumer_prompt,
-        target_symbol=str(case["next_state"]),
+        target_symbol=state_text(case, int(case["next_state"])),
         candidates=answer_symbols,
         mapping="answer",
     )
@@ -307,6 +251,35 @@ def build_interface_training_pairs(
     producer_mode = str(
         interface_config.get("producer_modes", {}).get(condition, "mixed")
     )
+    transition_fraction = float(
+        interface_config.get("producer_transition_fractions", {}).get(
+            condition, 0.5
+        )
+    )
+    if cases:
+        symbols = interface_code_symbols(condition, interface_config)
+        sample = cases[0]
+        candidate_token_ids(
+            tokenizer,
+            render_interface_encoder_prompt(
+                tokenizer=tokenizer,
+                case=sample,
+                prompt_config=prompt_config,
+                condition=condition,
+            ),
+            symbols,
+        )
+        candidate_token_ids(
+            tokenizer,
+            render_interface_consumer_prompt(
+                tokenizer=tokenizer,
+                case=sample,
+                prompt_config=prompt_config,
+                condition=condition,
+                code=symbols[0],
+            ),
+            state_symbols(sample),
+        )
     if not bool(interface_config.get("independent_module_contexts", True)):
         return [
             interface_training_sequence_pair(
@@ -317,6 +290,7 @@ def build_interface_training_pairs(
                 interface_config=interface_config,
                 max_length=max_length,
                 producer_mode=producer_mode,
+                transition_fraction=transition_fraction,
             )
             for case in cases
         ]
@@ -339,6 +313,7 @@ def build_interface_training_pairs(
             interface_config=interface_config,
             max_length=max_length,
             producer_mode=producer_mode,
+            transition_fraction=transition_fraction,
         )
         consumer_pair = interface_training_sequence_pair(
             tokenizer=tokenizer,
@@ -348,6 +323,7 @@ def build_interface_training_pairs(
             interface_config=interface_config,
             max_length=max_length,
             producer_mode=producer_mode,
+            transition_fraction=transition_fraction,
         )
         pairs.append([producer_pair[0], consumer_pair[1]])
     return pairs
@@ -390,6 +366,18 @@ def matched_interface_compute_manifest(
             "producer_mode": str(
                 interface_config.get("producer_modes", {}).get(condition, "mixed")
             ),
+            "producer_transition_fraction": float(
+                interface_config.get("producer_transition_fractions", {}).get(
+                    condition, 0.5
+                )
+            ),
+            "producer_prompt_counts": {
+                kind: sum(
+                    row.get("producer_prompt_kind") == kind
+                    for row in sequences
+                )
+                for kind in ("encoder", "transition")
+            },
         }
     comparable = list(summaries.values())
     keys = ("semantic_programs", "forward_passes", "fixed_padding_compute_tokens", "active_input_tokens", "target_tokens")
@@ -423,6 +411,7 @@ def validate_state_interface_training_data(run_path: Path) -> dict[str, Any]:
 
     from .state_handoff_data import (
         COMPUTE_MANIFEST_PATH,
+        TEST_PATH,
         TRAIN_PATH,
         VALIDATION_PATH,
         configured_training_conditions,
@@ -436,6 +425,11 @@ def validate_state_interface_training_data(run_path: Path) -> dict[str, Any]:
         raise ValueError("Interface validation requires only code conditions")
     tokenizer = load_hf_tokenizer(config["model"])
     maximum = int(experiment.get("training", {}).get("max_sequence_length", 256))
+    evaluation_maximum = int(
+        experiment.get("evaluation", {}).get(
+            "max_sequence_length", maximum
+        )
+    )
     common = {
         "tokenizer": tokenizer,
         "prompt_config": experiment.get("prompt", {}),
@@ -451,7 +445,54 @@ def validate_state_interface_training_data(run_path: Path) -> dict[str, Any]:
     )
     if not train["matched_forward_passes_and_tokens"]:
         raise ValueError("State-interface training budgets are not matched")
+    test_max = 0
+    for case in read_programs(run_path / TEST_PATH):
+        local = {
+            **case,
+            "history": list(case["history"][:2]),
+            "history_steps": 2,
+        }
+        for condition in conditions:
+            symbols = interface_code_symbols(
+                condition, experiment.get("interfaces", {})
+            )
+            prompts = (
+                render_interface_encoder_prompt(
+                    tokenizer=tokenizer,
+                    case=local,
+                    prompt_config=experiment.get("prompt", {}),
+                    condition=condition,
+                ),
+                render_interface_transition_prompt(
+                    tokenizer=tokenizer,
+                    case=local,
+                    prompt_config=experiment.get("prompt", {}),
+                    condition=condition,
+                    input_code=symbols[0],
+                ),
+                render_interface_consumer_prompt(
+                    tokenizer=tokenizer,
+                    case=case,
+                    prompt_config=experiment.get("prompt", {}),
+                    condition=condition,
+                    code=symbols[0],
+                ),
+            )
+            test_max = max(
+                test_max,
+                *(
+                    len(tokenizer.encode(prompt, add_special_tokens=False)) + 1
+                    for prompt in prompts
+                ),
+            )
+    if test_max > evaluation_maximum:
+        raise ValueError(
+            f"Recursive evaluation sequence length {test_max} exceeds "
+            f"{evaluation_maximum}"
+        )
     train["validation"] = validation["conditions"]
+    train["test_max_active_sequence_length"] = test_max
+    train["evaluation_max_sequence_length"] = evaluation_maximum
     train["validated"] = True
     write_json(run_path / COMPUTE_MANIFEST_PATH, train)
     return train

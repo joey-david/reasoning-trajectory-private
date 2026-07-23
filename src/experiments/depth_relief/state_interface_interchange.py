@@ -31,6 +31,7 @@ def analyze_interface_interchange(
     programs = {
         str(row["id"]): row for row in read_programs(run_path / TEST_PATH)
     }
+    semantic_count = 2 ** int(next(iter(programs.values()))["bits"])
     groups: defaultdict[tuple[int, str], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         groups[(int(row["history_steps"]), str(row["program_context"]))].append(row)
@@ -52,7 +53,7 @@ def analyze_interface_interchange(
         same_output = _prediction(same["gold_final"])
         recipient_answer = int(programs[recipient["id"]]["next_state"])
         same_preserves.append(same_output == recipient_answer)
-        for donor_state in range(8):
+        for donor_state in range(semantic_count):
             donor = next(
                 donor
                 for donor in group
@@ -70,16 +71,16 @@ def analyze_interface_interchange(
             {
                 "recipient_id": recipient["id"],
                 "same_state_donor_id": same["id"],
-                "different_state": (recipient_state + 1) % 8,
+                "different_state": (recipient_state + 1) % semantic_count,
             }
         )
     matrix = [
         [
             sum(matrix_values[(recipient, donor)])
             / len(matrix_values[(recipient, donor)])
-            for donor in range(8)
+            for donor in range(semantic_count)
         ]
-        for recipient in range(8)
+        for recipient in range(semantic_count)
     ]
     summary = {
         "schema_version": 1,
@@ -114,8 +115,8 @@ def _write_interchange_matrix(path: Path, matrix: list[list[float]]) -> None:
     image = axis.imshow(matrix, vmin=0, vmax=1, cmap="viridis")
     axis.set_xlabel("Donor semantic state")
     axis.set_ylabel("Recipient semantic state")
-    axis.set_xticks(range(8))
-    axis.set_yticks(range(8))
+    axis.set_xticks(range(len(matrix)))
+    axis.set_yticks(range(len(matrix)))
     figure.colorbar(image, ax=axis, label="Output follows donor state")
     figure.tight_layout()
     figure.savefig(path, dpi=160)

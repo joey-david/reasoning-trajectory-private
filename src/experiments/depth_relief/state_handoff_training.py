@@ -162,6 +162,7 @@ def train_state_handoff_condition(
             model.enable_input_require_grads()
     device = model.get_input_embeddings().weight.device
     max_length = int(training.get("max_sequence_length", 256))
+    fixed_sequence_padding = bool(training.get("fixed_sequence_padding", False))
     microbatch = int(training.get("microbatch", 8))
     accumulation = int(training.get("gradient_accumulation", 8))
     if microbatch % 2:
@@ -187,6 +188,7 @@ def train_state_handoff_condition(
             prompt_config=prompt,
             condition=condition,
             max_length=max_length,
+            fixed_sequence_padding=fixed_sequence_padding,
         )
         validation_pairs = build_training_pairs(
             tokenizer=tokenizer,
@@ -194,6 +196,7 @@ def train_state_handoff_condition(
             prompt_config=prompt,
             condition=condition,
             max_length=max_length,
+            fixed_sequence_padding=fixed_sequence_padding,
         )
     else:
         from .state_interface_data import build_interface_training_pairs
@@ -223,6 +226,7 @@ def train_state_handoff_condition(
                 cases=train_cases,
                 prompt_config=prompt,
                 max_length=max_length,
+                fixed_sequence_padding=fixed_sequence_padding,
             )
         else:
             from .state_interface_data import matched_interface_compute_manifest

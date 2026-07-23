@@ -1,0 +1,87 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_handoff_training:
+  linked_runs:
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_outcome
+  phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
+  frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
+  conditions: [compressed_3bit, canonical_4bit, redundant_5bit]
+  evaluation_adapter: final
+  dataset:
+    domain: mixed_algebra
+    bits: 4
+    seed: 725501
+    train_examples: 20000
+    validation_examples: 2000
+    train_horizons: [2]
+    validation_horizons: [2]
+    test_horizons: [2, 4, 8, 16]
+    test_composition_splits: [seen, heldout]
+    train_program_contexts: 64
+    validation_program_contexts: 16
+    test_program_contexts: 30
+    test_paths_per_state: 2
+    operation_pairs:
+      seen: [add+add, xor+xor, affine+affine, add+xor, xor+affine, affine+add]
+      heldout: [xor+add, affine+xor, add+affine]
+  interfaces:
+    independent_module_contexts: true
+    canonical_4bit:
+      permutation: [11, 2, 14, 5, 8, 0, 13, 7, 3, 15, 6, 9, 1, 12, 4, 10]
+    producer_modes:
+      compressed_3bit: mixed
+      canonical_4bit: mixed
+      redundant_5bit: mixed
+    producer_transition_fractions:
+      compressed_3bit: 0.75
+      canonical_4bit: 0.75
+      redundant_5bit: 0.75
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  training:
+    seed: 725601
+    max_sequence_length: 256
+    microbatch: 8
+    gradient_accumulation: 8
+    effective_batch: 64
+    optimizer: adamw
+    learning_rate: 0.0001
+    weight_decay: 0
+    warmup_ratio: 0.03
+    epochs: 2
+    evaluation_interval: 250
+    max_gradient_norm: 1.0
+    gradient_checkpointing: true
+  interface_gate:
+    primary_condition: redundant_5bit
+    min_primary_h8: 0.80
+    min_primary_h16: 0.75
+  prompt:
+    mode: chat
+    system: Execute the state-interface program exactly and return one token.
+
+state_interface_generalization:
+  outcome_control_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_outcome
+  primary_condition: redundant_5bit
+  rate_control_condition: compressed_3bit
+  gate:
+    domains: [mixed_algebra]
+    composition_split: heldout
+    history_steps: 16
+    min_accuracy: 0.75
+    min_improvement: 0.10
+    min_state_information_fraction: 0.80
+    min_quotient_agreement: 0.80
+    rate_control_tolerance: 0.07

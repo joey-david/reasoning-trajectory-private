@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.runtime.config import load_config
 from src.experiments.depth_relief.state_handoff_data import (
     INTERFACE_CONDITIONS,
     configured_training_conditions,
@@ -41,21 +42,37 @@ def _condition_complete(run_path: Path, condition: str) -> bool:
     return training.get("status") == "complete" and bool(evaluation.get("complete"))
 
 
+def _member_runs(run_path: Path) -> tuple[Path, ...]:
+    linked = (
+        load_config(run_path)
+        .get("state_handoff_training", {})
+        .get("linked_runs", ())
+    )
+    members = [run_path, *(Path(str(value)) for value in linked)]
+    return tuple(dict.fromkeys(members))
+
+
 def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
     """Return unfinished training-plus-evaluation conditions."""
     pending = [
-        {"condition": condition}
-        for condition in configured_training_conditions(run_path)
-        if not _condition_complete(run_path, condition)
+        {"run_path": str(member), "condition": condition}
+        for member in _member_runs(run_path)
+        for condition in configured_training_conditions(member)
+        if not _condition_complete(member, condition)
     ]
-    total = len(configured_training_conditions(run_path))
+    total = sum(
+        len(configured_training_conditions(member))
+        for member in _member_runs(run_path)
+    )
     return pending, total, total - len(pending)
 
 
 def setup_worker(run_path: Path) -> "StateHandoffTrainingWorker":
     """Validate the gate before accepting long-running condition tasks."""
-    require_phase1_training_gate(run_path)
-    return StateHandoffTrainingWorker(run_path=run_path)
+    members = _member_runs(run_path)
+    for member in members:
+        require_phase1_training_gate(member)
+    return StateHandoffTrainingWorker(allowed_runs=members)
 
 
 def log_path(run_path: Path, host: str, gpu: int | str) -> Path:
@@ -67,13 +84,18 @@ def log_path(run_path: Path, host: str, gpu: int | str) -> Path:
 class StateHandoffTrainingWorker:
     """Run one complete condition, then release its model before evaluation."""
 
-    run_path: Path
+    allowed_runs: tuple[Path, ...]
 
     def run_task(self, task: Task, progress: Any) -> TaskResult:
+        run_path = Path(str(task["run_path"]))
+        if run_path not in self.allowed_runs:
+            raise ValueError(f"Training task is outside the linked run set: {run_path}")
         condition = str(task["condition"])
-        progress.set_description(f"state handoff training {condition}")
+        progress.set_description(
+            f"state handoff training {run_path.name}/{condition}"
+        )
         train_state_handoff_condition(
-            self.run_path,
+            run_path,
             condition,
             on_progress=progress.set_description,
             on_step=progress.set_progress,
@@ -87,17 +109,19 @@ class StateHandoffTrainingWorker:
         except ImportError:
             pass
         progress.clear_progress()
-        progress.set_description(f"state handoff evaluation {condition}")
+        progress.set_description(
+            f"state handoff evaluation {run_path.name}/{condition}"
+        )
         if condition in INTERFACE_CONDITIONS:
             from src.experiments.depth_relief.state_interface_evaluation import (
                 evaluate_state_interface_condition,
             )
 
             summary = evaluate_state_interface_condition(
-                self.run_path, condition, on_progress=progress.set_description
+                run_path, condition, on_progress=progress.set_description
             )
         else:
             summary = evaluate_state_handoff_condition(
-                self.run_path, condition, on_progress=progress.set_description
+                run_path, condition, on_progress=progress.set_description
             )
         return TaskResult(units=int(summary["case_count"]), unit="evaluation case")

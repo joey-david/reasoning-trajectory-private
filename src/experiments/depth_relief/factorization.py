@@ -157,7 +157,7 @@ def build_factorization_benchmark(config: dict[str, Any]) -> list[dict[str, Any]
 def _assignment_rule_text(rule: dict[str, Any], width: int) -> str:
     kind = str(rule["kind"])
     modulus = 2**width
-    if kind == "pointer":
+    if kind in {"pointer", "register_dispatch", "proof_action"}:
         table = ", ".join(str(value) for value in rule["mapping"])
         return f"state = table[state], where table = [{table}]"
     if kind == "affine":
@@ -168,6 +168,17 @@ def _assignment_rule_text(rule: dict[str, Any], width: int) -> str:
         return f"state = (state + {rule['value']}) % {modulus}"
     if kind == "rotate_left":
         return f"state = rotate_left_{width}(state, {rule['amount']})"
+    if kind == "horn":
+        premises = ", ".join(str(value) for value in rule["premises"])
+        return (
+            f"if all fact bits in [{premises}] are 1, "
+            f"set fact bit {rule['conclusion']} to 1"
+        )
+    if kind == "proof_query":
+        return (
+            f"answer = proof_query(state, mask={rule['required_mask']}, "
+            f"mode={rule.get('mode', 'all')})"
+        )
     raise ValueError(f"Unknown transition kind: {kind!r}")
 
 
@@ -187,6 +198,18 @@ def render_factorization_rule(case: dict[str, Any], rule: dict[str, Any]) -> str
             for source, target in enumerate(rule["mapping"])
         )
         return f"replace the current symbol according to {{{entries}}}"
+    if (
+        case.get("state_representation") == "hexadecimal"
+        and rule["kind"] in {"pointer", "register_dispatch", "proof_action"}
+    ):
+        symbols = state_symbols(case)
+        entries = ", ".join(
+            f"{symbols[source]}->{symbols[target]}"
+            for source, target in enumerate(rule["mapping"])
+        )
+        if case["format"] == "assignments":
+            return f"state = table[state], where table = {{{entries}}}"
+        return f"look up the current state in {{{entries}}}"
     if case["format"] == "prose":
         return rule_text(rule, int(case["bits"]))
     return _assignment_rule_text(rule, int(case["bits"]))
@@ -201,7 +224,25 @@ def render_factorization_preamble(case: dict[str, Any]) -> str:
             "Follow the state-transition instructions exactly. "
             f"The state is one of [{alphabet}].\n"
         )
+    if case.get("state_representation") == "hexadecimal":
+        alphabet = ", ".join(state_symbols(case))
+        return (
+            f"Execute the register program exactly. State is a {case['bits']}-bit "
+            f"register shown as one hexadecimal digit in [{alphabet}]. "
+            "Operation constants are decimal.\n"
+        )
     modulus = 2 ** int(case["bits"])
+    if case.get("domain") == "horn_proof":
+        facts = ", ".join(chr(ord("A") + bit) for bit in range(int(case["bits"])))
+        return (
+            f"Apply the proof rules exactly. The state is a decimal bitmask in "
+            f"0..{modulus - 1} for established facts [{facts}].\n"
+        )
+    if case.get("domain") == "mixed_algebra":
+        return (
+            f"Execute the register program exactly. State is a decimal "
+            f"{case['bits']}-bit register in 0..{modulus - 1}.\n"
+        )
     if case["format"] == "assignments":
         return (
             f"Execute the pseudocode exactly. State is a decimal integer in 0..{modulus - 1}.\n"

@@ -49,6 +49,9 @@ from src.experiments.depth_relief.state_interface_stress import (
 from src.experiments.depth_relief.state_interface_closure import (
     compare_closure_finetuning,
 )
+from src.experiments.depth_relief.state_interface_generalization import (
+    compare_state_interface_generalization,
+)
 
 
 def main() -> int:
@@ -77,6 +80,7 @@ def main() -> int:
             "evaluate-stress",
             "compare-stress",
             "compare-closure",
+            "compare-generalization",
         ),
     )
     parser.add_argument("run_path", type=Path)
@@ -162,6 +166,8 @@ def main() -> int:
         result = compare_stress_conditions(args.run_path, args.profile)
     elif args.command == "compare-closure":
         result = compare_closure_finetuning(args.run_path)
+    elif args.command == "compare-generalization":
+        result = compare_state_interface_generalization(args.run_path)
     else:
         result = state_handoff_training_status(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))

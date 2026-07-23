@@ -1,0 +1,58 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_handoff_training:
+  phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
+  frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
+  conditions: [outcome_only]
+  evaluation_adapter: final
+  dataset:
+    domain: mixed_algebra
+    bits: 4
+    seed: 725501
+    train_examples: 20000
+    validation_examples: 2000
+    train_horizons: [2]
+    validation_horizons: [2]
+    test_horizons: [2, 4, 8, 16]
+    test_composition_splits: [seen, heldout]
+    train_program_contexts: 64
+    validation_program_contexts: 16
+    test_program_contexts: 30
+    test_paths_per_state: 2
+    operation_pairs:
+      seen: [add+add, xor+xor, affine+affine, add+xor, xor+affine, affine+add]
+      heldout: [xor+add, affine+xor, add+affine]
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  training:
+    seed: 725601
+    max_sequence_length: 256
+    fixed_sequence_padding: true
+    microbatch: 8
+    gradient_accumulation: 8
+    effective_batch: 64
+    optimizer: adamw
+    learning_rate: 0.0001
+    weight_decay: 0
+    warmup_ratio: 0.03
+    epochs: 2
+    evaluation_interval: 250
+    max_gradient_norm: 1.0
+    gradient_checkpointing: true
+  prompt:
+    mode: chat
+    system: Execute the state-interface program exactly and return one token.
+  evaluation:
+    max_sequence_length: 1024

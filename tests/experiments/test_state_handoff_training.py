@@ -216,6 +216,24 @@ def test_outcome_and_handoff_training_compute_is_matched(tmp_path) -> None:
     ]
 
 
+def test_fixed_sequence_padding_matches_interface_compute(tmp_path) -> None:
+    run_path = tmp_path / "run"
+    _write_config(run_path)
+    prepare_state_handoff_datasets(run_path)
+    cases = read_programs(run_path / TRAIN_PATH)[:8]
+    manifest = matched_compute_manifest(
+        tokenizer=CharacterTokenizer(),
+        cases=cases,
+        prompt_config={"prompt": {"mode": "plain"}},
+        max_length=1000,
+        fixed_sequence_padding=True,
+    )
+    for condition in ("outcome_only", "explicit_handoff"):
+        budget = manifest["conditions"][condition]
+        assert budget["active_input_tokens"] == 16_000
+        assert budget["fixed_padding_compute_tokens"] == 16_000
+
+
 def test_same_and_different_state_donors_obey_contract(tmp_path) -> None:
     run_path = tmp_path / "run"
     _write_config(run_path)
@@ -497,6 +515,9 @@ def test_interface_code_contracts_have_expected_rate_and_invariance(tmp_path) ->
         "context_bound": 8,
         "compressed_2bit": 4,
         "redundant_4bit": 16,
+        "compressed_3bit": 8,
+        "canonical_4bit": 16,
+        "redundant_5bit": 32,
     }
 
 

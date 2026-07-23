@@ -172,8 +172,15 @@ def evaluate_program_hf(
         "id": str(case["id"]),
         "condition": condition,
         "history_steps": int(case["history_steps"]),
+        "bits": int(case["bits"]),
         "program_context": str(case["program_context"]),
         "program_context_split": str(case["program_context_split"]),
+        "domain": str(case.get("domain", "addition")),
+        "composition_split": str(case.get("composition_split", "seen")),
+        "proof_composition_active": bool(
+            case.get("proof_composition_active", False)
+        ),
+        "history_family": str(case["history_family"]),
         "path_code": int(case["path_code"]),
         "current_state": int(case["current_state"]),
         "next_state": int(case["next_state"]),

@@ -7,6 +7,30 @@ cd "$REPO_ROOT"
 PYTHON="${PYTHON:-.venv/bin/python}"
 action="${1:-}"
 
+prepare_training_run() {
+  local run=$1
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py prepare-data "$run"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py validate-data "$run"
+}
+
+run_generalization_pair() {
+  local interface=$1
+  local control=$2
+  local nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  local devices="${STATE_HANDOFF_7B_DEVICES:-0,1}"
+  prepare_training_run "$interface"
+  prepare_training_run "$control"
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_handoff_training \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$interface"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    compare-interfaces "$interface"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    compare-generalization "$interface"
+}
+
 case "$action" in
 phase1-32b)
   run="runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history"
@@ -177,8 +201,36 @@ interface-closure-stress-7b)
   "$PYTHON" scripts/experiments/run_state_handoff_training.py \
     compare-stress "$run" --profile probe
   ;;
+interface-joint-closure-7b)
+  run="runs/Qwen2.5-7B-Instruct/interventions/state_interface_joint_closure"
+  nodes="${STATE_HANDOFF_NODES:-upnquick}"
+  devices="${STATE_HANDOFF_7B_DEVICES:-0,1}"
+  prepare_training_run "$run"
+  "$PYTHON" scripts/orchestrate.py \
+    --job state_handoff_training \
+    --nodes "$nodes" \
+    --devices "$devices" \
+    --run "$run"
+  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    compare-interfaces "$run"
+  ;;
+interface-algebra-transfer-7b)
+  run_generalization_pair \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_transfer" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome"
+  ;;
+interface-width4-transfer-7b)
+  run_generalization_pair \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_algebra" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_outcome"
+  ;;
+interface-proof-transfer-7b)
+  run_generalization_pair \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof" \
+    "runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome"
+  ;;
 *)
-  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b | interface-final-eval-7b | interface-stress-7b | interface-closure-7b | interface-closure-stress-7b" >&2
+  echo "usage: scripts/remote/state_handoff.sh phase1-32b | screen-7b | prepare-pilot-7b | pilot-7b | continuation-probe-7b | continuation-confirm-7b | interface-pilot-7b | interface-final-eval-7b | interface-stress-7b | interface-closure-7b | interface-closure-stress-7b | interface-joint-closure-7b | interface-algebra-transfer-7b | interface-width4-transfer-7b | interface-proof-transfer-7b" >&2
   exit 2
   ;;
 esac

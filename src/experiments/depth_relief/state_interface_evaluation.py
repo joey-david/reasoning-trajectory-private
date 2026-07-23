@@ -11,7 +11,7 @@ from typing import Any, Callable
 from src.runtime.artifact_store import append_jsonl, write_json
 from src.runtime.config import load_config
 
-from .benchmark import apply_rule
+from .benchmark import apply_rule, state_symbols
 from .metrics import bootstrap_mean_ci, cluster_bootstrap_mean_ci
 from .qualification import evaluate_prompt_conditions_hf
 from .state_handoff_data import INTERFACE_CONDITIONS, TEST_PATH, read_programs
@@ -25,6 +25,7 @@ from .state_interface_data import (
     render_interface_transition_prompt,
     semantic_states_for_code,
 )
+from .state_interface_contract import state_count
 
 
 INTERFACE_EVALUATION_ROOT = Path("evaluation/interfaces")
@@ -85,12 +86,12 @@ def _block(case: dict[str, Any], start: int, block_size: int) -> dict[str, Any]:
 
 
 def _advance_states(
-    states: tuple[int, ...], history: list[dict[str, Any]]
+    states: tuple[int, ...], history: list[dict[str, Any]], modulus: int
 ) -> tuple[int, ...]:
     result = []
     for state in states:
         for rule in history:
-            state = apply_rule(rule, state, 8)
+            state = apply_rule(rule, state, modulus)
         result.append(state)
     return tuple(sorted(set(result)))
 
@@ -109,6 +110,7 @@ def evaluate_interface_program_hf(
     if int(case["history_steps"]) % block_size:
         raise ValueError("Interface evaluation requires complete blocks")
     symbols = interface_code_symbols(condition, interface_config)
+    modulus = state_count(case)
     variant = int(case["path_code"]) % 2
     predicted_code = None
     steps = []
@@ -134,6 +136,7 @@ def evaluate_interface_program_hf(
             )
             local_expected = global_expected
             compatible_inputs = (int(case["initial_state"]),)
+            possible_codes = {global_expected}
         elif predicted_code is None:
             break
         else:
@@ -143,7 +146,9 @@ def evaluate_interface_program_hf(
                 code_index=predicted_code,
                 interface_config=interface_config,
             )
-            compatible_outputs = _advance_states(compatible_inputs, local["history"])
+            compatible_outputs = _advance_states(
+                compatible_inputs, local["history"], modulus
+            )
             possible_codes = {
                 interface_code_index(
                     condition=condition,
@@ -154,9 +159,7 @@ def evaluate_interface_program_hf(
                 )
                 for state in compatible_outputs
             }
-            if len(possible_codes) != 1:
-                raise ValueError("A compressed transition has no unique local code")
-            local_expected = possible_codes.pop()
+            local_expected = global_expected
             text = render_interface_transition_prompt(
                 tokenizer=tokenizer,
                 case=local,
@@ -180,6 +183,8 @@ def evaluate_interface_program_hf(
             global_expected_code=global_expected,
             locally_correct=predicted_code == local_expected,
             globally_correct=predicted_code == global_expected,
+            compatible_output_codes=sorted(possible_codes),
+            quotient_transition_identifiable=len(possible_codes) == 1,
         )
         steps.append(result)
 
@@ -190,7 +195,7 @@ def evaluate_interface_program_hf(
         interface_config=interface_config,
         variant=variant,
     )
-    answer_symbols = tuple(str(value) for value in range(8))
+    answer_symbols = state_symbols(case)
     predicted_final = None
     if predicted_code is not None:
         predicted_final = _score(
@@ -221,18 +226,38 @@ def evaluate_interface_program_hf(
         expected=int(case["next_state"]),
         name="gold_final",
     )
+    predicted_semantic_states = (
+        semantic_states_for_code(
+            condition=condition,
+            case=case,
+            code_index=predicted_code,
+            interface_config=interface_config,
+        )
+        if predicted_code is not None
+        else ()
+    )
     return {
         "schema_version": 1,
         "id": str(case["id"]),
         "condition": condition,
         "history_steps": int(case["history_steps"]),
+        "bits": int(case["bits"]),
         "block_size": block_size,
         "program_context": str(case["program_context"]),
         "path_code": int(case["path_code"]),
         "current_state": int(case["current_state"]),
+        "domain": str(case.get("domain", "addition")),
+        "composition_split": str(case.get("composition_split", "seen")),
+        "proof_composition_active": bool(
+            case.get("proof_composition_active", False)
+        ),
+        "history_family": str(case["history_family"]),
         "true_code": true_code,
         "predicted_code": predicted_code,
         "state_correct": predicted_code == true_code,
+        "predicted_semantic_states": list(predicted_semantic_states),
+        "semantic_state_correct": int(case["current_state"])
+        in predicted_semantic_states,
         "steps": steps,
         "predicted_final": predicted_final,
         "gold_final": gold_final,
@@ -245,16 +270,29 @@ def summarize_interface_rows(
     """Summarize recursive code accuracy, closure, and utilization."""
     if not rows:
         raise ValueError("Cannot summarize empty interface evaluation")
+    semantic_count = 2 ** int(rows[0].get("bits", 3))
     by_horizon = {}
     for horizon in sorted({int(row["history_steps"]) for row in rows}):
         selected = [row for row in rows if int(row["history_steps"]) == horizon]
         clusters = [str(row["program_context"]) for row in selected]
         steps = [step for row in selected for step in row["steps"]]
         same_groups: defaultdict[tuple[str, int], list[int | None]] = defaultdict(list)
+        quotient_groups: defaultdict[
+            tuple[str, int], list[tuple[int, ...]]
+        ] = defaultdict(list)
         for row in selected:
-            same_groups[(row["program_context"], int(row["current_state"]))].append(
-                row["predicted_code"]
+            key = (row["program_context"], int(row["current_state"]))
+            same_groups[key].append(row["predicted_code"])
+            quotient_groups[key].append(
+                tuple(int(value) for value in row["predicted_semantic_states"])
             )
+        quotient_agreement = []
+        for group in quotient_groups.values():
+            for index, left in enumerate(group):
+                quotient_agreement.extend(
+                    bool(left) and left == right
+                    for right in group[index + 1 :]
+                )
         agreement = []
         for codes in same_groups.values():
             for index, left in enumerate(codes):
@@ -265,6 +303,11 @@ def summarize_interface_rows(
             "case_count": len(selected),
             "state_accuracy": cluster_bootstrap_mean_ci(
                 [bool(row["state_correct"]) for row in selected], clusters, seed=9100 + horizon
+            ),
+            "semantic_state_accuracy": cluster_bootstrap_mean_ci(
+                [bool(row["semantic_state_correct"]) for row in selected],
+                clusters,
+                seed=9150 + horizon,
             ),
             "predicted_answer_accuracy": cluster_bootstrap_mean_ci(
                 [
@@ -282,8 +325,19 @@ def summarize_interface_rows(
             "local_closure_accuracy": bootstrap_mean_ci(
                 [bool(step["locally_correct"]) for step in steps], seed=9400 + horizon
             ),
+            "locally_identifiable_rate": bootstrap_mean_ci(
+                [
+                    bool(step["quotient_transition_identifiable"])
+                    for step in steps
+                    if step["supplied_code"] is not None
+                ],
+                seed=9450 + horizon,
+            ),
             "same_state_code_agreement": bootstrap_mean_ci(
                 agreement, seed=9500 + horizon
+            ),
+            "same_state_quotient_agreement": bootstrap_mean_ci(
+                quotient_agreement, seed=9550 + horizon
             ),
         }
     valid = [int(row["predicted_code"]) for row in rows if row["predicted_code"] is not None]
@@ -329,6 +383,14 @@ def summarize_interface_rows(
         "invalid_code_count": len(rows) - len(valid),
         "declared_codebook_size": CODEBOOK_SIZES[condition],
         "declared_capacity_bits": math.log2(CODEBOOK_SIZES[condition]),
+        "semantic_state_entropy_bits": math.log2(semantic_count),
+        "excess_rate_bits": (
+            math.log2(CODEBOOK_SIZES[condition])
+            - math.log2(semantic_count)
+        ),
+        "balanced_state_accuracy_ceiling": min(
+            1.0, CODEBOOK_SIZES[condition] / semantic_count
+        ),
         "true_code_information": information(true_contract),
         "predicted_code_information": information(predicted_contract),
     }
@@ -375,96 +437,7 @@ def evaluate_state_interface_condition(
 
 
 def compare_state_interface_conditions(run_path: Path) -> dict[str, Any]:
-    """Compare equal-compute code contracts and apply the continuation gate."""
-    config = load_config(run_path).get("state_handoff_training", {})
-    conditions = tuple(str(value) for value in config.get("conditions", ()))
-    summaries = {}
-    for condition in conditions:
-        path = interface_evaluation_dir(run_path, condition) / "summary.json"
-        if not path.exists():
-            raise RuntimeError(f"Missing interface evaluation summary: {condition}")
-        summary = json.loads(path.read_text())
-        if not summary.get("complete"):
-            raise RuntimeError(f"Interface evaluation is incomplete: {condition}")
-        summaries[condition] = summary
-    if "canonical_opaque" not in summaries:
-        raise ValueError("Interface comparison requires canonical_opaque")
-    accuracy = {
-        condition: {
-            horizon: values["predicted_answer_accuracy"]["mean"]
-            for horizon, values in summary["by_horizon"].items()
-        }
-        for condition, summary in summaries.items()
-    }
-    gate_config = config.get("interface_gate", {})
-    min_h8 = float(gate_config.get("min_canonical_h8", 0.90))
-    min_h16 = float(gate_config.get("min_canonical_h16", 0.80))
-    min_context_gap = float(gate_config.get("min_context_gap", 0.20))
-    checks = {
-        "canonical_h8": accuracy["canonical_opaque"].get("8", 0.0) >= min_h8,
-        "canonical_h16": accuracy["canonical_opaque"].get("16", 0.0) >= min_h16,
-        "canonical_gold_consumer": summaries["canonical_opaque"]["by_horizon"]["8"]
-        ["gold_code_answer_accuracy"]["mean"]
-        >= 0.95,
-    }
-    if "context_bound" in accuracy:
-        checks["canonical_beats_context_bound"] = (
-            accuracy["canonical_opaque"].get("8", 0.0)
-            - accuracy["context_bound"].get("8", 0.0)
-            >= min_context_gap
-        )
-    result = {
-        "schema_version": 1,
-        "conditions": list(conditions),
-        "horizon_accuracy": accuracy,
-        "summaries": summaries,
-        "interface_gate": {
-            "status": "passed" if all(checks.values()) else "failed",
-            "thresholds": {
-                "min_canonical_h8": min_h8,
-                "min_canonical_h16": min_h16,
-                "min_context_gap": min_context_gap,
-            },
-            "checks": checks,
-        },
-    }
-    from .state_interface_interchange import analyze_interface_interchange
+    """Keep the public comparison owner stable after the reporting split."""
+    from .state_interface_reporting import compare_state_interface_conditions
 
-    result["interchange"] = {
-        condition: analyze_interface_interchange(run_path, condition)
-        for condition in conditions
-    }
-    from .state_interface_equivalence import analyze_predicted_code_equivalence
-
-    result["predicted_equivalence"] = {
-        condition: analyze_predicted_code_equivalence(run_path, condition)
-        for condition in conditions
-    }
-    write_json(run_path / INTERFACE_EVALUATION_ROOT / "comparison_summary.json", result)
-    _write_interface_plot(run_path, result)
-    return result
-
-
-def _write_interface_plot(run_path: Path, summary: dict[str, Any]) -> None:
-    import matplotlib.pyplot as plt
-
-    horizons = [2, 4, 8, 16]
-    figure, axis = plt.subplots(figsize=(7, 4))
-    for condition, values in summary["horizon_accuracy"].items():
-        axis.plot(
-            horizons,
-            [values.get(str(horizon), float("nan")) for horizon in horizons],
-            marker="o",
-            label=condition.replace("_", " "),
-        )
-    axis.axhline(0.125, color="black", linestyle="--", linewidth=1)
-    axis.set_xticks(horizons)
-    axis.set_ylim(0, 1.02)
-    axis.set_xlabel("History horizon")
-    axis.set_ylabel("Recursive answer accuracy")
-    axis.legend(fontsize=8)
-    figure.tight_layout()
-    figure.savefig(
-        run_path / INTERFACE_EVALUATION_ROOT / "interface_accuracy.png", dpi=160
-    )
-    plt.close(figure)
+    return compare_state_interface_conditions(run_path)
