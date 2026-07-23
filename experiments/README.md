@@ -275,6 +275,114 @@ The interface comparison owns `comparison_summary.json`,
 `interface_accuracy.png`, and one `interchange_matrix.png` per condition. Full
 three-seed confirmation remains gated on the one-seed interface result.
 
+### State-interface generalization runs
+
+The next suite separates five claims. `interface-joint-closure-7b` checks
+whether 25% decimal-entry replay prevents the encoder damage seen after
+transition-only closure. `interface-algebra-transfer-7b` holds out three
+ordered pairs of add, XOR, and affine operations. The four-bit algebra run
+moves the state entropy from three to four bits and compares 3-, 4-, and
+5-bit channels. The proof run uses a four-fact ledger and holds out causal
+two-premise rules. Seed and model-family confirmation remain separate jobs.
+
+On a host that owns two visible A100s, launch one stage at a time with:
+
+```bash
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+  bash scripts/remote/state_handoff.sh interface-joint-closure-7b
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+  bash scripts/remote/state_handoff.sh interface-algebra-transfer-7b
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+  bash scripts/remote/state_handoff.sh interface-proof-transfer-7b
+```
+
+The joint-closure run needs the saved closure adapters on the same host. The
+algebra and proof runs start new LoRAs from their pinned base model and can run
+on another two-GPU host. Each transfer action prepares its deterministic data,
+validates token and compute contracts, trains the interface and outcome arms
+through one shared dynamic queue, evaluates every saved case, and writes
+`evaluation/generalization_summary.json`.
+
+After each stage, pull only its light artifacts from the Mac. The default pull
+excludes `.pt` and `.safetensors`; use `--pt` only when adapter weights must
+move:
+
+```bash
+scripts/remote.sh pull \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_joint_closure
+scripts/remote.sh pull \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_transfer \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome
+scripts/remote.sh pull \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome
+```
+
+Inspect `.gate.status` in each generalization summary. Joint closure does not
+gate the independent transfer tests. If the first algebra seed passes, run the
+four-bit rate shift. If a first transfer seed passes, run its two extra Qwen
+seeds. Run Mistral only after all three Qwen proof seeds pass:
+
+```bash
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+  bash scripts/remote/state_handoff.sh interface-width4-transfer-7b
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+  bash scripts/remote/state_handoff.sh interface-algebra-confirm-7b
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+  bash scripts/remote/state_handoff.sh interface-proof-confirm-7b
+STATE_HANDOFF_NODES=local STATE_HANDOFF_7B_DEVICES=0,1 \
+  bash scripts/remote/state_handoff.sh interface-proof-second-model-7b
+```
+
+Pull the matching paired folders after each action. The seed-2 Qwen interface
+folder also owns `evaluation/replication_summary.json`. The Mistral result owns
+its normal `evaluation/generalization_summary.json`:
+
+```bash
+scripts/remote.sh pull \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_algebra \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_width4_outcome
+scripts/remote.sh pull \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_transfer_seed2 \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome_seed2 \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_transfer_seed3 \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_algebra_outcome_seed3
+scripts/remote.sh pull \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed2 \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed2 \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed3 \
+  runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed3
+scripts/remote.sh pull \
+  runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_proof \
+  runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_outcome
+```
+
+All training arms use 20,000 forwards, 20,000 supervised one-token targets,
+and 5,120,000 attended padded tokens. Interface producer and consumer contexts
+are disjoint; test contexts are unseen. The proof bank has 9,600 cases and
+1,500 causal conjunctions. Its state labels, code symbols, and answer symbols
+all pass the real Qwen and Mistral chat boundaries. Pinned semantic hashes are:
+
+- Joint closure: train `5b0fce6736d09860f5751ede621d7fe054162e4931a59fb4a42d532f5d467b44`,
+  validation `16a07f8162e5c80099a0a0280e6f4c9399427c154040ee5e899a3355f4450ef8`,
+  test `1fa23d390197554857d51dd959c052fefc82f44ca29fe924e19241b4ccaead0a`.
+- Algebra transfer: train `6937c2517a893a55629f0c2e392db8ee81c7144c37da430ada340cbcb299d278`,
+  validation `f15d3250385197f0a0c188b96f6dafab18cc1637a6da22ad02f1e2a4336bef6c`,
+  test `3ab1a416fc4cf1993a17b05d593aeb72c7fa1ac7bbada4e7ab53ea06539c276e`.
+- Four-bit algebra: train `f0eb19b7a45cc7ce716bbce1f54e74eca566867678b1939fbd4fd37400e08c74`,
+  validation `9368484b2c87907de599b324130b2b564a7ab5e4a998861d4e34a2bd64d86475`,
+  test `0d28549199f7d8949862c70734289d490db6d2e83623c810326610564828cd9b`.
+- Proof transfer: train `8d248619b36323141ce11b153632899cde0612170b55622ac5b91f3f1f2477f8`,
+  validation `bc0896156c5da1188bb51143ac07fbf21d3427f630ea78f985a368b268c759af`,
+  test `69ca8e8f522d13ff276b333f52c6a6813bf743c7658a317786d3ca562bd4f95e`.
+  Its shared data-manifest hash is
+  `d056b75924f494fbd66f79e489c33e0f1824694f614415e5047cd19a1b03d060`.
+
+Local validation covers data generation, exact symbolic paths, one-token
+boundaries, prompt lengths, matched compute, deterministic comparison, LoRA
+save/reload, and resume. It does not validate A100 training speed, FlashAttention,
+or any unrun model result.
+
 ## Causal depth relief
 
 The controlled benchmark represents an intermediate state as a fixed-length set
