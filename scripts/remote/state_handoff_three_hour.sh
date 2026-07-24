@@ -7,7 +7,7 @@ cd "$REPO_ROOT"
 PYTHON="${PYTHON:-.venv/bin/python}"
 ANCHOR="runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_sweep_3h"
 NODES=(${STATE_HANDOFF_3H_NODES:-ourasi seacove coktailjet})
-DEVICES=(${STATE_HANDOFF_3H_DEVICES:-0,1 3 0})
+DEVICES=(${STATE_HANDOFF_3H_DEVICES:-0,1 3 0,1})
 LOG_ROOT="${STATE_HANDOFF_3H_LOG_DIR:-runs/_three_hour/state_handoff/$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 
 RUNS=(
@@ -37,14 +37,6 @@ if [[ "${STATE_HANDOFF_3H_DRY_RUN:-false}" == true ]]; then
   exit 0
 fi
 
-if [[ "${STATE_HANDOFF_3H_INSIDE_DEADLINE:-false}" != true ]] &&
-  command -v timeout >/dev/null 2>&1
-then
-  export STATE_HANDOFF_3H_LOG_DIR="$LOG_ROOT"
-  exec timeout --foreground "${STATE_HANDOFF_3H_TOTAL_TIMEOUT:-175m}" \
-    env STATE_HANDOFF_3H_INSIDE_DEADLINE=true bash "$0" "$@"
-fi
-
 mkdir -p "$LOG_ROOT"
 STATUS="$LOG_ROOT/status.jsonl"
 
@@ -58,11 +50,10 @@ record() {
 
 run_phase() {
   local phase=$1
-  local limit=$2
-  shift 2
+  shift
   echo
-  echo "[$phase] limit=$limit"
-  if timeout --foreground "$limit" "$@" 2>&1 | tee "$LOG_ROOT/$phase.log"; then
+  echo "[$phase]"
+  if "$@" 2>&1 | tee "$LOG_ROOT/$phase.log"; then
     record "$phase" complete 0
     return 0
   fi
@@ -104,21 +95,21 @@ else
   record prepare complete 0
 fi
 
-run_phase training 110m \
+run_phase training \
   "$PYTHON" scripts/orchestrate.py \
     --job state_handoff_training \
     --nodes "${NODES[@]}" \
     --devices "${DEVICES[@]}" \
     --run "$ANCHOR"
 
-run_phase long-horizon 35m \
+run_phase long-horizon \
   "$PYTHON" scripts/orchestrate.py \
     --job state_interface_challenge \
     --nodes "${NODES[@]}" \
     --devices "${DEVICES[@]}" \
     --run "$ANCHOR"
 
-run_phase substitution 25m \
+run_phase substitution \
   "$PYTHON" scripts/orchestrate.py \
     --job state_interface_substitution \
     --nodes "${NODES[0]}" \

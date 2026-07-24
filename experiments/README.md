@@ -181,8 +181,8 @@ run and never regenerates its inference. The local artifact-only analysis is:
 
 ### Three-hour length-generalization screen
 
-The compact follow-up uses four independent one-GPU workers: `ourasi:0,1`,
-`seacove:3`, and `coktailjet:0`. It does not reserve GPUs or wait for them.
+The compact follow-up uses five independent one-GPU workers: `ourasi:0,1`,
+`seacove:3`, and `coktailjet:0,1`. It does not reserve GPUs or wait for them.
 Start it only after those devices are free:
 
 ```bash
@@ -196,16 +196,15 @@ Override the shared hosts without editing the script:
 
 ```bash
 STATE_HANDOFF_3H_NODES="ourasi seacove coktailjet" \
-STATE_HANDOFF_3H_DEVICES="0,1 3 0" \
+STATE_HANDOFF_3H_DEVICES="0,1 3 0,1" \
 bash scripts/remote/state_handoff_three_hour.sh
 ```
 
 The runner prepares and validates nine run folders, dispatches 12
 training-plus-evaluation tasks, then runs four length challenges and one
-cross-adapter substitution. Stage limits are 110, 35, and 25 minutes. A failed
-stage is recorded under `runs/_three_hour/state_handoff/` and does not stop the
-later stages. A whole-script 175-minute deadline also includes preparation and
-analysis; override it only with `STATE_HANDOFF_3H_TOTAL_TIMEOUT`.
+cross-adapter substitution. Three hours is the target runtime, not a deadline:
+a healthy slow task may finish. A failed stage is recorded under
+`runs/_three_hour/state_handoff/` and does not stop the later stages.
 
 Pull these run folders after completion:
 
