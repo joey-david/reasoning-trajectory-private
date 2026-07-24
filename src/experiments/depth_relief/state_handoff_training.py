@@ -13,7 +13,6 @@ from src.runtime.artifact_store import append_jsonl, write_json
 from src.runtime.config import load_config
 
 from .state_handoff_data import (
-    ALL_TRAINING_CONDITIONS,
     COMPUTE_MANIFEST_PATH,
     DATA_MANIFEST_PATH,
     TRAINING_CONDITIONS,
@@ -34,11 +33,12 @@ from .state_handoff_training_runtime import (
     _per_sequence_loss,
     _save_checkpoint,
 )
+from .state_interface_contract import is_interface_condition
 
 
 def condition_training_dir(run_path: Path, condition: str) -> Path:
     """Return the artifact owner for one training condition."""
-    if condition not in ALL_TRAINING_CONDITIONS:
+    if condition not in TRAINING_CONDITIONS and not is_interface_condition(condition):
         raise ValueError(f"Unknown state-handoff training condition: {condition!r}")
     return run_path / "training" / condition
 
@@ -128,7 +128,7 @@ def train_state_handoff_condition(
     on_step: Callable[[int, int, str], None] | None = None,
 ) -> dict[str, Any]:
     """Train or resume one matched-compute LoRA condition."""
-    if condition not in ALL_TRAINING_CONDITIONS:
+    if condition not in TRAINING_CONDITIONS and not is_interface_condition(condition):
         raise ValueError(f"Unknown state-handoff training condition: {condition!r}")
     if enforce_phase1_gate:
         require_phase1_training_gate(run_path)
@@ -232,7 +232,7 @@ def train_state_handoff_condition(
             from .state_interface_data import matched_interface_compute_manifest
 
             conditions = configured_training_conditions(run_path)
-            if not set(conditions).issubset(set(ALL_TRAINING_CONDITIONS) - set(TRAINING_CONDITIONS)):
+            if not all(is_interface_condition(value) for value in conditions):
                 raise ValueError("Interface runs cannot mix terminal and code conditions")
             compute = matched_interface_compute_manifest(
                 tokenizer=tokenizer,

@@ -23,7 +23,9 @@ from .state_interface_contract import (
     CODEBOOK_SIZES,
     INTERFACE_CONDITIONS,
     interface_code_index,
+    interface_codebook_size,
     interface_code_symbols,
+    is_interface_condition,
     semantic_states_for_code,
 )
 
@@ -64,8 +66,13 @@ def _code_prompt_preamble(case: dict[str, Any], condition: str) -> str:
             f"{case['bits']} facts. Public state labels are "
             f"{'; '.join(entries)}."
         )
-    elif case.get("domain") == "mixed_algebra":
+    elif case.get("domain") in {"mixed_algebra", "algebra_primitives"}:
         semantics = f"The hidden state is a {case['bits']}-bit program register."
+    elif case.get("domain") == "register_machine":
+        semantics = (
+            "The hidden state packs two two-bit registers: R0 is the low pair "
+            "and R1 is the high pair."
+        )
     else:
         semantics = f"States evolve modulo {2 ** int(case['bits'])}."
     return f"{semantics} Interface codes are opaque single tokens.\n" + context
@@ -164,7 +171,11 @@ def interface_training_sequence_pair(
 ) -> list[dict[str, Any]]:
     """Render one state-contract target and one consumer target."""
     symbols = interface_code_symbols(condition, interface_config)
-    variant = int(case["path_code"]) % 2
+    variant = (
+        int(case["path_code"])
+        if condition.startswith("rate_")
+        else int(case["path_code"]) % 2
+    )
     input_index = interface_code_index(
         condition=condition,
         case=case,
@@ -371,8 +382,12 @@ def matched_interface_compute_manifest(
             "target_tokens": sum(
                 sum(label != -100 for label in row["labels"]) for row in sequences
             ),
-            "codebook_size": CODEBOOK_SIZES[condition],
-            "capacity_bits": math.log2(CODEBOOK_SIZES[condition]),
+            "codebook_size": interface_codebook_size(
+                condition, interface_config
+            ),
+            "capacity_bits": math.log2(
+                interface_codebook_size(condition, interface_config)
+            ),
             "independent_module_contexts": bool(
                 interface_config.get("independent_module_contexts", True)
             ),
@@ -434,7 +449,7 @@ def validate_state_interface_training_data(run_path: Path) -> dict[str, Any]:
     config = load_config(run_path)
     experiment = config.get("state_handoff_training", {})
     conditions = configured_training_conditions(run_path)
-    if not set(conditions).issubset(INTERFACE_CONDITIONS):
+    if not all(is_interface_condition(condition) for condition in conditions):
         raise ValueError("Interface validation requires only code conditions")
     tokenizer = load_hf_tokenizer(config["model"])
     maximum = int(experiment.get("training", {}).get("max_sequence_length", 256))

@@ -5,14 +5,18 @@ import json
 import pytest
 
 from src.experiments.depth_relief.state_handoff_data import build_test_programs
-from src.experiments.depth_relief.benchmark import apply_rule
+from src.experiments.depth_relief.benchmark import answer_symbols, apply_rule
 from src.experiments.depth_relief.state_handoff_training import _base_and_adapter
 from src.experiments.depth_relief.state_interface_data import (
     interface_training_sequence_pair,
 )
 from src.experiments.depth_relief.state_interface_contract import (
+    interface_codebook_size,
     interface_code_index,
     semantic_states_for_code,
+)
+from src.experiments.depth_relief.state_interface_challenge import (
+    prepare_interface_challenges,
 )
 from src.experiments.depth_relief.state_interface_equivalence import (
     _consumer_table,
@@ -256,6 +260,151 @@ def test_four_bit_rate_contracts_have_expected_fibers() -> None:
         )
         for variant in (0, 1)
     } == {18, 19}
+
+
+def test_configured_rate_sweep_has_exact_information_fibers() -> None:
+    case = build_test_programs(
+        horizons=(2,),
+        context_count=1,
+        paths_per_state=1,
+        width=3,
+        seed=42,
+    )[0]
+    assert [
+        interface_codebook_size(condition, {})
+        for condition in ("rate_4", "rate_8", "rate_16", "rate_32")
+    ] == [4, 8, 16, 32]
+    assert semantic_states_for_code(
+        condition="rate_4",
+        case=case,
+        code_index=3,
+        interface_config={},
+    ) == (3, 7)
+    assert semantic_states_for_code(
+        condition="rate_8",
+        case=case,
+        code_index=3,
+        interface_config={},
+    ) == (3,)
+    assert {
+        interface_code_index(
+            condition="rate_32",
+            case=case,
+            state=3,
+            interface_config={},
+            variant=variant,
+        )
+        for variant in range(4)
+    } == {3, 11, 19, 27}
+
+
+def test_primitive_algebra_learns_locally_and_tests_unseen_orders() -> None:
+    cases = build_test_programs(
+        horizons=(1, 8),
+        context_count=3,
+        paths_per_state=2,
+        width=3,
+        seed=44,
+        dataset={
+            "domain": "algebra_primitives",
+            "test_composition_splits": ["seen", "heldout"],
+        },
+    )
+    one_step = [case for case in cases if case["history_steps"] == 1]
+    assert {
+        case["history"][0]["kind"] for case in one_step
+    } == {"add", "xor", "affine"}
+    heldout = [
+        case
+        for case in cases
+        if case["history_steps"] == 8
+        and case["composition_split"] == "heldout"
+    ]
+    assert all(len(set(case["operation_pairs"])) > 1 for case in heldout)
+    assert all(case["state_path"][-1] == case["current_state"] for case in cases)
+
+
+def test_proof_actions_expose_the_full_fact_ledger() -> None:
+    cases = build_test_programs(
+        horizons=(8,),
+        context_count=2,
+        paths_per_state=1,
+        width=4,
+        seed=46,
+        dataset={
+            "domain": "horn_proof",
+            "proof_final": "action",
+            "test_composition_splits": ["heldout"],
+        },
+    )
+    assert all(case["final_rule"]["kind"] == "proof_action" for case in cases)
+    assert all(len(answer_symbols(case)) == 16 for case in cases)
+    assert all(
+        case["next_state"]
+        == apply_rule(case["final_rule"], case["current_state"], 16)
+        for case in cases
+    )
+    assert any(case["proof_composition_active"] for case in cases)
+
+
+def test_register_machine_programs_are_balanced_and_exact() -> None:
+    cases = build_test_programs(
+        horizons=(1, 16),
+        context_count=2,
+        paths_per_state=2,
+        width=4,
+        seed=48,
+        dataset={
+            "domain": "register_machine",
+            "test_composition_splits": ["seen", "heldout"],
+        },
+    )
+    assert {case["current_state"] for case in cases} == set(range(16))
+    assert all(case["state_path"][-1] == case["current_state"] for case in cases)
+    heldout = [
+        case
+        for case in cases
+        if case["history_steps"] == 16
+        and case["composition_split"] == "heldout"
+    ]
+    assert all(len(set(case["instruction_families"])) == 4 for case in heldout)
+
+
+def test_long_horizon_challenges_are_small_balanced_and_deterministic(
+    tmp_path,
+) -> None:
+    run_path = tmp_path / "challenge"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_interface_challenges:
+  addition_h128:
+    interface_run: runs/interface
+    interface_condition: rate_16
+    outcome_run: runs/outcome
+    domain: addition
+    bits: 3
+    seed: 51
+    horizons: [128]
+    program_contexts: 1
+    paths_per_state: 1
+    block_size: 2
+""".strip()
+        + "\n"
+    )
+    first = prepare_interface_challenges(run_path)
+    second = prepare_interface_challenges(run_path)
+    rows = [
+        json.loads(line)
+        for line in (
+            run_path / "evaluation/challenges/addition_h128/programs.jsonl"
+        ).read_text().splitlines()
+    ]
+    assert first == second
+    assert first["profiles"]["addition_h128"]["case_count"] == 8
+    assert {row["current_state"] for row in rows} == set(range(8))
+    assert all(row["history_steps"] == 128 for row in rows)
+    assert all(row["state_path"][-1] == row["current_state"] for row in rows)
 
 
 def test_consumer_table_rejects_context_code_disagreement() -> None:

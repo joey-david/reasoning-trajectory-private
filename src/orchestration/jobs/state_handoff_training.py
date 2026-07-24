@@ -10,8 +10,10 @@ from typing import Any
 
 from src.runtime.config import load_config
 from src.experiments.depth_relief.state_handoff_data import (
-    INTERFACE_CONDITIONS,
     configured_training_conditions,
+)
+from src.experiments.depth_relief.state_interface_contract import (
+    is_interface_condition,
 )
 from src.experiments.depth_relief.state_handoff_evaluation import (
     condition_evaluation_dir,
@@ -27,7 +29,7 @@ from src.orchestration.jobs.contract import Task, TaskResult
 
 def _condition_complete(run_path: Path, condition: str) -> bool:
     training_path = condition_training_dir(run_path, condition) / "checkpoint_manifest.json"
-    if condition in INTERFACE_CONDITIONS:
+    if is_interface_condition(condition):
         from src.experiments.depth_relief.state_interface_evaluation import (
             interface_evaluation_dir,
         )
@@ -112,7 +114,7 @@ class StateHandoffTrainingWorker:
         progress.set_description(
             f"state handoff evaluation {run_path.name}/{condition}"
         )
-        if condition in INTERFACE_CONDITIONS:
+        if is_interface_condition(condition):
             from src.experiments.depth_relief.state_interface_evaluation import (
                 evaluate_state_interface_condition,
             )

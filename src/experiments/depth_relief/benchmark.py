@@ -8,7 +8,18 @@ from typing import Any, Iterable, Sequence
 
 
 TASK_FAMILIES = ("pointer", "affine", "register")
-RULE_FAMILIES = ("pointer", "affine", "xor", "add", "rotate_left", "register")
+RULE_FAMILIES = (
+    "pointer",
+    "affine",
+    "xor",
+    "add",
+    "rotate_left",
+    "register",
+    "register_add",
+    "register_xor",
+    "register_swap",
+    "register_cond_add",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +169,33 @@ def apply_rule(rule: dict[str, Any], state: int, modulus: int) -> int:
         amount = int(rule["amount"]) % width
         mask = modulus - 1
         return ((state << amount) & mask) | (state >> (width - amount))
+    if kind in {
+        "register_add",
+        "register_xor",
+        "register_swap",
+        "register_cond_add",
+    }:
+        if modulus != 16:
+            raise ValueError("Two-register instructions require a four-bit state")
+        registers = [state & 3, (state >> 2) & 3]
+        if kind == "register_add":
+            register = int(rule["register"])
+            registers[register] = (
+                registers[register] + int(rule["value"])
+            ) % 4
+        elif kind == "register_xor":
+            register = int(rule["register"])
+            registers[register] ^= int(rule["mask"])
+        elif kind == "register_swap":
+            registers.reverse()
+        else:
+            source = int(rule["source"])
+            target = 1 - source
+            if registers[source] == int(rule["equals"]):
+                registers[target] = (
+                    registers[target] + int(rule["value"])
+                ) % 4
+        return registers[0] | (registers[1] << 2)
     if kind == "horn":
         premises = tuple(int(value) for value in rule["premises"])
         conclusion = int(rule["conclusion"])
@@ -209,6 +247,20 @@ def rule_text(rule: dict[str, Any], width: int) -> str:
         return f"add {rule['value']} modulo {2**width}"
     if kind == "rotate_left":
         return f"rotate the {width}-bit register left by {rule['amount']}"
+    if kind == "register_add":
+        return (
+            f"add {rule['value']} modulo 4 to register R{rule['register']}"
+        )
+    if kind == "register_xor":
+        return f"XOR register R{rule['register']} with {rule['mask']}"
+    if kind == "register_swap":
+        return "swap registers R0 and R1"
+    if kind == "register_cond_add":
+        source = int(rule["source"])
+        return (
+            f"if R{source} equals {rule['equals']}, add {rule['value']} "
+            f"modulo 4 to R{1 - source}"
+        )
     if kind == "horn":
         names = tuple(chr(ord("A") + bit) for bit in rule["premises"])
         conclusion = chr(ord("A") + int(rule["conclusion"]))

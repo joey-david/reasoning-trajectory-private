@@ -37,6 +37,35 @@ CODEBOOK_SIZES = {
     "redundant_5bit": 32,
 }
 INTERFACE_CONDITIONS = tuple(CODEBOOK_SIZES)
+RATE_CONDITION_PREFIX = "rate_"
+
+
+def is_interface_condition(condition: str) -> bool:
+    """Return whether a condition names a fixed or configured rate code."""
+    if condition in INTERFACE_CONDITIONS:
+        return True
+    if not condition.startswith(RATE_CONDITION_PREFIX):
+        return False
+    suffix = condition.removeprefix(RATE_CONDITION_PREFIX)
+    return suffix.isdigit() and 2 <= int(suffix) <= len(DEFAULT_CODE_SYMBOLS)
+
+
+def interface_codebook_size(
+    condition: str, interface_config: dict[str, Any]
+) -> int:
+    """Return the code count declared by one interface condition."""
+    if condition in CODEBOOK_SIZES:
+        return CODEBOOK_SIZES[condition]
+    if not is_interface_condition(condition):
+        raise ValueError(f"Unknown state-interface condition: {condition!r}")
+    configured = interface_config.get(condition, {}).get("codebook_size")
+    parsed = int(condition.removeprefix(RATE_CONDITION_PREFIX))
+    size = parsed if configured is None else int(configured)
+    if size != parsed:
+        raise ValueError(
+            f"{condition} must declare codebook_size={parsed}, got {size}"
+        )
+    return size
 
 
 def state_count(case: dict[str, Any]) -> int:
@@ -58,6 +87,8 @@ def _validate_state_space(condition: str, case: dict[str, Any]) -> int:
         raise ValueError(f"{condition} requires {required} semantic states, got {count}")
     if condition == "compressed_2bit" and count < 4:
         raise ValueError("compressed_2bit requires at least four semantic states")
+    if condition.startswith(RATE_CONDITION_PREFIX):
+        interface_codebook_size(condition, {})
     return count
 
 
@@ -65,9 +96,9 @@ def interface_code_symbols(
     condition: str, interface_config: dict[str, Any]
 ) -> tuple[str, ...]:
     """Return the declared one-token alphabet for one interface condition."""
-    if condition not in INTERFACE_CONDITIONS:
+    if not is_interface_condition(condition):
         raise ValueError(f"Unknown state-interface condition: {condition!r}")
-    size = CODEBOOK_SIZES[condition]
+    size = interface_codebook_size(condition, interface_config)
     configured = interface_config.get(condition, {}).get("symbols")
     symbols = (
         tuple(str(value) for value in configured)
@@ -143,6 +174,13 @@ def interface_code_index(
         if nuisance not in (0, 1):
             raise ValueError("The redundant code variant must be one bit")
         return 2 * int(state) + nuisance
+    if condition.startswith(RATE_CONDITION_PREFIX):
+        size = interface_codebook_size(condition, interface_config)
+        if size < count:
+            return int(state) % size
+        variants = tuple(range(int(state), size, count))
+        selected = int(case.get("path_code", 0)) if variant is None else int(variant)
+        return variants[selected % len(variants)]
     raise ValueError(f"Unknown state-interface condition: {condition!r}")
 
 
@@ -154,11 +192,19 @@ def semantic_states_for_code(
     interface_config: dict[str, Any],
 ) -> tuple[int, ...]:
     """Return every semantic state compatible with one code."""
-    if not 0 <= int(code_index) < CODEBOOK_SIZES[condition]:
+    size = interface_codebook_size(condition, interface_config)
+    if not 0 <= int(code_index) < size:
         return ()
+    count = _validate_state_space(condition, case)
+    if condition.startswith(RATE_CONDITION_PREFIX):
+        if size < count:
+            return tuple(
+                state for state in range(count) if state % size == int(code_index)
+            )
+        return (int(code_index) % count,)
     return tuple(
         state
-        for state in range(_validate_state_space(condition, case))
+        for state in range(count)
         if interface_code_index(
             condition=condition,
             case=case,

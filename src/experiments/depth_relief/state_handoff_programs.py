@@ -9,24 +9,22 @@ from typing import Any
 
 from .abstraction import matched_addition_history
 from .benchmark import apply_rule, hexadecimal_state_symbols
+from .state_handoff_instruction_programs import (
+    mixed_algebra_history,
+    primitive_algebra_history,
+    register_history,
+)
 
 
-PROGRAM_DOMAINS = ("addition", "mixed_algebra", "horn_proof", "reasoning_mixture")
+PROGRAM_DOMAINS = (
+    "addition",
+    "mixed_algebra",
+    "algebra_primitives",
+    "horn_proof",
+    "register_machine",
+    "reasoning_mixture",
+)
 PROOF_STATE_SYMBOLS = tuple("абвгдежзийклмноп")
-ALGEBRA_FAMILIES = ("add", "xor", "affine")
-DEFAULT_SEEN_PAIRS = (
-    ("add", "add"),
-    ("xor", "xor"),
-    ("affine", "affine"),
-    ("add", "xor"),
-    ("xor", "affine"),
-    ("affine", "add"),
-)
-DEFAULT_HELDOUT_PAIRS = (
-    ("xor", "add"),
-    ("affine", "xor"),
-    ("add", "affine"),
-)
 
 
 def _rng(seed: int, *parts: Any) -> random.Random:
@@ -73,135 +71,6 @@ def _program_contexts(
             }
         )
     return contexts
-
-
-def _parse_pair(value: Any) -> tuple[str, str]:
-    if isinstance(value, str):
-        normalized = value.replace("->", "+")
-        parts = tuple(part.strip() for part in normalized.split("+"))
-    else:
-        parts = tuple(str(part) for part in value)
-    if len(parts) != 2 or any(part not in ALGEBRA_FAMILIES for part in parts):
-        raise ValueError(f"Invalid algebra operation pair: {value!r}")
-    return parts[0], parts[1]
-
-
-def _operation_pairs(
-    dataset: dict[str, Any], composition_split: str
-) -> tuple[tuple[str, str], ...]:
-    configured = dataset.get("operation_pairs", {}).get(composition_split)
-    if configured is None:
-        configured = (
-            DEFAULT_SEEN_PAIRS
-            if composition_split == "seen"
-            else DEFAULT_HELDOUT_PAIRS
-        )
-    pairs = tuple(_parse_pair(value) for value in configured)
-    if not pairs:
-        raise ValueError(f"Operation-pair split {composition_split!r} is empty")
-    return pairs
-
-
-def _random_algebra_rule(
-    family: str, *, modulus: int, rng: random.Random
-) -> dict[str, Any]:
-    if family == "add":
-        return {"kind": "add", "value": rng.randrange(modulus)}
-    if family == "xor":
-        return {"kind": "xor", "mask": rng.randrange(modulus)}
-    if family == "affine":
-        return {
-            "kind": "affine",
-            "a": rng.choice(tuple(range(1, modulus, 2))),
-            "c": rng.randrange(modulus),
-        }
-    raise ValueError(f"Unknown algebra family: {family!r}")
-
-
-def _inverse_algebra_rule(
-    rule: dict[str, Any], *, state: int, modulus: int
-) -> int:
-    kind = str(rule["kind"])
-    if kind == "add":
-        return (state - int(rule["value"])) % modulus
-    if kind == "xor":
-        return state ^ int(rule["mask"])
-    if kind == "affine":
-        inverse = pow(int(rule["a"]), -1, modulus)
-        return (inverse * (state - int(rule["c"]))) % modulus
-    raise ValueError(f"Algebra rule has no configured inverse: {kind!r}")
-
-
-def _solve_algebra_rule(
-    family: str,
-    *,
-    source: int,
-    target: int,
-    modulus: int,
-    rng: random.Random,
-) -> dict[str, Any]:
-    if family == "add":
-        return {"kind": "add", "value": (target - source) % modulus}
-    if family == "xor":
-        return {"kind": "xor", "mask": source ^ target}
-    if family == "affine":
-        multiplier = rng.choice(tuple(range(1, modulus, 2)))
-        return {
-            "kind": "affine",
-            "a": multiplier,
-            "c": (target - multiplier * source) % modulus,
-        }
-    raise ValueError(f"Unknown algebra family: {family!r}")
-
-
-def _mixed_algebra_history(
-    *,
-    initial: int,
-    target: int,
-    path_code: int,
-    history_steps: int,
-    context_index: int,
-    modulus: int,
-    seed: int,
-    dataset: dict[str, Any],
-    composition_split: str,
-) -> tuple[list[dict[str, Any]], list[str]]:
-    if history_steps < 2 or history_steps % 2:
-        raise ValueError("Mixed-algebra histories require complete two-operation blocks")
-    rng = _rng(
-        seed,
-        "mixed_algebra",
-        context_index,
-        history_steps,
-        target,
-        path_code,
-        composition_split,
-    )
-    pool = _operation_pairs(dataset, composition_split)
-    pairs = [
-        pool[(path_code + context_index + block) % len(pool)]
-        for block in range(history_steps // 2)
-    ]
-    families = [family for pair in pairs for family in pair]
-    history = [
-        _random_algebra_rule(family, modulus=modulus, rng=rng)
-        for family in families
-    ]
-    correction = rng.randrange(history_steps)
-    source = initial
-    for rule in history[:correction]:
-        source = apply_rule(rule, source, modulus)
-    required = target
-    for rule in reversed(history[correction + 1 :]):
-        required = _inverse_algebra_rule(rule, state=required, modulus=modulus)
-    history[correction] = _solve_algebra_rule(
-        families[correction],
-        source=source,
-        target=required,
-        modulus=modulus,
-        rng=rng,
-    )
-    return history, [f"{left}->{right}" for left, right in pairs]
 
 
 def _horn_history(
@@ -340,31 +209,43 @@ def _program_case(
         family = "add_to_pointer"
         history_family = "add"
         final_family = "pointer"
-    elif domain == "mixed_algebra":
-        history, operation_pairs = _mixed_algebra_history(
-            initial=initial,
-            target=target,
-            path_code=path_code,
-            history_steps=horizon,
-            context_index=int(context["index"]),
-            modulus=modulus,
-            seed=seed,
-            dataset=dataset,
-            composition_split=composition_split,
-        )
+    elif domain in {"mixed_algebra", "algebra_primitives"}:
+        if domain == "mixed_algebra":
+            history, operation_pairs = mixed_algebra_history(
+                initial=initial,
+                target=target,
+                path_code=path_code,
+                history_steps=horizon,
+                context_index=int(context["index"]),
+                modulus=modulus,
+                seed=seed,
+                dataset=dataset,
+                composition_split=composition_split,
+            )
+        else:
+            history, operation_pairs = primitive_algebra_history(
+                initial=initial,
+                target=target,
+                path_code=path_code,
+                history_steps=horizon,
+                context_index=int(context["index"]),
+                modulus=modulus,
+                seed=seed,
+                composition_split=composition_split,
+            )
         final_rule = {
             "kind": "register_dispatch",
             "mapping": list(context["final_rule"]["mapping"]),
         }
-        family = "mixed_algebra_to_dispatch"
-        history_family = "mixed_algebra"
+        family = f"{domain}_to_dispatch"
+        history_family = domain
         final_family = "register_dispatch"
         extra = {
             "domain": domain,
             "composition_split": composition_split,
             "operation_pairs": operation_pairs,
         }
-    else:
+    elif domain == "horn_proof":
         initial, history = _horn_history(
             target=target,
             path_code=path_code,
@@ -374,13 +255,44 @@ def _program_case(
             seed=seed,
             composition_split=composition_split,
         )
-        final_rule = _proof_final_rule(context=context, width=width, seed=seed)
+        if str(dataset.get("proof_final", "query")) == "action":
+            final_rule = {
+                "kind": "proof_action",
+                "mapping": list(context["final_rule"]["mapping"]),
+            }
+        else:
+            final_rule = _proof_final_rule(
+                context=context, width=width, seed=seed
+            )
         family = "horn_proof_to_query"
         history_family = "horn_proof"
         final_family = "proof_query"
         extra = {
             "domain": domain,
             "composition_split": composition_split,
+        }
+    else:
+        if width != 4:
+            raise ValueError("Register-machine programs require four-bit state")
+        initial, history, instruction_families = register_history(
+            target=target,
+            path_code=path_code,
+            history_steps=horizon,
+            context_index=int(context["index"]),
+            seed=seed,
+            composition_split=composition_split,
+        )
+        final_rule = {
+            "kind": "register_dispatch",
+            "mapping": list(context["final_rule"]["mapping"]),
+        }
+        family = "register_machine_to_dispatch"
+        history_family = "register_machine"
+        final_family = "register_dispatch"
+        extra = {
+            "domain": domain,
+            "composition_split": composition_split,
+            "instruction_families": instruction_families,
         }
     states = _state_path(initial, history, modulus)
     if states[-1] != target:
@@ -393,7 +305,6 @@ def _program_case(
             for state, rule in zip(states, history)
         )
         extra.update(
-            answer_symbols=["0", "1"],
             proof_template=(
                 "active_conjunction"
                 if active_conjunction
@@ -401,6 +312,8 @@ def _program_case(
             ),
             proof_composition_active=active_conjunction,
         )
+        if final_rule["kind"] == "proof_query":
+            extra["answer_symbols"] = ["0", "1"]
     semantic = {
         "family": family,
         "history_family": history_family,

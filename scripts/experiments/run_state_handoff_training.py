@@ -55,6 +55,13 @@ from src.experiments.depth_relief.state_interface_generalization import (
 from src.experiments.depth_relief.state_interface_replication import (
     compare_state_interface_replications,
 )
+from src.experiments.depth_relief.state_interface_challenge import (
+    evaluate_interface_challenge,
+    prepare_interface_challenges,
+)
+from src.experiments.depth_relief.state_interface_substitution import (
+    evaluate_interface_substitution,
+)
 
 
 def main() -> int:
@@ -85,6 +92,9 @@ def main() -> int:
             "compare-closure",
             "compare-generalization",
             "compare-replication",
+            "prepare-challenges",
+            "evaluate-challenge",
+            "evaluate-substitution",
         ),
     )
     parser.add_argument("run_path", type=Path)
@@ -92,6 +102,7 @@ def main() -> int:
     parser.add_argument("--max-cases", type=int)
     parser.add_argument("--max-optimizer-steps", type=int)
     parser.add_argument("--profile", default="probe")
+    parser.add_argument("--side", choices=("interface", "outcome"))
     args = parser.parse_args()
     if args.command in {"train", "evaluate"} and args.condition is None:
         parser.error(f"{args.command} requires --condition")
@@ -174,6 +185,16 @@ def main() -> int:
         result = compare_state_interface_generalization(args.run_path)
     elif args.command == "compare-replication":
         result = compare_state_interface_replications(args.run_path)
+    elif args.command == "prepare-challenges":
+        result = prepare_interface_challenges(args.run_path)
+    elif args.command == "evaluate-challenge":
+        if args.side is None:
+            parser.error("evaluate-challenge requires --side")
+        result = evaluate_interface_challenge(
+            args.run_path, args.profile, args.side
+        )
+    elif args.command == "evaluate-substitution":
+        result = evaluate_interface_substitution(args.run_path)
     else:
         result = state_handoff_training_status(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))

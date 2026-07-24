@@ -21,7 +21,10 @@ from .factorization import (
     render_factorization_prompts,
     render_factorization_update_prompt,
 )
-from .state_interface_contract import INTERFACE_CONDITIONS
+from .state_interface_contract import (
+    INTERFACE_CONDITIONS,
+    is_interface_condition,
+)
 from .state_handoff_programs import (
     _balanced_programs,
     build_test_programs,
@@ -45,7 +48,12 @@ def configured_training_conditions(run_path: Path) -> tuple[str, ...]:
         .get("state_handoff_training", {})
         .get("conditions", TRAINING_CONDITIONS)
     )
-    unknown = sorted(set(configured) - set(ALL_TRAINING_CONDITIONS))
+    unknown = sorted(
+        condition
+        for condition in configured
+        if condition not in TRAINING_CONDITIONS
+        and not is_interface_condition(condition)
+    )
     if unknown:
         raise ValueError(f"Unknown state-handoff training conditions: {unknown}")
     if not configured or len(configured) != len(set(configured)):
@@ -352,7 +360,7 @@ def matched_compute_manifest(
 def validate_state_handoff_training_data(run_path: Path) -> dict[str, Any]:
     """Validate tokenizer, length, and matched-compute contracts before GPU use."""
     conditions = configured_training_conditions(run_path)
-    if set(conditions).issubset(INTERFACE_CONDITIONS):
+    if all(is_interface_condition(condition) for condition in conditions):
         from .state_interface_data import validate_state_interface_training_data
 
         return validate_state_interface_training_data(run_path)

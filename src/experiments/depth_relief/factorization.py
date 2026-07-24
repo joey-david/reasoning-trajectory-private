@@ -169,6 +169,21 @@ def _assignment_rule_text(rule: dict[str, Any], width: int) -> str:
         return f"state = (state + {rule['value']}) % {modulus}"
     if kind == "rotate_left":
         return f"state = rotate_left_{width}(state, {rule['amount']})"
+    if kind == "register_add":
+        return (
+            f"R{rule['register']} = "
+            f"(R{rule['register']} + {rule['value']}) % 4"
+        )
+    if kind == "register_xor":
+        return f"R{rule['register']} = R{rule['register']} ^ {rule['mask']}"
+    if kind == "register_swap":
+        return "R0, R1 = R1, R0"
+    if kind == "register_cond_add":
+        source = int(rule["source"])
+        return (
+            f"if R{source} == {rule['equals']}: "
+            f"R{1 - source} = (R{1 - source} + {rule['value']}) % 4"
+        )
     if kind == "horn":
         premises = ", ".join(str(value) for value in rule["premises"])
         return (
@@ -200,7 +215,7 @@ def render_factorization_rule(case: dict[str, Any], rule: dict[str, Any]) -> str
         )
         return f"replace the current symbol according to {{{entries}}}"
     if (
-        case.get("state_representation") == "hexadecimal"
+        case.get("state_representation") in {"hexadecimal", "opaque_fact_set"}
         and rule["kind"] in {"pointer", "register_dispatch", "proof_action"}
     ):
         symbols = state_symbols(case)

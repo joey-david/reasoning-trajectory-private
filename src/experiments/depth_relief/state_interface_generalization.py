@@ -25,7 +25,7 @@ from .state_handoff_information import (
     discrete_entropy,
     mutual_information,
 )
-from .state_interface_contract import CODEBOOK_SIZES
+from .state_interface_contract import interface_codebook_size
 from .state_interface_evaluation import read_interface_evaluation_cases
 
 
@@ -246,7 +246,13 @@ def compare_state_interface_generalization(run_path: Path) -> dict[str, Any]:
     }
     rate_control = comparison.get("rate_control_condition")
     if rate_control:
-        expected = min(1.0, CODEBOOK_SIZES[str(rate_control)] / semantic_count)
+        expected = min(
+            1.0,
+            interface_codebook_size(
+                str(rate_control), experiment.get("interfaces", {})
+            )
+            / semantic_count,
+        )
         tolerance = float(gate.get("rate_control_tolerance", 0.05))
         rate_cells = [
             cells[f"{rate_control}/{domain}/{gate_split}/h{gate_horizon}"]

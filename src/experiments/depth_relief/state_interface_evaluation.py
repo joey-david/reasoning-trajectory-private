@@ -14,10 +14,9 @@ from src.runtime.config import load_config
 from .benchmark import answer_symbols, apply_rule
 from .metrics import bootstrap_mean_ci, cluster_bootstrap_mean_ci
 from .qualification import evaluate_prompt_conditions_hf
-from .state_handoff_data import INTERFACE_CONDITIONS, TEST_PATH, read_programs
+from .state_handoff_data import TEST_PATH, read_programs
 from .state_handoff_evaluation import _load_evaluation_model
 from .state_interface_data import (
-    CODEBOOK_SIZES,
     interface_code_index,
     interface_code_symbols,
     render_interface_consumer_prompt,
@@ -25,7 +24,11 @@ from .state_interface_data import (
     render_interface_transition_prompt,
     semantic_states_for_code,
 )
-from .state_interface_contract import state_count
+from .state_interface_contract import (
+    interface_codebook_size,
+    is_interface_condition,
+    state_count,
+)
 
 
 INTERFACE_EVALUATION_ROOT = Path("evaluation/interfaces")
@@ -33,7 +36,7 @@ INTERFACE_EVALUATION_ROOT = Path("evaluation/interfaces")
 
 def interface_evaluation_dir(run_path: Path, condition: str) -> Path:
     """Return the saved evaluation owner for one code condition."""
-    if condition not in INTERFACE_CONDITIONS:
+    if not is_interface_condition(condition):
         raise ValueError(f"Unknown state-interface condition: {condition!r}")
     return run_path / INTERFACE_EVALUATION_ROOT / condition
 
@@ -62,12 +65,16 @@ def _score(
     name: str,
 ) -> dict[str, Any]:
     prompt = {"name": name, "text": text, "expected_next_state": expected}
-    return evaluate_prompt_conditions_hf(
+    result = evaluate_prompt_conditions_hf(
         model=model,
         tokenizer=tokenizer,
         prompts=[prompt],
         candidate_symbols=candidates,
     )[name]
+    result["prompt_token_count"] = len(
+        tokenizer.encode(text, add_special_tokens=False)
+    )
+    return result
 
 
 def _prediction(row: dict[str, Any]) -> int | None:
@@ -105,13 +112,23 @@ def evaluate_interface_program_hf(
     condition: str,
     interface_config: dict[str, Any],
     block_size: int = 2,
+    consumer_model: Any | None = None,
+    consumer_tokenizer: Any | None = None,
 ) -> dict[str, Any]:
     """Encode once, recur through opaque codes, then consume the final code."""
     if int(case["history_steps"]) % block_size:
         raise ValueError("Interface evaluation requires complete blocks")
     symbols = interface_code_symbols(condition, interface_config)
+    consumer_model = model if consumer_model is None else consumer_model
+    consumer_tokenizer = (
+        tokenizer if consumer_tokenizer is None else consumer_tokenizer
+    )
     modulus = state_count(case)
-    variant = int(case["path_code"]) % 2
+    variant = (
+        int(case["path_code"])
+        if condition.startswith("rate_")
+        else int(case["path_code"]) % 2
+    )
     predicted_code = None
     steps = []
     for start in range(0, int(case["history_steps"]), block_size):
@@ -199,10 +216,10 @@ def evaluate_interface_program_hf(
     predicted_final = None
     if predicted_code is not None:
         predicted_final = _score(
-            model=model,
-            tokenizer=tokenizer,
+            model=consumer_model,
+            tokenizer=consumer_tokenizer,
             text=render_interface_consumer_prompt(
-                tokenizer=tokenizer,
+                tokenizer=consumer_tokenizer,
                 case=case,
                 prompt_config=prompt_config,
                 condition=condition,
@@ -213,10 +230,10 @@ def evaluate_interface_program_hf(
             name="predicted_final",
         )
     gold_final = _score(
-        model=model,
-        tokenizer=tokenizer,
+        model=consumer_model,
+        tokenizer=consumer_tokenizer,
         text=render_interface_consumer_prompt(
-            tokenizer=tokenizer,
+            tokenizer=consumer_tokenizer,
             case=case,
             prompt_config=prompt_config,
             condition=condition,
@@ -265,12 +282,16 @@ def evaluate_interface_program_hf(
 
 
 def summarize_interface_rows(
-    rows: list[dict[str, Any]], condition: str
+    rows: list[dict[str, Any]],
+    condition: str,
+    interface_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Summarize recursive code accuracy, closure, and utilization."""
     if not rows:
         raise ValueError("Cannot summarize empty interface evaluation")
+    interface_config = interface_config or {}
     semantic_count = 2 ** int(rows[0].get("bits", 3))
+    codebook_size = interface_codebook_size(condition, interface_config)
     by_horizon = {}
     for horizon in sorted({int(row["history_steps"]) for row in rows}):
         selected = [row for row in rows if int(row["history_steps"]) == horizon]
@@ -381,15 +402,15 @@ def summarize_interface_rows(
         "by_horizon": by_horizon,
         "code_counts": {str(key): value for key, value in sorted(counts.items())},
         "invalid_code_count": len(rows) - len(valid),
-        "declared_codebook_size": CODEBOOK_SIZES[condition],
-        "declared_capacity_bits": math.log2(CODEBOOK_SIZES[condition]),
+        "declared_codebook_size": codebook_size,
+        "declared_capacity_bits": math.log2(codebook_size),
         "semantic_state_entropy_bits": math.log2(semantic_count),
         "excess_rate_bits": (
-            math.log2(CODEBOOK_SIZES[condition])
+            math.log2(codebook_size)
             - math.log2(semantic_count)
         ),
         "balanced_state_accuracy_ceiling": min(
-            1.0, CODEBOOK_SIZES[condition] / semantic_count
+            1.0, codebook_size / semantic_count
         ),
         "true_code_information": information(true_contract),
         "predicted_code_information": information(predicted_contract),
@@ -415,6 +436,12 @@ def evaluate_state_interface_condition(
     if max_cases is not None:
         pending = pending[:max_cases]
     output = interface_evaluation_dir(run_path, condition) / "cases.jsonl"
+    block_size = int(
+        experiment.get("evaluation", {}).get(
+            "block_size",
+            experiment.get("interfaces", {}).get("block_size", 2),
+        )
+    )
     for index, case in enumerate(pending, 1):
         append_jsonl(
             output,
@@ -425,12 +452,15 @@ def evaluate_state_interface_condition(
                 prompt_config=experiment.get("prompt", {}),
                 condition=condition,
                 interface_config=experiment.get("interfaces", {}),
+                block_size=block_size,
             ),
         )
         if on_progress is not None and (index == 1 or index == len(pending) or index % 10 == 0):
             on_progress(f"state interface {condition} {index}/{len(pending)} cases")
     rows = read_interface_evaluation_cases(run_path, condition)
-    summary = summarize_interface_rows(rows, condition)
+    summary = summarize_interface_rows(
+        rows, condition, experiment.get("interfaces", {})
+    )
     summary.update(expected_case_count=len(cases), complete=len(rows) == len(cases))
     write_json(interface_evaluation_dir(run_path, condition) / "summary.json", summary)
     return summary
