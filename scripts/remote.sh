@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+trap 'exit 130' INT TERM HUP
+
 usage="usage: scripts/remote.sh push | pull [-h|--hidden-states] [--pt] [runs/<model>/<experiment> ...] | pull-stats [runs/<model>/<experiment> ...]"
 action="${1:?$usage}"
 shift
@@ -22,9 +24,10 @@ discover_runs() {
 # Returns: rsync's status, or success after reporting a missing remote run.
 pull_run() {
   local run_path="$1"
-  if ssh "$host" "test -d '$remote_root/$run_path'"; then
+  if ssh -n -o BatchMode=yes -o ConnectTimeout=10 \
+    "$host" "test -d '$remote_root/$run_path'"; then
     mkdir -p "$run_path"
-    local rsync_args=(-avz --progress)
+    local rsync_args=(-avz --progress --timeout=120)
     if [[ "$include_hidden_states" != true ]]; then
       rsync_args+=(--exclude "*/hidden_states/***")
       rsync_args+=(--exclude "*/activations/***")
@@ -45,9 +48,10 @@ pull_run() {
 # Returns: rsync's status, limited to lightweight live-progress files.
 pull_run_stats() {
   local run_path="$1"
-  if ssh "$host" "test -d '$remote_root/$run_path'"; then
+  if ssh -n -o BatchMode=yes -o ConnectTimeout=10 \
+    "$host" "test -d '$remote_root/$run_path'"; then
     mkdir -p "$run_path"
-    rsync -avz --prune-empty-dirs \
+    rsync -avz --prune-empty-dirs --timeout=120 \
       --include '*/' \
       --include 'config.yaml' \
       --include 'generation/generations.jsonl' \
@@ -103,7 +107,8 @@ pull)
     done
   else
     while IFS= read -r run_path; do
-      pull_run "$run_path"
+      pull_run "$run_path" </dev/null ||
+        echo "continue after failed pull: $run_path" >&2
     done < <(discover_runs)
   fi
   ;;
@@ -114,7 +119,8 @@ pull-stats)
     done
   else
     while IFS= read -r run_path; do
-      pull_run_stats "$run_path"
+      pull_run_stats "$run_path" </dev/null ||
+        echo "continue after failed stats pull: $run_path" >&2
     done < <(discover_runs)
   fi
   ;;
