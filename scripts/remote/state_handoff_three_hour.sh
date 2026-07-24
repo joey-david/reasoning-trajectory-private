@@ -37,6 +37,14 @@ if [[ "${STATE_HANDOFF_3H_DRY_RUN:-false}" == true ]]; then
   exit 0
 fi
 
+if [[ "${STATE_HANDOFF_3H_INSIDE_DEADLINE:-false}" != true ]] &&
+  command -v timeout >/dev/null 2>&1
+then
+  export STATE_HANDOFF_3H_LOG_DIR="$LOG_ROOT"
+  exec timeout --foreground "${STATE_HANDOFF_3H_TOTAL_TIMEOUT:-175m}" \
+    env STATE_HANDOFF_3H_INSIDE_DEADLINE=true bash "$0" "$@"
+fi
+
 mkdir -p "$LOG_ROOT"
 STATUS="$LOG_ROOT/status.jsonl"
 
