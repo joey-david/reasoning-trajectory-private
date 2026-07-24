@@ -16,9 +16,12 @@ from .benchmark import (
     candidate_token_ids,
     format_model_prompt,
     state_symbols,
-    state_text,
 )
-from .factorization import render_factorization_history, render_factorization_rule
+from .factorization import (
+    render_factorization_history,
+    render_factorization_rule,
+    render_factorization_state,
+)
 from .state_interface_contract import (
     CODEBOOK_SIZES,
     INTERFACE_CONDITIONS,
@@ -71,7 +74,8 @@ def _code_prompt_preamble(case: dict[str, Any], condition: str) -> str:
     elif case.get("domain") == "register_machine":
         semantics = (
             "The hidden state packs two two-bit registers: R0 is the low pair "
-            "and R1 is the high pair."
+            "and R1 is the high pair. The public result label is the "
+            "hexadecimal digit for R0 + 4*R1."
         )
     else:
         semantics = f"States evolve modulo {2 ** int(case['bits'])}."
@@ -88,7 +92,7 @@ def render_interface_encoder_prompt(
     """Render decimal start plus a short history to an opaque code."""
     text = (
         _code_prompt_preamble(case, condition)
-        + f"Start state: {state_text(case, int(case['initial_state']))}.\n"
+        + f"Start state: {render_factorization_state(case, int(case['initial_state']))}.\n"
         + render_factorization_history(case)
         + "\nApply every step and return only the resulting interface code.\nAnswer="
     )

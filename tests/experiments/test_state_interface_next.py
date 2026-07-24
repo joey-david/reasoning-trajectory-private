@@ -9,13 +9,16 @@ from src.experiments.depth_relief.benchmark import answer_symbols, apply_rule
 from src.experiments.depth_relief.state_handoff_training import _base_and_adapter
 from src.experiments.depth_relief.state_interface_data import (
     interface_training_sequence_pair,
+    render_interface_encoder_prompt,
 )
+from src.experiments.depth_relief.factorization import render_factorization_prompts
 from src.experiments.depth_relief.state_interface_contract import (
     interface_codebook_size,
     interface_code_index,
     semantic_states_for_code,
 )
 from src.experiments.depth_relief.state_interface_challenge import (
+    _write_summary,
     prepare_interface_challenges,
 )
 from src.experiments.depth_relief.state_interface_substitution import (
@@ -373,6 +376,43 @@ def test_register_machine_programs_are_balanced_and_exact() -> None:
     assert all(len(set(case["instruction_families"])) == 4 for case in heldout)
 
 
+def test_register_entry_prompts_expose_both_register_values() -> None:
+    case = build_test_programs(
+        horizons=(2,),
+        context_count=1,
+        paths_per_state=1,
+        width=4,
+        seed=49,
+        dataset={
+            "domain": "register_machine",
+            "state_symbols": list("0123456789ABCDEF"),
+        },
+    )[0]
+    tokenizer = CharacterTokenizer()
+    encoder = render_interface_encoder_prompt(
+        tokenizer=tokenizer,
+        case=case,
+        prompt_config={"mode": "plain"},
+        condition="canonical_4bit",
+    )
+    compose = next(
+        row["text"]
+        for row in render_factorization_prompts(
+            tokenizer=tokenizer,
+            case=case,
+            config={"mode": "plain"},
+        )
+        if row["name"] == "compose"
+    )
+    expected = (
+        f"Start state: R0={case['initial_state'] & 3}, "
+        f"R1={(case['initial_state'] >> 2) & 3}."
+    )
+    assert expected in encoder
+    assert expected in compose
+    assert case["state_symbols"] == list("0123456789ABCDEF")
+
+
 def test_long_horizon_challenges_are_small_balanced_and_deterministic(
     tmp_path,
 ) -> None:
@@ -408,6 +448,116 @@ state_interface_challenges:
     assert {row["current_state"] for row in rows} == set(range(8))
     assert all(row["history_steps"] == 128 for row in rows)
     assert all(row["state_path"][-1] == row["current_state"] for row in rows)
+
+
+def test_proof_depth_challenge_controls_real_deductions(tmp_path) -> None:
+    run_path = tmp_path / "challenge"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_interface_challenges:
+  proof_depth:
+    interface_run: runs/interface
+    interface_condition: compressed_3bit
+    outcome_run: runs/outcome
+    domain: horn_proof
+    proof_final: action
+    bits: 4
+    seed: 57
+    horizons: [64]
+    active_depths: [0, 1, 2, 3, 4]
+    program_contexts: 2
+    paths_per_depth: 2
+    block_size: 2
+""".strip()
+        + "\n"
+    )
+    first = prepare_interface_challenges(run_path)
+    second = prepare_interface_challenges(run_path)
+    rows = [
+        json.loads(line)
+        for line in (
+            run_path / "evaluation/challenges/proof_depth/programs.jsonl"
+        ).read_text().splitlines()
+    ]
+    assert first == second
+    assert first["profiles"]["proof_depth"]["case_count"] == 20
+    assert first["profiles"]["proof_depth"]["active_depths"] == [0, 1, 2, 3, 4]
+    assert all(row["history_steps"] == 64 for row in rows)
+    assert all(
+        row["active_transition_count"]
+        == sum(
+            left != right
+            for left, right in zip(row["state_path"], row["state_path"][1:])
+        )
+        for row in rows
+    )
+    assert {
+        row["active_transition_count"] for row in rows
+    } == {0, 1, 2, 3, 4}
+
+
+def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
+    root = tmp_path / "evaluation/challenges/proof_depth"
+    root.mkdir(parents=True)
+    programs = []
+    interface = []
+    outcome = []
+    for depth in (0, 1):
+        for context in ("c0", "c1"):
+            case_id = f"{context}-d{depth}"
+            programs.append(
+                {
+                    "id": case_id,
+                    "program_context": context,
+                    "active_transition_count": depth,
+                    "current_state": depth,
+                }
+            )
+            interface.append(
+                {
+                    "id": case_id,
+                    "predicted_final": {
+                        "is_expected_unconstrained": True,
+                        "prompt_token_count": 10,
+                    },
+                    "predicted_semantic_states": [depth],
+                    "steps": [],
+                }
+            )
+            outcome.append(
+                {
+                    "id": case_id,
+                    "prompt_token_count": 10,
+                    "conditions": {
+                        "one_pass_compose": {
+                            "is_expected_unconstrained": depth == 0
+                        }
+                    },
+                }
+            )
+    for name, rows in (
+        ("programs", programs),
+        ("interface_cases", interface),
+        ("outcome_cases", outcome),
+    ):
+        (root / f"{name}.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in rows)
+        )
+    summary = _write_summary(tmp_path, "proof_depth")
+    assert set(summary["by_active_transition_count"]) == {"0", "1"}
+    assert (
+        summary["by_active_transition_count"]["1"]["interface_minus_outcome"][
+            "mean"
+        ]
+        == 1.0
+    )
+    assert (
+        summary["by_active_transition_count"]["1"]["interface_accuracy"][
+            "cluster_n"
+        ]
+        == 2
+    )
 
 
 def test_substitution_subset_balances_contexts_and_code_variants() -> None:

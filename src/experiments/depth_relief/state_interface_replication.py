@@ -11,7 +11,7 @@ from src.runtime.artifact_store import write_json
 from src.runtime.config import load_config
 
 from .metrics import bootstrap_mean_ci
-from .state_handoff_data import DATA_MANIFEST_PATH, TEST_PATH
+from .state_handoff_data import DATA_MANIFEST_PATH, TEST_PATH, read_programs
 
 
 def _sha256(path: Path) -> str:
@@ -31,10 +31,35 @@ def compare_state_interface_replications(run_path: Path) -> dict[str, Any]:
         )
         for member in runs
     ]
-    test_hashes = {_sha256(member / TEST_PATH) for member in runs}
-    data_hashes = {_sha256(member / DATA_MANIFEST_PATH) for member in runs}
-    if len(test_hashes) != 1 or len(data_hashes) != 1:
-        raise ValueError("Replication runs do not use identical programs")
+    test_hashes = [_sha256(member / TEST_PATH) for member in runs]
+    data_hashes = [_sha256(member / DATA_MANIFEST_PATH) for member in runs]
+    program_contract = str(replication.get("program_contract", "identical"))
+    if program_contract == "identical":
+        programs_valid = (
+            len(set(test_hashes)) == 1 and len(set(data_hashes)) == 1
+        )
+    elif program_contract == "disjoint":
+        id_sets = [
+            {str(row["id"]) for row in read_programs(member / TEST_PATH)}
+            for member in runs
+        ]
+        programs_valid = (
+            len(set(test_hashes)) == len(runs)
+            and len(set(data_hashes)) == len(runs)
+            and all(
+                not id_sets[left] & id_sets[right]
+                for left in range(len(id_sets))
+                for right in range(left + 1, len(id_sets))
+            )
+        )
+    else:
+        raise ValueError(
+            "Replication program_contract must be identical or disjoint"
+        )
+    if not programs_valid:
+        raise ValueError(
+            f"Replication runs violate their {program_contract} program contract"
+        )
     models = [
         {
             "name": load_config(member)["model"]["name"],
@@ -83,7 +108,7 @@ def compare_state_interface_replications(run_path: Path) -> dict[str, Any]:
     minimum_improvement = float(replication.get("min_improvement", 0.10))
     checks = {
         "three_or_more_seeds": len(runs) >= 3,
-        "identical_programs": True,
+        f"{program_contract}_programs": True,
         "all_individual_gates_pass": all(
             summary["gate"]["status"] == "passed" for summary in summaries
         ),
@@ -100,8 +125,13 @@ def compare_state_interface_replications(run_path: Path) -> dict[str, Any]:
         "schema_version": 1,
         "runs": [str(member) for member in runs],
         "models": models,
-        "test_sha256": next(iter(test_hashes)),
-        "data_manifest_sha256": next(iter(data_hashes)),
+        "program_contract": program_contract,
+        "test_sha256": (
+            test_hashes[0] if program_contract == "identical" else test_hashes
+        ),
+        "data_manifest_sha256": (
+            data_hashes[0] if program_contract == "identical" else data_hashes
+        ),
         "cell": {
             "condition": primary,
             "domain": domain,

@@ -142,6 +142,8 @@ state_interface_generalization:
     assert cell["outcome_answer_accuracy"]["mean"] == 0.0
     assert cell["state_information_bits"] == 3.0
     assert cell["same_state_quotient_agreement"]["mean"] == 1.0
+    assert 0 <= cell["min_active_transition_count"] <= 16
+    assert cell["max_active_transition_count"] <= 16
 
 
 def test_replication_summary_requires_identical_three_seed_programs(
@@ -203,6 +205,56 @@ def test_replication_summary_requires_identical_three_seed_programs(
         0.91,
         0.92,
     ]
+
+
+def test_replication_summary_accepts_disjoint_seed_programs(tmp_path) -> None:
+    runs = [tmp_path / f"seed{seed}" for seed in range(3)]
+    for index, run in enumerate(runs):
+        run.mkdir()
+        config = {"model": {"name": "tiny", "revision": "fixed"}}
+        if index == 0:
+            config["state_interface_replication"] = {
+                "runs": [str(value) for value in runs],
+                "program_contract": "disjoint",
+                "primary_condition": "canonical_4bit",
+                "domain": "register_machine",
+                "composition_split": "heldout",
+                "history_steps": 32,
+                "min_accuracy": 0.7,
+                "min_improvement": 0.1,
+            }
+        (run / "config.yaml").write_text(json.dumps(config))
+        _write_jsonl(
+            run / "evaluation/test_programs.jsonl",
+            [{"id": f"seed-{index}"}],
+        )
+        manifest = run / "training/data/manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps({"seed": index}) + "\n")
+        summary = {
+            "gate": {"status": "passed"},
+            "cells": {
+                "canonical_4bit/register_machine/heldout/h32": {
+                    "interface_answer_accuracy": {"mean": 0.8},
+                    "outcome_answer_accuracy": {"mean": 0.5},
+                    "interface_minus_outcome": {"mean": 0.3},
+                    "semantic_state_accuracy": {"mean": 0.82},
+                    "same_state_quotient_agreement": {"mean": 0.9},
+                    "state_information_fraction": 0.9,
+                    "state_given_code_bits": 0.2,
+                    "fano_state_error_lower_bound": 0.0,
+                }
+            },
+        }
+        path = run / "evaluation/generalization_summary.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(summary))
+
+    result = compare_state_interface_replications(runs[0])
+    assert result["program_contract"] == "disjoint"
+    assert result["gate"]["status"] == "passed"
+    assert result["gate"]["checks"]["disjoint_programs"]
+    assert len(result["test_sha256"]) == 3
 
 
 def test_information_fraction_uses_the_selected_stratum_entropy() -> None:

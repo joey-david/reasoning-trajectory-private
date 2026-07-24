@@ -172,6 +172,23 @@ def _conditional_transition_metrics(
     }
 
 
+def _active_transition_count_metrics(
+    rows: list[dict[str, Any]], programs: dict[str, dict[str, Any]]
+) -> dict[str, float | int]:
+    """Report actual state changes separately from surface history length."""
+    counts = []
+    for row in rows:
+        path = programs[str(row["id"])]["state_path"]
+        counts.append(
+            sum(int(left) != int(right) for left, right in zip(path, path[1:]))
+        )
+    return {
+        "mean_active_transition_count": sum(counts) / len(counts),
+        "min_active_transition_count": min(counts),
+        "max_active_transition_count": max(counts),
+    }
+
+
 def compare_state_interface_generalization(run_path: Path) -> dict[str, Any]:
     """Compare matched interface and one-pass controls on every OOD cell."""
     config = load_config(run_path)
@@ -273,6 +290,7 @@ def compare_state_interface_generalization(run_path: Path) -> dict[str, Any]:
                     interface_config=interface_config,
                     seed=81_500 + horizon,
                 ),
+                **_active_transition_count_metrics(selected, programs),
                 **_information_metrics(selected, semantic_count),
             }
             cells[

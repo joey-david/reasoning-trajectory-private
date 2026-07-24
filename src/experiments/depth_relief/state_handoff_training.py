@@ -174,8 +174,8 @@ def train_state_handoff_condition(
     if str(training.get("optimizer", "adamw")).lower() != "adamw":
         raise ValueError("State-handoff training supports only AdamW")
     epochs = int(training.get("epochs", 2))
-    if not 1 <= epochs <= 2:
-        raise ValueError("Pilot training is capped at two epochs")
+    if not 1 <= epochs <= 8:
+        raise ValueError("State-handoff training is capped at eight epochs")
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
     train_cases = read_programs(run_path / TRAIN_PATH)

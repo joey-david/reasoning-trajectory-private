@@ -11,7 +11,8 @@ from src.runtime.config import load_config
 from src.runtime.data import write_jsonl
 
 from .factorization import render_factorization_prompts
-from .metrics import bootstrap_mean_ci
+from .metrics import bootstrap_mean_ci, cluster_bootstrap_mean_ci
+from .state_handoff_challenge_programs import build_proof_depth_programs
 from .state_handoff_evaluation import (
     _load_evaluation_model,
     evaluate_program_hf,
@@ -57,15 +58,31 @@ def prepare_interface_challenges(run_path: Path) -> dict[str, Any]:
                 else {}
             ),
         }
-        cases = build_test_programs(
-            horizons=tuple(int(value) for value in spec["horizons"]),
-            context_count=int(spec["program_contexts"]),
-            paths_per_state=int(spec["paths_per_state"]),
-            width=int(spec["bits"]),
-            seed=int(spec["seed"]),
-            split=f"challenge_{profile}",
-            dataset=dataset,
-        )
+        if "active_depths" in spec:
+            horizons = tuple(int(value) for value in spec["horizons"])
+            if len(horizons) != 1 or str(spec["domain"]) != "horn_proof":
+                raise ValueError(
+                    "Active-depth challenges require one Horn-proof horizon"
+                )
+            cases = build_proof_depth_programs(
+                active_depths=tuple(int(value) for value in spec["active_depths"]),
+                horizon=horizons[0],
+                context_count=int(spec["program_contexts"]),
+                paths_per_depth=int(spec["paths_per_depth"]),
+                width=int(spec["bits"]),
+                seed=int(spec["seed"]),
+                split=f"challenge_{profile}",
+            )
+        else:
+            cases = build_test_programs(
+                horizons=tuple(int(value) for value in spec["horizons"]),
+                context_count=int(spec["program_contexts"]),
+                paths_per_state=int(spec["paths_per_state"]),
+                width=int(spec["bits"]),
+                seed=int(spec["seed"]),
+                split=f"challenge_{profile}",
+                dataset=dataset,
+            )
         output = challenge_dir(run_path, profile) / "programs.jsonl"
         write_jsonl(output, cases)
         result[profile] = {
@@ -73,6 +90,13 @@ def prepare_interface_challenges(run_path: Path) -> dict[str, Any]:
             "horizons": sorted({int(case["history_steps"]) for case in cases}),
             "states": sorted({int(case["current_state"]) for case in cases}),
             "domain": str(spec["domain"]),
+            "active_depths": sorted(
+                {
+                    int(case.get("active_transition_count", -1))
+                    for case in cases
+                    if "active_transition_count" in case
+                }
+            ),
         }
     manifest = {"schema_version": 1, "profiles": result}
     write_json(run_path / "evaluation/challenges/manifest.json", manifest)
@@ -157,6 +181,72 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
         result["interface_minus_outcome"] = bootstrap_mean_ci(
             differences, seed=83_103
         )
+        program_index = {str(row["id"]): row for row in programs}
+        interface_index = {str(row["id"]): row for row in interface}
+        depths = sorted(
+            {
+                int(row["active_transition_count"])
+                for row in programs
+                if "active_transition_count" in row
+            }
+        )
+        if depths:
+            by_depth = {}
+            for depth in depths:
+                ids = [
+                    str(row["id"])
+                    for row in programs
+                    if int(row["active_transition_count"]) == depth
+                ]
+                interface_values = [
+                    bool(
+                        interface_index[case_id]["predicted_final"]
+                        and interface_index[case_id]["predicted_final"][
+                            "is_expected_unconstrained"
+                        ]
+                    )
+                    for case_id in ids
+                ]
+                outcome_values = [
+                    bool(
+                        indexed[case_id]["conditions"]["one_pass_compose"][
+                            "is_expected_unconstrained"
+                        ]
+                    )
+                    for case_id in ids
+                ]
+                semantic_values = [
+                    int(program_index[case_id]["current_state"])
+                    in interface_index[case_id]["predicted_semantic_states"]
+                    for case_id in ids
+                ]
+                clusters = [
+                    str(program_index[case_id]["program_context"])
+                    for case_id in ids
+                ]
+                by_depth[str(depth)] = {
+                    "case_count": len(ids),
+                    "interface_accuracy": cluster_bootstrap_mean_ci(
+                        interface_values, clusters, seed=83_200 + depth
+                    ),
+                    "outcome_accuracy": cluster_bootstrap_mean_ci(
+                        outcome_values, clusters, seed=83_210 + depth
+                    ),
+                    "semantic_state_accuracy": cluster_bootstrap_mean_ci(
+                        semantic_values, clusters, seed=83_220 + depth
+                    ),
+                    "interface_minus_outcome": cluster_bootstrap_mean_ci(
+                        [
+                            int(left) - int(right)
+                            for left, right in zip(
+                                interface_values, outcome_values
+                            )
+                        ],
+                        clusters,
+                        seed=83_230 + depth,
+                    ),
+                }
+            result["by_active_transition_count"] = by_depth
     write_json(challenge_dir(run_path, profile) / "summary.json", result)
     return result
 

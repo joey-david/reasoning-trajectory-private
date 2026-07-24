@@ -269,6 +269,12 @@ def render_factorization_preamble(case: dict[str, Any]) -> str:
             f"Apply the proof rules exactly. The state is a decimal bitmask in "
             f"0..{modulus - 1} for established facts [{facts}].\n"
         )
+    if case.get("domain") == "register_machine":
+        return (
+            "Execute the two-register program exactly. Each register is in "
+            "0..3. The public result label is the hexadecimal digit for "
+            "R0 + 4*R1.\n"
+        )
     if case.get("domain") == "mixed_algebra":
         return (
             f"Execute the register program exactly. State is a decimal "
@@ -282,6 +288,13 @@ def render_factorization_preamble(case: dict[str, Any]) -> str:
         f"Follow the state-transition instructions exactly. The state is a decimal "
         f"integer from 0 through {modulus - 1}.\n"
     )
+
+
+def render_factorization_state(case: dict[str, Any], state: int) -> str:
+    """Render input registers explicitly while retaining one-token outputs."""
+    if case.get("domain") == "register_machine":
+        return f"R0={int(state) & 3}, R1={(int(state) >> 2) & 3}"
+    return state_text(case, int(state))
 
 
 def render_factorization_history(case: dict[str, Any]) -> str:
@@ -311,7 +324,7 @@ def _factorization_update_prompt(
     )
     text = (
         render_factorization_preamble(case)
-        + f"Current state: {state_text(case, int(state))}.\n"
+        + f"Current state: {render_factorization_state(case, int(state))}.\n"
         + f"{label}: {render_factorization_rule(case, rule)}.\n"
         + f"{instruction}\nAnswer="
     )
@@ -359,7 +372,7 @@ def render_factorization_prompts(
             "name": "read",
             "text": (
                 preamble
-                + f"Current state: {state_text(case, current)}.\n"
+                + f"Current state: {render_factorization_state(case, current)}.\n"
                 "Return the current state unchanged.\nAnswer="
             ),
             "expected_next_state": current,
@@ -369,7 +382,7 @@ def render_factorization_prompts(
             "name": "synthesize",
             "text": (
                 preamble
-                + f"Start state: {state_text(case, int(case['initial_state']))}.\n"
+                + f"Start state: {render_factorization_state(case, int(case['initial_state']))}.\n"
                 f"{history}\n"
                 "Apply every numbered step in order and return the resulting state.\nAnswer="
             ),
@@ -380,7 +393,7 @@ def render_factorization_prompts(
             "name": "compose",
             "text": (
                 preamble
-                + f"Start state: {state_text(case, int(case['initial_state']))}.\n"
+                + f"Start state: {render_factorization_state(case, int(case['initial_state']))}.\n"
                 f"{history}\n"
                 + f"FINAL: {final}.\nApply every numbered step in order, then apply "
                 "FINAL exactly once, and return the result.\nAnswer="
@@ -420,7 +433,10 @@ def compose_capture_positions(
 ) -> list[dict[str, int | str]]:
     """Locate semantic endpoints in the exact formatted Compose prompt."""
     markers = [
-        ("start", f"Start state: {state_text(case, int(case['initial_state']))}."),
+        (
+            "start",
+            f"Start state: {render_factorization_state(case, int(case['initial_state']))}.",
+        ),
         *[
             (f"history_step_{index}", line)
             for index, line in enumerate(render_factorization_history(case).splitlines(), 1)

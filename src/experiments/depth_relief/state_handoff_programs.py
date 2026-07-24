@@ -340,9 +340,19 @@ def _program_case(
             state_symbols=list(PROOF_STATE_SYMBOLS),
         )
     elif width == 4:
+        configured_symbols = dataset.get("state_symbols")
+        symbols = (
+            [str(value) for value in configured_symbols]
+            if configured_symbols is not None
+            else list(hexadecimal_state_symbols(modulus))
+        )
+        if len(symbols) != modulus or len(set(symbols)) != modulus:
+            raise ValueError("A four-bit state alphabet needs 16 unique symbols")
         semantic.update(
-            state_representation="hexadecimal",
-            state_symbols=list(hexadecimal_state_symbols(modulus)),
+            state_representation=str(
+                dataset.get("state_representation", "hexadecimal")
+            ),
+            state_symbols=symbols,
         )
     digest = hashlib.sha256(
         json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()
