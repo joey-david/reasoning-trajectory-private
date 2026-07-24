@@ -37,6 +37,11 @@ if [[ "${STATE_HANDOFF_POLISH_DRY_RUN:-false}" == true ]]; then
   echo "parallel register seeds: $run_count"
   printf 'register run: %s\n' "${SELECTED_RUNS[@]}"
   echo "proof run: $PROOF_RUN"
+  if ((${#WORKERS[@]} > run_count)); then
+    echo "concurrent proof workers: ${WORKERS[*]:run_count}"
+  else
+    echo "proof workers after training: ${WORKERS[*]}"
+  fi
   exit 0
 fi
 
@@ -105,6 +110,27 @@ for index in "${!SELECTED_RUNS[@]}"; do
   echo "started $name on $worker"
 done
 
+proof_pid=""
+if ((${#WORKERS[@]} > run_count)); then
+  proof_nodes=()
+  proof_devices=()
+  for worker in "${WORKERS[@]:run_count}"; do
+    proof_nodes+=("${worker%:*}")
+    proof_devices+=("${worker##*:}")
+  done
+  (
+    set -o pipefail
+    "$PYTHON" scripts/orchestrate.py \
+      --job state_interface_challenge \
+      --nodes "${proof_nodes[@]}" \
+      --devices "${proof_devices[@]}" \
+      --run "$PROOF_RUN" 2>&1 \
+      | tee "$LOG_ROOT/proof-depth.log"
+  ) &
+  proof_pid=$!
+  echo "started proof depth on ${WORKERS[*]:run_count}"
+fi
+
 failed_indices=()
 for index in "${!pids[@]}"; do
   if wait "${pids[$index]}"; then
@@ -148,22 +174,31 @@ for run in "${SELECTED_RUNS[@]}"; do
   fi
 done
 
-nodes=()
-devices=()
-for worker in "${WORKERS[@]}"; do
-  nodes+=("${worker%:*}")
-  devices+=("${worker##*:}")
-done
-if "$PYTHON" scripts/orchestrate.py \
-  --job state_interface_challenge \
-  --nodes "${nodes[@]}" \
-  --devices "${devices[@]}" \
-  --run "$PROOF_RUN" 2>&1 | tee "$LOG_ROOT/proof-depth.log"
-then
-  record proof-depth complete 0
+if [[ -n $proof_pid ]]; then
+  if wait "$proof_pid"; then
+    record proof-depth complete 0
+  else
+    code=$?
+    record proof-depth failed "$code"
+  fi
 else
-  code=${PIPESTATUS[0]}
-  record proof-depth failed "$code"
+  nodes=()
+  devices=()
+  for worker in "${WORKERS[@]}"; do
+    nodes+=("${worker%:*}")
+    devices+=("${worker##*:}")
+  done
+  if "$PYTHON" scripts/orchestrate.py \
+    --job state_interface_challenge \
+    --nodes "${nodes[@]}" \
+    --devices "${devices[@]}" \
+    --run "$PROOF_RUN" 2>&1 | tee "$LOG_ROOT/proof-depth.log"
+  then
+    record proof-depth complete 0
+  else
+    code=${PIPESTATUS[0]}
+    record proof-depth failed "$code"
+  fi
 fi
 
 echo
