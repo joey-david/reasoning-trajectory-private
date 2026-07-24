@@ -1,0 +1,104 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map: {"": 0}
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_interface_challenge_matrix:
+  templates:
+    depth:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [64]
+      active_depths: [1, 2, 3, 4]
+      proof_topologies: [mixed]
+      balanced_queries: true
+      program_contexts: 30
+      paths_per_depth: 4
+      block_size: 2
+    length:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [16, 64, 128]
+      active_depths: [1, 2, 3, 4]
+      proof_topologies: [mixed]
+      balanced_queries: true
+      program_contexts: 12
+      paths_per_depth: 2
+      block_size: 2
+    topology:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [64]
+      active_depths: [3, 4]
+      proof_topologies: [independent, chain, conjunction]
+      balanced_queries: true
+      program_contexts: 20
+      paths_per_depth: 4
+      block_size: 2
+  sources:
+    - name: qwen7_seed1
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome
+      challenge_seed: 733101
+      conditions:
+        - {name: compressed_3bit, templates: [depth]}
+        - {name: canonical_4bit, templates: [depth, length, topology]}
+        - {name: redundant_5bit, templates: [depth, length, topology]}
+    - name: qwen7_seed2
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed2
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed2
+      challenge_seed: 733201
+      conditions:
+        - {name: compressed_3bit, templates: [depth]}
+        - {name: canonical_4bit, templates: [depth, length, topology]}
+        - {name: redundant_5bit, templates: [depth, length, topology]}
+    - name: qwen7_seed3
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof_seed3
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed3
+      challenge_seed: 733301
+      conditions:
+        - {name: compressed_3bit, templates: [depth]}
+        - {name: canonical_4bit, templates: [depth, length, topology]}
+        - {name: redundant_5bit, templates: [depth, length, topology]}
+    - name: qwen3
+      interface_run: runs/Qwen2.5-3B-Instruct/interventions/state_interface_horn_proof_weekend
+      outcome_run: runs/Qwen2.5-3B-Instruct/interventions/state_interface_horn_outcome_weekend
+      challenge_seed: 733401
+      conditions:
+        - {name: canonical_4bit, templates: [depth]}
+        - {name: redundant_5bit, templates: [depth, length, topology]}
+    - name: qwen14
+      interface_run: runs/Qwen2.5-14B-Instruct/interventions/state_interface_horn_proof_weekend
+      outcome_run: runs/Qwen2.5-14B-Instruct/interventions/state_interface_horn_outcome_weekend
+      challenge_seed: 733501
+      conditions:
+        - {name: canonical_4bit, templates: [depth]}
+        - {name: redundant_5bit, templates: [depth, length, topology]}
+    - name: mistral7
+      interface_run: runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_proof
+      outcome_run: runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_outcome
+      challenge_seed: 733601
+      conditions:
+        - {name: canonical_4bit, templates: [depth]}
+        - {name: redundant_5bit, templates: [depth, length, topology]}
+
+state_interface_proof_confirmation:
+  primary_sources: [qwen7_seed1, qwen7_seed2, qwen7_seed3]
+  scale_sources: [qwen3, qwen7_seed1, qwen14]
+  family_sources: [qwen7_seed1, mistral7]
+  conditions: [compressed_3bit, canonical_4bit, redundant_5bit]
+  gates:
+    min_redundant_depth4_semantic_accuracy_each_seed: 0.75
+    min_redundant_depth4_answer_accuracy_each_seed: 0.75
+    min_mean_redundant_minus_canonical_depth4: 0.10
+    max_mean_h128_minus_h16_drop: 0.10
+    min_redundant_conjunction_accuracy: 0.70
+    max_compressed_depth4_semantic_accuracy: 0.60

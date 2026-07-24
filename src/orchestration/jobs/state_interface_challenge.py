@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.runtime.config import load_config
 from src.experiments.depth_relief.state_interface_challenge import (
     challenge_dir,
+    configured_challenge_profiles,
     evaluate_interface_challenge,
 )
 from src.orchestration.jobs.contract import Task, TaskResult
@@ -26,14 +26,19 @@ def _complete(run_path: Path, profile: str, side: str) -> bool:
 
 
 def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
-    profiles = load_config(run_path).get("state_interface_challenges", {})
+    profiles = configured_challenge_profiles(run_path)
     tasks = [
         {"profile": profile, "side": side}
-        for profile in profiles
+        for profile, spec in profiles.items()
         for side in ("interface", "outcome")
+        if side == "interface"
+        or str(spec.get("outcome_owner_profile", profile)) == profile
         if not _complete(run_path, profile, side)
     ]
-    total = 2 * len(profiles)
+    total = len(profiles) + sum(
+        str(spec.get("outcome_owner_profile", profile)) == profile
+        for profile, spec in profiles.items()
+    )
     return tasks, total, total - len(tasks)
 
 

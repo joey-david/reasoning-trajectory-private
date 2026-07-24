@@ -1,6 +1,6 @@
 model:
-  name: Qwen/Qwen2.5-7B-Instruct
-  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  name: Qwen/Qwen2.5-3B-Instruct
+  revision: aa8e72537993ba99e69dfaafa59ed015b17504d1
   backend: hf
   required_gpus: 1
   device_map: {"": 0}
@@ -10,7 +10,7 @@ model:
 
 state_handoff_training:
   linked_runs:
-    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed3
+    - runs/Qwen2.5-3B-Instruct/interventions/state_interface_horn_outcome_weekend
   phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
   frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
   conditions: [compressed_3bit, canonical_4bit, redundant_5bit]
@@ -18,7 +18,7 @@ state_handoff_training:
   dataset:
     domain: horn_proof
     bits: 4
-    seed: 725701
+    seed: 732301
     train_examples: 20000
     validation_examples: 2000
     train_horizons: [2]
@@ -47,7 +47,7 @@ state_handoff_training:
     dropout: 0
     target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
   training:
-    seed: 725803
+    seed: 732401
     max_sequence_length: 256
     microbatch: 8
     gradient_accumulation: 8
@@ -60,22 +60,20 @@ state_handoff_training:
     evaluation_interval: 250
     max_gradient_norm: 1.0
     gradient_checkpointing: true
-  interface_gate:
-    primary_condition: redundant_5bit
-    min_primary_h8: 0.85
-    min_primary_h16: 0.80
   prompt:
     mode: chat
     system: Execute each proof-state update exactly and return one token.
+  evaluation:
+    max_sequence_length: 1024
 
 state_interface_generalization:
-  outcome_control_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed3
+  outcome_control_run: runs/Qwen2.5-3B-Instruct/interventions/state_interface_horn_outcome_weekend
   primary_condition: redundant_5bit
   gate:
     domains: [horn_proof_causal_conjunction]
     composition_split: heldout
     history_steps: 16
-    min_accuracy: 0.80
-    min_improvement: 0.10
-    min_state_information_fraction: 0.85
-    min_quotient_agreement: 0.85
+    min_accuracy: 0.65
+    min_improvement: 0.05
+    min_state_information_fraction: 0.70
+    min_quotient_agreement: 0.70

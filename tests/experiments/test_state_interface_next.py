@@ -19,6 +19,7 @@ from src.experiments.depth_relief.state_interface_contract import (
 )
 from src.experiments.depth_relief.state_interface_challenge import (
     _write_summary,
+    configured_challenge_profiles,
     prepare_interface_challenges,
 )
 from src.experiments.depth_relief.state_interface_substitution import (
@@ -119,9 +120,7 @@ def test_interface_producer_mode_selects_the_requested_prompt() -> None:
         "max_length": 512,
     }
     encoder = interface_training_sequence_pair(**common, producer_mode="encoder")
-    transition = interface_training_sequence_pair(
-        **common, producer_mode="transition"
-    )
+    transition = interface_training_sequence_pair(**common, producer_mode="transition")
     assert encoder[0]["producer_prompt_kind"] == "encoder"
     assert transition[0]["producer_prompt_kind"] == "transition"
     assert encoder[0]["input_ids"] != transition[0]["input_ids"]
@@ -211,9 +210,7 @@ def test_reasoning_mixture_has_exact_program_and_proof_state_paths() -> None:
     seen = [case for case in proof if case["composition_split"] == "seen"]
     heldout = [case for case in proof if case["composition_split"] == "heldout"]
     assert all(not case["proof_composition_active"] for case in seen)
-    assert sum(case["proof_composition_active"] for case in heldout) == (
-        5 * 2 * 2
-    )
+    assert sum(case["proof_composition_active"] for case in heldout) == (5 * 2 * 2)
     assert all(
         any(
             len(rule["premises"]) == 2
@@ -225,8 +222,7 @@ def test_reasoning_mixture_has_exact_program_and_proof_state_paths() -> None:
         if case["proof_composition_active"]
     )
     assert all(
-        apply_rule(case["final_rule"], case["current_state"], 16)
-        == case["next_state"]
+        apply_rule(case["final_rule"], case["current_state"], 16) == case["next_state"]
         for case in proof
     )
 
@@ -317,14 +313,11 @@ def test_primitive_algebra_learns_locally_and_tests_unseen_orders() -> None:
         },
     )
     one_step = [case for case in cases if case["history_steps"] == 1]
-    assert {
-        case["history"][0]["kind"] for case in one_step
-    } == {"add", "xor", "affine"}
+    assert {case["history"][0]["kind"] for case in one_step} == {"add", "xor", "affine"}
     heldout = [
         case
         for case in cases
-        if case["history_steps"] == 8
-        and case["composition_split"] == "heldout"
+        if case["history_steps"] == 8 and case["composition_split"] == "heldout"
     ]
     assert all(len(set(case["operation_pairs"])) > 1 for case in heldout)
     assert all(case["state_path"][-1] == case["current_state"] for case in cases)
@@ -346,8 +339,7 @@ def test_proof_actions_expose_the_full_fact_ledger() -> None:
     assert all(case["final_rule"]["kind"] == "proof_action" for case in cases)
     assert all(len(answer_symbols(case)) == 16 for case in cases)
     assert all(
-        case["next_state"]
-        == apply_rule(case["final_rule"], case["current_state"], 16)
+        case["next_state"] == apply_rule(case["final_rule"], case["current_state"], 16)
         for case in cases
     )
     assert any(case["proof_composition_active"] for case in cases)
@@ -370,8 +362,7 @@ def test_register_machine_programs_are_balanced_and_exact() -> None:
     heldout = [
         case
         for case in cases
-        if case["history_steps"] == 16
-        and case["composition_split"] == "heldout"
+        if case["history_steps"] == 16 and case["composition_split"] == "heldout"
     ]
     assert all(len(set(case["instruction_families"])) == 4 for case in heldout)
 
@@ -439,9 +430,9 @@ state_interface_challenges:
     second = prepare_interface_challenges(run_path)
     rows = [
         json.loads(line)
-        for line in (
-            run_path / "evaluation/challenges/addition_h128/programs.jsonl"
-        ).read_text().splitlines()
+        for line in (run_path / "evaluation/challenges/addition_h128/programs.jsonl")
+        .read_text()
+        .splitlines()
     ]
     assert first == second
     assert first["profiles"]["addition_h128"]["case_count"] == 8
@@ -476,9 +467,9 @@ state_interface_challenges:
     second = prepare_interface_challenges(run_path)
     rows = [
         json.loads(line)
-        for line in (
-            run_path / "evaluation/challenges/proof_depth/programs.jsonl"
-        ).read_text().splitlines()
+        for line in (run_path / "evaluation/challenges/proof_depth/programs.jsonl")
+        .read_text()
+        .splitlines()
     ]
     assert first == second
     assert first["profiles"]["proof_depth"]["case_count"] == 20
@@ -492,15 +483,100 @@ state_interface_challenges:
         )
         for row in rows
     )
-    assert {
-        row["active_transition_count"] for row in rows
-    } == {0, 1, 2, 3, 4}
+    assert {row["active_transition_count"] for row in rows} == {0, 1, 2, 3, 4}
     assert all(row["final_rule"]["kind"] == "proof_query" for row in rows)
     assert all(row["answer_symbols"] == ["0", "1"] for row in rows)
     assert all(
-        apply_rule(row["final_rule"], row["current_state"], 16)
-        == row["next_state"]
+        apply_rule(row["final_rule"], row["current_state"], 16) == row["next_state"]
         for row in rows
+    )
+
+
+def test_balanced_proof_queries_hold_answer_rate_fixed_by_depth(tmp_path) -> None:
+    run_path = tmp_path / "challenge"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_interface_challenges:
+  proof_depth:
+    interface_run: runs/interface
+    interface_condition: redundant_5bit
+    outcome_run: runs/outcome
+    domain: horn_proof
+    proof_final: query
+    bits: 4
+    seed: 59
+    horizons: [64]
+    active_depths: [1, 2, 3, 4]
+    proof_topologies: [independent, chain, conjunction]
+    balanced_queries: true
+    program_contexts: 2
+    paths_per_depth: 2
+    block_size: 2
+""".strip()
+        + "\n"
+    )
+    first = prepare_interface_challenges(run_path)
+    second = prepare_interface_challenges(run_path)
+    rows = [
+        json.loads(line)
+        for line in (run_path / "evaluation/challenges/proof_depth/programs.jsonl")
+        .read_text()
+        .splitlines()
+    ]
+    assert first == second
+    assert first["profiles"]["proof_depth"]["case_count"] == 48
+    assert first["profiles"]["proof_depth"]["proof_topologies"] == [
+        "chain",
+        "conjunction",
+        "independent",
+    ]
+    for depth in (1, 2, 3, 4):
+        subset = [row for row in rows if row["active_transition_count"] == depth]
+        assert sum(row["next_state"] for row in subset) == len(subset) / 2
+        assert all(row["next_state"] == row["balanced_query_target"] for row in subset)
+
+
+def test_challenge_matrix_expands_sources_conditions_and_templates(tmp_path) -> None:
+    run_path = tmp_path / "matrix"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_interface_challenge_matrix:
+  templates:
+    depth:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [64]
+      active_depths: [1, 2]
+      balanced_queries: true
+      program_contexts: 2
+      paths_per_depth: 2
+  sources:
+    - name: small
+      interface_run: runs/small-interface
+      outcome_run: runs/small-outcome
+      challenge_seed: 61
+      conditions:
+        - {name: canonical_4bit, templates: [depth]}
+        - redundant_5bit
+""".strip()
+        + "\n"
+    )
+    profiles = configured_challenge_profiles(run_path)
+    assert set(profiles) == {
+        "small__canonical_4bit__depth",
+        "small__redundant_5bit__depth",
+    }
+    assert profiles["small__canonical_4bit__depth"]["seed"] == 61
+    assert (
+        profiles["small__redundant_5bit__depth"]["outcome_owner_profile"]
+        == "small__canonical_4bit__depth"
+    )
+    assert (
+        profiles["small__redundant_5bit__depth"]["program_split"]
+        == "proof_weekend_small_depth"
     )
 
 
@@ -540,9 +616,7 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
                     "id": case_id,
                     "prompt_token_count": 10,
                     "conditions": {
-                        "one_pass_compose": {
-                            "is_expected_unconstrained": depth == 0
-                        }
+                        "one_pass_compose": {"is_expected_unconstrained": depth == 0}
                     },
                 }
             )
@@ -557,21 +631,17 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
     summary = _write_summary(tmp_path, "proof_depth")
     assert set(summary["by_active_transition_count"]) == {"0", "1"}
     assert (
-        summary["by_active_transition_count"]["1"]["interface_minus_outcome"][
-            "mean"
-        ]
+        summary["by_active_transition_count"]["1"]["interface_minus_outcome"]["mean"]
         == 1.0
     )
     assert (
-        summary["by_active_transition_count"]["1"]["interface_accuracy"][
-            "cluster_n"
-        ]
+        summary["by_active_transition_count"]["1"]["interface_accuracy"]["cluster_n"]
         == 2
     )
     assert (
-        summary["by_active_transition_count"]["1"][
-            "interface_constrained_accuracy"
-        ]["mean"]
+        summary["by_active_transition_count"]["1"]["interface_constrained_accuracy"][
+            "mean"
+        ]
         == 1.0
     )
     assert (
@@ -644,9 +714,7 @@ state_interface_stress:
         + "\n"
     )
     manifest = prepare_stress_profile(run_path, "probe")
-    saved = json.loads(
-        (run_path / "evaluation/stress/probe/manifest.json").read_text()
-    )
+    saved = json.loads((run_path / "evaluation/stress/probe/manifest.json").read_text())
     assert saved == manifest
 
 
@@ -702,4 +770,6 @@ state_handoff_training:
     ]
     assert tokenizer is not None
     assert trainable
-    assert all(torch.allclose(value, torch.full_like(value, 0.125)) for value in trainable)
+    assert all(
+        torch.allclose(value, torch.full_like(value, 0.125)) for value in trainable
+    )

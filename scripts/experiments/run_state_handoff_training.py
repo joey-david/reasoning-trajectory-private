@@ -59,6 +59,9 @@ from src.experiments.depth_relief.state_interface_challenge import (
     evaluate_interface_challenge,
     prepare_interface_challenges,
 )
+from src.experiments.depth_relief.state_interface_proof_confirmation import (
+    compare_proof_confirmation,
+)
 from src.experiments.depth_relief.state_interface_substitution import (
     evaluate_interface_substitution,
 )
@@ -94,6 +97,7 @@ def main() -> int:
             "compare-replication",
             "prepare-challenges",
             "evaluate-challenge",
+            "compare-proof-confirmation",
             "evaluate-substitution",
         ),
     )
@@ -190,9 +194,9 @@ def main() -> int:
     elif args.command == "evaluate-challenge":
         if args.side is None:
             parser.error("evaluate-challenge requires --side")
-        result = evaluate_interface_challenge(
-            args.run_path, args.profile, args.side
-        )
+        result = evaluate_interface_challenge(args.run_path, args.profile, args.side)
+    elif args.command == "compare-proof-confirmation":
+        result = compare_proof_confirmation(args.run_path)
     elif args.command == "evaluate-substitution":
         result = evaluate_interface_substitution(args.run_path)
     else:

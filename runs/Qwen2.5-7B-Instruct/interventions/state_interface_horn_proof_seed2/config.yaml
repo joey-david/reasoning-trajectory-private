@@ -15,7 +15,7 @@ state_handoff_training:
     - runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome_seed3
   phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
   frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
-  conditions: [canonical_4bit, redundant_5bit]
+  conditions: [compressed_3bit, canonical_4bit, redundant_5bit]
   evaluation_adapter: final
   dataset:
     domain: horn_proof
@@ -36,9 +36,11 @@ state_handoff_training:
     canonical_4bit:
       permutation: [11, 2, 14, 5, 8, 0, 13, 7, 3, 15, 6, 9, 1, 12, 4, 10]
     producer_modes:
+      compressed_3bit: mixed
       canonical_4bit: mixed
       redundant_5bit: mixed
     producer_transition_fractions:
+      compressed_3bit: 0.75
       canonical_4bit: 0.75
       redundant_5bit: 0.75
   lora:
