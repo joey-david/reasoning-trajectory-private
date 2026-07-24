@@ -51,13 +51,29 @@ def _quotient_agreement(rows: list[dict[str, Any]]) -> dict[str, Any]:
         groups[
             (str(row["program_context"]), int(row["current_state"]))
         ].append(tuple(int(value) for value in row["predicted_semantic_states"]))
-    values = []
+    values: list[bool] = []
     for group in groups.values():
         for index, left in enumerate(group):
             values.extend(
                 bool(left) and left == right for right in group[index + 1 :]
             )
-    return bootstrap_mean_ci(values, seed=81_401)
+    scope = "within_program_context"
+    if not values:
+        by_state: defaultdict[int, list[tuple[int, ...]]] = defaultdict(list)
+        for row in rows:
+            by_state[int(row["current_state"])].append(
+                tuple(int(value) for value in row["predicted_semantic_states"])
+            )
+        for group in by_state.values():
+            for index, left in enumerate(group):
+                values.extend(
+                    bool(left) and left == right for right in group[index + 1 :]
+                )
+        scope = "across_program_contexts"
+    return {
+        **bootstrap_mean_ci(values, seed=81_401),
+        "comparison_scope": scope,
+    }
 
 
 def _information_metrics(

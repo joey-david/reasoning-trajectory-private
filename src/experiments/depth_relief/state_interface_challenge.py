@@ -137,9 +137,33 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
             )
             for row in interface
         ]
+        constrained = [
+            bool(
+                row["predicted_final"]
+                and row["predicted_final"]["is_expected"]
+            )
+            for row in interface
+        ]
+        valid = [
+            bool(
+                row["predicted_final"]
+                and row["predicted_final"]["unconstrained_prediction"] is not None
+            )
+            for row in interface
+        ]
         costs = [_interface_cost(row) for row in interface]
         result["interface"] = {
             "accuracy": bootstrap_mean_ci(values, seed=83_101),
+            "constrained_accuracy": bootstrap_mean_ci(
+                constrained, seed=83_104
+            ),
+            "valid_output_rate": bootstrap_mean_ci(valid, seed=83_105),
+            "mean_candidate_probability_mass": sum(
+                float(row["predicted_final"]["candidate_probability_mass"])
+                for row in interface
+                if row["predicted_final"]
+            )
+            / len(interface),
             "mean_total_prompt_tokens": sum(row[0] for row in costs) / len(costs),
             "max_prompt_tokens_per_call": max(row[1] for row in costs),
             "mean_model_calls": sum(row[2] for row in costs) / len(costs),
@@ -207,6 +231,25 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
                     )
                     for case_id in ids
                 ]
+                constrained_values = [
+                    bool(
+                        interface_index[case_id]["predicted_final"]
+                        and interface_index[case_id]["predicted_final"][
+                            "is_expected"
+                        ]
+                    )
+                    for case_id in ids
+                ]
+                valid_values = [
+                    bool(
+                        interface_index[case_id]["predicted_final"]
+                        and interface_index[case_id]["predicted_final"][
+                            "unconstrained_prediction"
+                        ]
+                        is not None
+                    )
+                    for case_id in ids
+                ]
                 outcome_values = [
                     bool(
                         indexed[case_id]["conditions"]["one_pass_compose"][
@@ -228,6 +271,16 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
                     "case_count": len(ids),
                     "interface_accuracy": cluster_bootstrap_mean_ci(
                         interface_values, clusters, seed=83_200 + depth
+                    ),
+                    "interface_constrained_accuracy": (
+                        cluster_bootstrap_mean_ci(
+                            constrained_values,
+                            clusters,
+                            seed=83_205 + depth,
+                        )
+                    ),
+                    "interface_valid_output_rate": cluster_bootstrap_mean_ci(
+                        valid_values, clusters, seed=83_206 + depth
                     ),
                     "outcome_accuracy": cluster_bootstrap_mean_ci(
                         outcome_values, clusters, seed=83_210 + depth

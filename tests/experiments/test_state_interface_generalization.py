@@ -8,6 +8,7 @@ from src.experiments.depth_relief.state_handoff_programs import (
 from src.experiments.depth_relief.state_interface_generalization import (
     _conditional_transition_metrics,
     _information_metrics,
+    _quotient_agreement,
     compare_state_interface_generalization,
 )
 from src.experiments.depth_relief.state_interface_replication import (
@@ -20,6 +21,22 @@ def _write_jsonl(path, rows) -> None:
     path.write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
     )
+
+
+def test_quotient_agreement_uses_disjoint_contexts_when_paths_are_singletons() -> None:
+    rows = [
+        {
+            "program_context": context,
+            "current_state": state,
+            "predicted_semantic_states": [state],
+        }
+        for context in ("c0", "c1", "c2")
+        for state in (0, 1)
+    ]
+    result = _quotient_agreement(rows)
+    assert result["comparison_scope"] == "across_program_contexts"
+    assert result["n"] == 6
+    assert result["mean"] == 1.0
 
 
 def test_generalization_analysis_is_paired_and_artifact_only(tmp_path) -> None:

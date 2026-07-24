@@ -518,7 +518,10 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
                 {
                     "id": case_id,
                     "predicted_final": {
+                        "is_expected": True,
                         "is_expected_unconstrained": True,
+                        "unconstrained_prediction": depth,
+                        "candidate_probability_mass": 1.0,
                         "prompt_token_count": 10,
                     },
                     "predicted_semantic_states": [depth],
@@ -557,6 +560,18 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
             "cluster_n"
         ]
         == 2
+    )
+    assert (
+        summary["by_active_transition_count"]["1"][
+            "interface_constrained_accuracy"
+        ]["mean"]
+        == 1.0
+    )
+    assert (
+        summary["by_active_transition_count"]["1"]["interface_valid_output_rate"][
+            "mean"
+        ]
+        == 1.0
     )
 
 

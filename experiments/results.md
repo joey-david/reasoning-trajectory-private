@@ -36,7 +36,7 @@ Status meanings:
 | Proof-state transfer | prepared | Does the interface carry a reusable proof frontier under unseen causal two-premise rules? | `state_interface_horn_{proof,outcome}` under `runs/Qwen2.5-7B-Instruct/interventions/` | `scripts/remote/state_handoff.sh interface-proof-transfer-7b` | `evaluation/generalization_summary.json` under the interface run | Four fact bits update under at-most-one-premise h2 training rules. The 9,600-case test has 1,500 held-out cases where a two-premise rule adds a missing fact; this five-state stratum has `H(S)=log2(5)=2.322` bits. FINAL asks all/any/parity fact queries. Prepared only. |
 | Multi-seed and second-model confirmation | prepared | Are operation and proof gains stable across three Qwen seeds and one Mistral family? | Qwen `*_seed{2,3}` folders; `runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_{proof,outcome}` | `interface-{algebra,proof}-confirm-7b`; `interface-proof-second-model-7b` | `evaluation/replication_summary.json` under each Qwen seed-2 anchor; Mistral `evaluation/generalization_summary.json` | The seed aggregate keeps per-seed context-clustered intervals, full seed ranges, and a seed bootstrap. Mistral revision `c170c708c41dac9275d15a8fff4eca08d52bab71` is pinned and token-validated. These runs remain gated on the first-seed results. |
 | Three-hour length-generalization screen | pilot | Does a fixed-rate state channel turn short rules into reusable h32–h128 computation, and is the channel shared across independently trained adapters? | Nine `state_interface_*_3h` folders under `runs/Qwen2.5-7B-Instruct/interventions/`; anchor: `state_interface_rate_sweep_3h` | `scripts/remote/state_handoff_three_hour.sh` | Each interface run owns `evaluation/interfaces/<condition>/{cases.jsonl,summary.json}` and `evaluation/generalization_summary.json`; the anchor also owns `evaluation/{challenges,substitution}/` | Completed, but most arms stopped before convergence after one 63-step epoch. The converged 2-bit channel hits its 50% answer ceiling at h2. H1-trained algebra reaches 47.92% at seen h32 versus 18.75% for one-pass, while each off-gold recursive transition remains 81.12% semantically correct on held-out h32. Horn proof reaches 40.63% at h64 versus 15.63% one-pass, a paired +25 points (95% CI +6.25 to +43.75), but the programs average only two state changes. The register result is invalid because transition-only training omitted the decimal-entry prompt used at evaluation. See the technical readout below. |
-| Dense register confirmation | prepared | Does a minimal four-bit state interface turn one-step two-register instructions into stable h32 program execution across seeds and model families? | Qwen `state_interface_register_confirm_{seed1,seed2,seed3}` plus matched outcomes; Mistral `state_interface_register_confirm{,_outcome}` | `scripts/remote/state_handoff_paper_confirmation.sh` | Per-run `evaluation/generalization_summary.json`; Qwen seed 1 also writes `evaluation/replication_summary.json` and `evaluation/challenges/proof_active_depth_h64/summary.json` | Corrects the failed screen with 75% opaque-transition and 25% decimal-entry producer targets, a separately trained code consumer, five epochs/313 steps, best-validation checkpoint selection, and a canonical 16-code channel of exactly four bits. Each Qwen seed gets disjoint train/validation data and a disjoint 10-context test bank; the aggregate covers 30 test contexts. H2/h32 tests include seen repeated instructions and held-out add/XOR/swap/conditional mixtures; held-out h32 averages about 24 actual state changes. A pinned Mistral run repeats the same contract. An evaluation-only h64 Horn bank crosses fixed surface length with exactly 0–4 causal deductions using the existing fully trained Qwen proof adapters. |
+| Dense register confirmation | failed | Does a minimal four-bit state interface turn one-step two-register instructions into stable h32 program execution across seeds and model families? | Qwen `state_interface_register_confirm_{seed1,seed2,seed3}` plus matched outcomes; Mistral `state_interface_register_confirm{,_outcome}` | `scripts/remote/state_handoff_paper_confirmation.sh` | Per-run `evaluation/generalization_summary.json`; Qwen seed 1 also writes `evaluation/replication_summary.json` and `evaluation/challenges/proof_active_depth_h64/summary.json` | The H32 mixed-composition gate failed in all three Qwen seeds and Mistral. Qwen held-out H32 averages 7.92% interface versus 5.83% one-pass, only +2.08 points; Mistral scores 6.88% versus 6.25%. This is not a long-horizon repair. The sharper result is a replicated gap between local and global reliability: Qwen self-conditioned transitions remain 88.55–90.69% semantically correct, yet about 31 calls reduce final state accuracy to 5.63–10.00%. On repeated single-family H32 programs, Qwen still reaches 31.88% versus 9.79% one-pass. Gold-code continuation is 88.13–100%, which makes producer closure and mixed-operation error accumulation the main limits. |
 
 Explicit-handoff local validation covers deterministic analysis of the completed
 32B and 7B artifacts, predicted-code equivalence, recursive continuation,
@@ -122,11 +122,42 @@ comparisons, so the confirmation does not spend GPU time repeating them. Its
 eight training tasks each use 2,000 semantic programs for five epochs: 10,000
 program presentations, 20,000 fixed-256-token forwards, and 20,000 supervised
 tokens. Three Qwen interface/outcome pairs use distinct data and optimizer
-seeds. One Mistral pair tests the model-family boundary. Based on the measured
-11.7--13.3 minutes per 63-step epoch, training should take roughly 60--70
-minutes per task. Five workers schedule the eight tasks in two waves; the
-640-case per-run recursive evaluations, not training, dominate the remaining
-wall time.
+seeds. One Mistral pair tests the model-family boundary. The five-worker run
+completed all eight 313-step tasks in 2 h 39 min and the 60-case proof-depth
+probe in another 4 min 46 s. No training or evaluation task crashed.
+
+The register result separates four effects:
+
+| Test cell | Qwen interface, 3-seed mean (range) | Qwen one-pass mean (range) | Mistral interface / one-pass | Read |
+| --- | --- | --- | --- | --- |
+| Seen h2, one repeated instruction family | 57.92% (55.63--61.88) | 22.50% (19.38--25.63) | 65.00% / 5.00% | The explicit split learns short execution and a new pointer-table consumer better than outcome-only training. |
+| Held-out h2, mixed families | 56.25% (53.75--58.13) | 23.13% (16.88--28.13) | 65.63% / 8.13% | The short-horizon gain repeats across all four model/seed pairs. |
+| Seen h32, one repeated family | 31.88% (29.38--33.13) | 9.79% (8.13--12.50) | 30.63% / 5.63% | Length transfer remains well above the matched control when the operation family stays fixed. |
+| Held-out h32, add/XOR/swap/conditional cycle | 7.92% (6.25--10.00) | 5.83% (5.63--6.25) | 6.88% / 6.25% | Mixed long-horizon composition is at the 6.25% sixteen-state chance level; every preset gate fails. |
+
+The saved recursive traces explain the failure. Held-out h32 has 24.0 real
+state changes on average. After the entry call, the Qwen producer applies the
+correct transition to its own supplied state on 88.55--90.69% of calls
+(active-call range 89.54--91.19%); Mistral scores 87.30%. Swap is 100%
+reliable, add and XOR are about 88--92%, and conditional add is weakest at
+74--81%. This is strong one-step competence, but not a closed module: repeated
+errors reduce state information to 27.5--27.7% of the four-bit target entropy
+and same-state agreement to 4.86--5.56%. Correct entry does not rescue h32;
+later drift dominates. The final consumer is not the limit: supplying the gold
+code yields 88.13--100% Qwen and 100% Mistral answer accuracy.
+
+The fixed-h64 Horn probe is a state-only depth diagnostic, not a successful
+handoff result. Quotient-state accuracy falls 100%, 100%, 75%, 75%, and 50% as
+the number of real deductions rises from zero to four while surface length
+stays fixed. This supports effective deduction depth, rather than token count,
+as the relevant stressor. However, the probe used the three-bit compressed
+proof code with an arbitrary 16-way action table. That code aliases two
+four-bit ledgers and cannot in general determine the action. The final call
+also emitted no valid answer token in 60/60 cases (mean candidate mass
+`1.75e-5`), so its 0% strict final accuracy must not be read as a state-channel
+effect. A valid behavioral repeat must use the full-rate canonical or
+redundant proof code. Active depth also changes the target fact set, so the
+small 12-case strata do not fully separate depth from state identity.
 
 ### State-interface execution order
 
