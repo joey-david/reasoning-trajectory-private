@@ -35,14 +35,85 @@ Status meanings:
 | State-entropy scaling | prepared | Does the rate threshold move from three to four bits when the task state entropy grows from 3 to 4 bits? | `state_interface_width4_{algebra,outcome}` under `runs/Qwen2.5-7B-Instruct/interventions/` | `scripts/remote/state_handoff.sh interface-width4-transfer-7b` | `evaluation/generalization_summary.json` under the interface run | Uses 16 states and 8/16/32-symbol channels. Full-width hexadecimal state symbols and all code symbols pass Qwen's one-token boundary. The 3-bit control has an exact 50% lookup ceiling. Prepared only. |
 | Proof-state transfer | prepared | Does the interface carry a reusable proof frontier under unseen causal two-premise rules? | `state_interface_horn_{proof,outcome}` under `runs/Qwen2.5-7B-Instruct/interventions/` | `scripts/remote/state_handoff.sh interface-proof-transfer-7b` | `evaluation/generalization_summary.json` under the interface run | Four fact bits update under at-most-one-premise h2 training rules. The 9,600-case test has 1,500 held-out cases where a two-premise rule adds a missing fact; this five-state stratum has `H(S)=log2(5)=2.322` bits. FINAL asks all/any/parity fact queries. Prepared only. |
 | Multi-seed and second-model confirmation | prepared | Are operation and proof gains stable across three Qwen seeds and one Mistral family? | Qwen `*_seed{2,3}` folders; `runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_{proof,outcome}` | `interface-{algebra,proof}-confirm-7b`; `interface-proof-second-model-7b` | `evaluation/replication_summary.json` under each Qwen seed-2 anchor; Mistral `evaluation/generalization_summary.json` | The seed aggregate keeps per-seed context-clustered intervals, full seed ranges, and a seed bootstrap. Mistral revision `c170c708c41dac9275d15a8fff4eca08d52bab71` is pinned and token-validated. These runs remain gated on the first-seed results. |
-| Three-hour length-generalization screen | prepared | Does a fixed-rate state channel turn one-step rules into reusable h32–h128 computation, and is the channel shared across independently trained adapters? | Nine `state_interface_*_3h` folders under `runs/Qwen2.5-7B-Instruct/interventions/`; anchor: `state_interface_rate_sweep_3h` | `scripts/remote/state_handoff_three_hour.sh` | Each interface run writes `evaluation/interfaces/<condition>/{cases.jsonl,summary.json}` and `evaluation/generalization_summary.json`; the anchor also writes `evaluation/{challenges,substitution}/` | Twelve one-epoch tasks run across five workers in 5+5+2 scheduling waves. Each condition gets 2,000 semantic train programs, rendered as 4,000 fixed-256-token forwards with one supervised token each; validation uses 256 programs/512 forwards. The 3-bit addition task sweeps 4/8/16/32-symbol channels and a matched one-pass control. Algebra and two-register programs train only h1 transitions, then recur over held-out operation orders at h2/8/16/32. Horn proof trains h2 updates but FINAL is a 16-way table over the whole fact ledger, not a binary query. Metrics include semantic state and answer accuracy, code entropy, `I(S;Z)`, `H(S|Z)`, quotient agreement, context-level paired intervals, and matched outcome differences. Two extra banks test addition h128 and Horn proof h64. A separate rate-16 seed supplies the consumer in a cross-adapter producer/consumer substitution. Prepared, Qwen-tokenized, and locally tested; no new GPU result yet. |
+| Three-hour length-generalization screen | pilot | Does a fixed-rate state channel turn short rules into reusable h32–h128 computation, and is the channel shared across independently trained adapters? | Nine `state_interface_*_3h` folders under `runs/Qwen2.5-7B-Instruct/interventions/`; anchor: `state_interface_rate_sweep_3h` | `scripts/remote/state_handoff_three_hour.sh` | Each interface run owns `evaluation/interfaces/<condition>/{cases.jsonl,summary.json}` and `evaluation/generalization_summary.json`; the anchor also owns `evaluation/{challenges,substitution}/` | Completed, but most arms stopped before convergence after one 63-step epoch. The converged 2-bit channel hits its 50% answer ceiling at h2. H1-trained algebra reaches 47.92% at seen h32 versus 18.75% for one-pass, while each off-gold recursive transition remains 81.12% semantically correct on held-out h32. Horn proof reaches 40.63% at h64 versus 15.63% one-pass, a paired +25 points (95% CI +6.25 to +43.75), but the programs average only two state changes. The register result is invalid because transition-only training omitted the decimal-entry prompt used at evaluation. See the technical readout below. |
 
 Explicit-handoff local validation covers deterministic analysis of the completed
-32B and 7B artifacts, predicted-code equivalence, the recursive continuation
-bank, all interface alphabets, the completed five-family stress probes, the
-matched closure/control comparison, and token/data/compute contracts for every
-prepared transfer run. Operation-family, entropy, proof-state, multi-seed, and
-second-model claims remain prepared rather than completed evidence.
+32B and 7B artifacts, predicted-code equivalence, recursive continuation,
+five-family stress, matched closure/control, and the completed three-hour
+selection screen. Multi-seed and second-model claims remain prepared rather
+than completed evidence.
+
+### Three-hour screen technical readout
+
+Every interface condition saw 2,000 semantic train programs. The trainer made
+one producer forward and one consumer forward per program, padded each to 256
+tokens, and supervised only the final state-code or answer token. Producer and
+consumer contexts were disjoint. The matched outcome control used the same
+4,000 forwards, 1,024,000 padded tokens, and 4,000 targets, but asked for the
+answer from the full history. Evaluation used new contexts and exact Python
+state transitions. For example, an algebra producer receives an opaque code
+for state 0 and `add 2`, then targets a code for state 2; the next call receives
+only that code and its next operation. A Horn producer receives a code for a
+four-bit fact ledger plus two rules and targets the updated ledger code.
+
+The runs did not use most of the nominal three-hour budget for training. Each
+condition trained for one epoch, 63 optimizer steps, and 11.7--13.3 minutes;
+evaluation accounts for most of the observed 1--1.5 hour wall time. The
+scheduler set the learning rate to zero at step 63. Loss at steps 1/32/63 was:
+
+| Condition | Total loss, steps 1 / 32 / 63 | Last-step split | Read |
+| --- | --- | --- | --- |
+| Addition rate 4 / 8 | 34.70 / 1.10 / 0.73; 35.84 / 1.17 / 0.71 | rate 4: state 0.008, answer 0.723; rate 8: state 0.703, answer 0.006 | Rate 4 converged to its two-bit answer limit; rate 8 did not finish its producer. |
+| Addition rate 16 / 32 | 32.23 / 2.71 / 1.36; 32.15 / 3.44 / 2.24 | state 1.092 / 1.758 | Both producer losses were still falling. The present rate ordering cannot support a claim that excess capacity hurts. |
+| Algebra interface / outcome | 6.67 / 0.41 / 0.27; 2.08 / 2.09 / 2.09 | interface state 0.267; outcome answer 2.091 | The interface was still improving; one-pass stayed at the eight-way chance loss `ln(8)=2.079`. |
+| Horn interface / outcome | 29.01 / 1.84 / 0.51; 8.63 / 0.75 / 0.22 | interface state 0.177, answer 0.338 | The interface was not done. The outcome control had already saturated near zero before its noisy last batch. |
+| Register interface / outcome | 28.80 / 4.72 / 3.30; 7.74 / 2.30 / 2.63 | interface state 0.701, answer 2.604 | Neither consumer learned the 16-way final table. This sits on top of the entry-prompt flaw below. |
+
+The saved step traces support a stronger diagnosis than final accuracy alone.
+For every recursive call after entry, analysis decodes the supplied and
+predicted codes into their semantic state sets, applies the exact rule to every
+state compatible with the supplied code, and tests equality with the predicted
+set. This scores the local module on the state it actually received, not only
+against a gold path that an earlier error may already have left.
+
+- Algebra trained only on h1 operations. At held-out h32, its final answer is
+  20.83% versus 16.67% one-pass, but conditional semantic transition accuracy
+  is 81.12% over 1,488 recursive calls (context bootstrap 95% CI
+  80.24--82.06%). Seen h32 ends at 47.92% versus 18.75% one-pass
+  (+29.17 points, paired CI +25.00 to +37.50). The local rule transfers in
+  length; ordinary error accumulation and held-out operation order remain the
+  limits.
+- Horn proof h64 ends at 40.63% versus 15.63% one-pass (+25 points, paired CI
+  +6.25 to +43.75). Gold-code continuation is 78.13%. Of 32 cases, 13 are
+  exact, 13 predict a strict superset of the true facts, 2 predict a subset,
+  and 4 emit no valid final code. The 64 rules cause only 2.0 state changes on
+  average (3.2 in the ten causal-conjunction cases). At held-out h32, dormant
+  rules have 99.76% conditional semantic accuracy, while active rules have
+  62.28%. The model mostly preserves a proof ledger, but false additions
+  accumulate and cannot be removed.
+- Addition h128 with the undertrained rate-16 producer reaches 6.25% versus
+  18.75% one-pass. Gold-code continuation is 100%, but state synthesis is 0/16;
+  this result says nothing clean about length because the same producer scores
+  only 29.69% at h2.
+- Cross-adapter rate-16 substitution preserves the source's 12.5% accuracy
+  exactly, and the donor consumer is 100% on gold codes. Since the producer is
+  weak, this confirms a shared declared code dictionary, not yet a useful
+  independently learned module.
+- The register run trained only `opaque code + instruction -> opaque code`,
+  while recursive evaluation starts with
+  `decimal register state + instruction -> opaque code`. It supplied no
+  register-specific encoder examples. The first call is invalid in most cases,
+  and even gold-code continuation is 7.81%, near the 1/16 chance level. Treat
+  this as an experiment-construction failure, not evidence against register
+  state handoff.
+
+The next valid comparison should extend the still-falling rate-8/16/32,
+algebra, and Horn adapters and their matched controls to at least 313 optimizer
+steps, selecting checkpoints by held-out short-horizon validation rather than
+the final step. Register needs a fresh mixed encoder/transition run and a
+trained consumer, not a resume. A stronger proof test must hold surface length
+fixed while varying the number of state-changing deductions; h64 with two
+changes tests memory under distractors, not 64-step proof depth.
 
 ### State-interface execution order
 
@@ -56,12 +127,14 @@ second-model claims remain prepared rather than completed evidence.
 4. The next confirmation must separate finite transition-table fitting from
    algebraic transfer, preserve the entry encoder, and move the interface into
    a reasoning-domain state machine before a second model family.
-5. Run the three-hour screen. It jointly selects the rate threshold, h1-to-h32
-   operation closure, full-ledger proof transfer, two-register program
-   execution, h64/h128 length extrapolation, and cross-adapter substitution.
-6. Confirm only passing cells over 30 contexts and three seeds, then add the
-   second model. The two-context screen selects claims; it does not supply final
-   confidence intervals.
+5. The three-hour screen completed. It found a real Horn h64 gain and stable
+   conditional algebra transitions, but also exposed short training, sparse
+   proof depth, and a broken register entry contract.
+6. Extend the undertrained arms, repair register entry training, and replace
+   sparse h64 proof streams with matched banks that vary active deduction
+   depth. Confirm only the passing cells over 30 contexts and three seeds, then
+   add the second model. The two-to-three-context screen selects claims; it
+   does not supply final confidence intervals.
 
 ## Supporting Manifests
 

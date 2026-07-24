@@ -6,6 +6,7 @@ from src.experiments.depth_relief.state_handoff_programs import (
     build_test_programs,
 )
 from src.experiments.depth_relief.state_interface_generalization import (
+    _conditional_transition_metrics,
     _information_metrics,
     compare_state_interface_generalization,
 )
@@ -216,3 +217,40 @@ def test_information_fraction_uses_the_selected_stratum_entropy() -> None:
     assert metrics["state_entropy_bits"] == 2.0
     assert metrics["state_information_bits"] == 2.0
     assert metrics["state_information_fraction"] == 1.0
+
+
+def test_conditional_transition_metrics_ignore_redundant_code_variant() -> None:
+    case = {
+        "id": "case",
+        "bits": 3,
+        "path_code": 0,
+        "state_path": [0, 1, 2],
+    }
+    metrics = _conditional_transition_metrics(
+        rows=[
+            {
+                "id": "case",
+                "program_context": "context",
+                "block_size": 1,
+                "steps": [
+                    {
+                        "unconstrained_prediction": 2,
+                        "compatible_output_codes": [2],
+                    },
+                    {
+                        "unconstrained_prediction": 5,
+                        "compatible_output_codes": [4],
+                    },
+                ],
+            }
+        ],
+        programs={"case": case},
+        condition="redundant_4bit",
+        interface_config={},
+        seed=1,
+    )
+    assert metrics["conditional_semantic_transition_accuracy"]["mean"] == 1.0
+    assert (
+        metrics["active_conditional_semantic_transition_accuracy"]["mean"]
+        == 1.0
+    )

@@ -25,7 +25,10 @@ from .state_handoff_information import (
     discrete_entropy,
     mutual_information,
 )
-from .state_interface_contract import interface_codebook_size
+from .state_interface_contract import (
+    interface_codebook_size,
+    semantic_states_for_code,
+)
 from .state_interface_evaluation import read_interface_evaluation_cases
 
 
@@ -102,6 +105,73 @@ def _cell_keys(row: dict[str, Any]) -> tuple[tuple[str, str, int], ...]:
     return (base,)
 
 
+def _conditional_transition_metrics(
+    *,
+    rows: list[dict[str, Any]],
+    programs: dict[str, dict[str, Any]],
+    condition: str,
+    interface_config: dict[str, Any],
+    seed: int,
+) -> dict[str, Any]:
+    """Score saved recursive steps against the state they actually received."""
+    values: defaultdict[str, list[bool]] = defaultdict(list)
+    clusters: defaultdict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        case = programs[str(row["id"])]
+        block_size = int(row.get("block_size", 1))
+        for index, step in enumerate(row.get("steps", ())):
+            if index == 0:
+                continue
+            prediction = step.get("unconstrained_prediction")
+            predicted_states = (
+                set()
+                if prediction is None
+                else set(
+                    semantic_states_for_code(
+                        condition=condition,
+                        case=case,
+                        code_index=int(prediction),
+                        interface_config=interface_config,
+                    )
+                )
+            )
+            compatible_states: set[int] = set()
+            for code in step["compatible_output_codes"]:
+                compatible_states.update(
+                    semantic_states_for_code(
+                        condition=condition,
+                        case=case,
+                        code_index=int(code),
+                        interface_config=interface_config,
+                    )
+                )
+            correct = bool(predicted_states) and predicted_states == compatible_states
+            start = index * block_size
+            active = (
+                int(case["state_path"][start])
+                != int(case["state_path"][start + block_size])
+            )
+            for name in ("all", "active" if active else "dormant"):
+                values[name].append(correct)
+                clusters[name].append(str(row["program_context"]))
+
+    return {
+        "conditional_semantic_transition_accuracy": cluster_bootstrap_mean_ci(
+            values["all"], clusters["all"], seed=seed
+        ),
+        "active_conditional_semantic_transition_accuracy": (
+            cluster_bootstrap_mean_ci(
+                values["active"], clusters["active"], seed=seed + 1
+            )
+        ),
+        "dormant_conditional_semantic_transition_accuracy": (
+            cluster_bootstrap_mean_ci(
+                values["dormant"], clusters["dormant"], seed=seed + 2
+            )
+        ),
+    }
+
+
 def compare_state_interface_generalization(run_path: Path) -> dict[str, Any]:
     """Compare matched interface and one-pass controls on every OOD cell."""
     config = load_config(run_path)
@@ -133,6 +203,7 @@ def compare_state_interface_generalization(run_path: Path) -> dict[str, Any]:
         (control_run / COMPUTE_MANIFEST_PATH).read_text()
     )["conditions"]["outcome_only"]
     conditions = tuple(str(value) for value in experiment["conditions"])
+    interface_config = experiment.get("interfaces", {})
     cells: dict[str, dict[str, Any]] = {}
     for condition in conditions:
         interface_rows = read_interface_evaluation_cases(run_path, condition)
@@ -195,6 +266,13 @@ def compare_state_interface_generalization(run_path: Path) -> dict[str, Any]:
                     semantic_values, clusters, seed=81_400 + horizon
                 ),
                 "same_state_quotient_agreement": _quotient_agreement(selected),
+                **_conditional_transition_metrics(
+                    rows=selected,
+                    programs=programs,
+                    condition=condition,
+                    interface_config=interface_config,
+                    seed=81_500 + horizon,
+                ),
                 **_information_metrics(selected, semantic_count),
             }
             cells[
