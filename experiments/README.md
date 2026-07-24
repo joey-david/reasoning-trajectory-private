@@ -179,6 +179,52 @@ run and never regenerates its inference. The local artifact-only analysis is:
   runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
 ```
 
+### Three-hour length-generalization screen
+
+The compact follow-up uses four independent one-GPU workers: `ourasi:0,1`,
+`seacove:3`, and `coktailjet:0`. It does not reserve GPUs or wait for them.
+Start it only after those devices are free:
+
+```bash
+STATE_HANDOFF_3H_DRY_RUN=true \
+bash scripts/remote/state_handoff_three_hour.sh
+
+bash scripts/remote/state_handoff_three_hour.sh
+```
+
+Override the shared hosts without editing the script:
+
+```bash
+STATE_HANDOFF_3H_NODES="ourasi seacove coktailjet" \
+STATE_HANDOFF_3H_DEVICES="0,1 3 0" \
+bash scripts/remote/state_handoff_three_hour.sh
+```
+
+The runner prepares and validates nine run folders, dispatches 12
+training-plus-evaluation tasks, then runs four length challenges and one
+cross-adapter substitution. Stage limits are 110, 35, and 25 minutes. A failed
+stage is recorded under `runs/_three_hour/state_handoff/` and does not stop the
+later stages.
+
+Pull these run folders after completion:
+
+```text
+state_interface_rate_sweep_3h
+state_interface_rate_sweep_outcome_3h
+state_interface_rate_sweep_donor_3h
+state_interface_algebra_primitives_3h
+state_interface_algebra_primitives_outcome_3h
+state_interface_proof_actions_3h
+state_interface_proof_actions_outcome_3h
+state_interface_register_machine_3h
+state_interface_register_machine_outcome_3h
+```
+
+All live under
+`runs/Qwen2.5-7B-Instruct/interventions/`. The screen has two independent test
+contexts per main comparison; use it to choose claims and full runs, not as the
+final three-seed estimate.
+
 The 32B Phase 1 gate passed. At h2, two-call self handoff scores 76.98% versus
 13.44% one-pass Compose, a context-paired +63.54 points with a 95% interval of
 +57.92 to +68.75. Gold and stepwise handoff are 100% at h2 and h4. At h4,
