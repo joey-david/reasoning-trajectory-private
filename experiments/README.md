@@ -220,6 +220,26 @@ state_interface_register_machine_3h
 state_interface_register_machine_outcome_3h
 ```
 
+### Paper confirmation: dense register execution
+
+This run corrects the register entry contract and uses all five available
+workers without reserving them:
+
+```bash
+STATE_HANDOFF_CONFIRM_DRY_RUN=true \
+bash scripts/remote/state_handoff_paper_confirmation.sh
+
+bash scripts/remote/state_handoff_paper_confirmation.sh
+```
+
+Defaults are `ourasi:0,1`, `kaisertrot:1`, and `coktailjet:0,1`. Override them
+with `STATE_HANDOFF_CONFIRM_NODES` and `STATE_HANDOFF_CONFIRM_DEVICES`. The
+runner prepares eight independent run folders, schedules three Qwen seeds and
+one Mistral interface/control pair, retries unfinished tasks once after a
+worker failure, reduces every completed run, and finishes with the small h64
+active-proof-depth challenge. Logs and the append-only status ledger live
+under `runs/_confirmation/state_handoff/`.
+
 All live under
 `runs/Qwen2.5-7B-Instruct/interventions/`. The screen has two independent test
 contexts per main comparison; use it to choose claims and full runs, not as the

@@ -36,6 +36,7 @@ Status meanings:
 | Proof-state transfer | prepared | Does the interface carry a reusable proof frontier under unseen causal two-premise rules? | `state_interface_horn_{proof,outcome}` under `runs/Qwen2.5-7B-Instruct/interventions/` | `scripts/remote/state_handoff.sh interface-proof-transfer-7b` | `evaluation/generalization_summary.json` under the interface run | Four fact bits update under at-most-one-premise h2 training rules. The 9,600-case test has 1,500 held-out cases where a two-premise rule adds a missing fact; this five-state stratum has `H(S)=log2(5)=2.322` bits. FINAL asks all/any/parity fact queries. Prepared only. |
 | Multi-seed and second-model confirmation | prepared | Are operation and proof gains stable across three Qwen seeds and one Mistral family? | Qwen `*_seed{2,3}` folders; `runs/Mistral-7B-Instruct-v0.3/interventions/state_interface_horn_{proof,outcome}` | `interface-{algebra,proof}-confirm-7b`; `interface-proof-second-model-7b` | `evaluation/replication_summary.json` under each Qwen seed-2 anchor; Mistral `evaluation/generalization_summary.json` | The seed aggregate keeps per-seed context-clustered intervals, full seed ranges, and a seed bootstrap. Mistral revision `c170c708c41dac9275d15a8fff4eca08d52bab71` is pinned and token-validated. These runs remain gated on the first-seed results. |
 | Three-hour length-generalization screen | pilot | Does a fixed-rate state channel turn short rules into reusable h32–h128 computation, and is the channel shared across independently trained adapters? | Nine `state_interface_*_3h` folders under `runs/Qwen2.5-7B-Instruct/interventions/`; anchor: `state_interface_rate_sweep_3h` | `scripts/remote/state_handoff_three_hour.sh` | Each interface run owns `evaluation/interfaces/<condition>/{cases.jsonl,summary.json}` and `evaluation/generalization_summary.json`; the anchor also owns `evaluation/{challenges,substitution}/` | Completed, but most arms stopped before convergence after one 63-step epoch. The converged 2-bit channel hits its 50% answer ceiling at h2. H1-trained algebra reaches 47.92% at seen h32 versus 18.75% for one-pass, while each off-gold recursive transition remains 81.12% semantically correct on held-out h32. Horn proof reaches 40.63% at h64 versus 15.63% one-pass, a paired +25 points (95% CI +6.25 to +43.75), but the programs average only two state changes. The register result is invalid because transition-only training omitted the decimal-entry prompt used at evaluation. See the technical readout below. |
+| Dense register confirmation | prepared | Does a minimal four-bit state interface turn one-step two-register instructions into stable h32 program execution across seeds and model families? | Qwen `state_interface_register_confirm_{seed1,seed2,seed3}` plus matched outcomes; Mistral `state_interface_register_confirm{,_outcome}` | `scripts/remote/state_handoff_paper_confirmation.sh` | Per-run `evaluation/generalization_summary.json`; Qwen seed 1 also writes `evaluation/replication_summary.json` and `evaluation/challenges/proof_active_depth_h64/summary.json` | Corrects the failed screen with 75% opaque-transition and 25% decimal-entry producer targets, a separately trained code consumer, five epochs/313 steps, best-validation checkpoint selection, and a canonical 16-code channel of exactly four bits. Each Qwen seed gets disjoint train/validation data and a disjoint 10-context test bank; the aggregate covers 30 test contexts. H2/h32 tests include seen repeated instructions and held-out add/XOR/swap/conditional mixtures; held-out h32 averages about 24 actual state changes. A pinned Mistral run repeats the same contract. An evaluation-only h64 Horn bank crosses fixed surface length with exactly 0–4 causal deductions using the existing fully trained Qwen proof adapters. |
 
 Explicit-handoff local validation covers deterministic analysis of the completed
 32B and 7B artifacts, predicted-code equivalence, recursive continuation,
@@ -114,6 +115,18 @@ the final step. Register needs a fresh mixed encoder/transition run and a
 trained consumer, not a resume. A stronger proof test must hold surface length
 fixed while varying the number of state-changing deductions; h64 with two
 changes tests memory under distractors, not 64-step proof depth.
+
+The dense register confirmation is the focused correction. Existing 625-step,
+30-context rate, mixed-algebra, and Horn runs already supply the converged
+comparisons, so the confirmation does not spend GPU time repeating them. Its
+eight training tasks each use 2,000 semantic programs for five epochs: 10,000
+program presentations, 20,000 fixed-256-token forwards, and 20,000 supervised
+tokens. Three Qwen interface/outcome pairs use distinct data and optimizer
+seeds. One Mistral pair tests the model-family boundary. Based on the measured
+11.7--13.3 minutes per 63-step epoch, training should take roughly 60--70
+minutes per task. Five workers schedule the eight tasks in two waves; the
+640-case per-run recursive evaluations, not training, dominate the remaining
+wall time.
 
 ### State-interface execution order
 
