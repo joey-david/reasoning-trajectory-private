@@ -204,7 +204,8 @@ The runner prepares and validates nine run folders, dispatches 12
 training-plus-evaluation tasks, then runs four length challenges and one
 cross-adapter substitution. Stage limits are 110, 35, and 25 minutes. A failed
 stage is recorded under `runs/_three_hour/state_handoff/` and does not stop the
-later stages.
+later stages. A whole-script 175-minute deadline also includes preparation and
+analysis; override it only with `STATE_HANDOFF_3H_TOTAL_TIMEOUT`.
 
 Pull these run folders after completion:
 
