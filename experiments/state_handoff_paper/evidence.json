@@ -1,0 +1,734 @@
+{
+  "parts": {
+    "1_native_diagnosis": {
+      "h2_accuracy": {
+        "Compose": 13.4375,
+        "Read": 100.0,
+        "Synthesize": 76.97916666666667,
+        "Update": 100.0
+      },
+      "source": "runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history/depth_relief/factorization_summary.json"
+    },
+    "2_explicit_handoff": {
+      "gold_handoff": 1.0,
+      "h2_one_pass": 0.134375,
+      "h2_self_handoff": 0.7697916666666667,
+      "source": "runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history/depth_relief/explicit_handoff/summary.json",
+      "stepwise": 1.0
+    },
+    "3_rate_capacity": {
+      "horizon_accuracy": {
+        "canonical_opaque": {
+          "16": 0.421875,
+          "2": 0.7427083333333333,
+          "4": 0.5864583333333333,
+          "8": 0.421875
+        },
+        "compressed_2bit": {
+          "16": 0.5,
+          "2": 0.5,
+          "4": 0.5,
+          "8": 0.5
+        },
+        "context_bound": {
+          "16": 0.11666666666666667,
+          "2": 0.125,
+          "4": 0.12708333333333333,
+          "8": 0.11875
+        },
+        "redundant_4bit": {
+          "16": 0.5947916666666667,
+          "2": 0.9770833333333333,
+          "4": 0.80625,
+          "8": 0.6385416666666667
+        }
+      },
+      "source": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/evaluation/interfaces/comparison_summary.json"
+    },
+    "4_transition_closure": {
+      "h16_difference": {
+        "ci95": [
+          0.37604166666666666,
+          0.5145833333333333
+        ],
+        "cluster_n": 30,
+        "mean": 0.44583333333333336,
+        "n": 960
+      },
+      "h8_difference": {
+        "ci95": [
+          0.3645833333333333,
+          0.5104166666666666
+        ],
+        "cluster_n": 30,
+        "mean": 0.43854166666666666,
+        "n": 960
+      },
+      "matched_compute": true,
+      "source": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_finetune/evaluation/closure_comparison.json"
+    },
+    "5_distribution_shift": {
+      "closure": {
+        "2": 0.9775,
+        "4": 0.9525,
+        "8": 0.95,
+        "16": 0.9324999999999999
+      },
+      "endpoint": {
+        "2": 1.0,
+        "4": 0.8125,
+        "8": 0.6350000000000001,
+        "16": 0.485
+      },
+      "source": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_closure_stress/evaluation/stress/probe/comparison_summary.json"
+    },
+    "6_register_limit": {
+      "conditional_transition_accuracy": 0.8930883506768897,
+      "final_interface_accuracy": 0.07916666666666668,
+      "gate": {
+        "checks": {
+          "all_individual_gates_pass": false,
+          "disjoint_programs": true,
+          "minimum_seed_accuracy": false,
+          "minimum_seed_improvement": false,
+          "three_or_more_seeds": true
+        },
+        "status": "failed",
+        "thresholds": {
+          "min_accuracy_each_seed": 0.7,
+          "min_improvement_each_seed": 0.1
+        }
+      },
+      "outcome_accuracy": 0.05833333333333333,
+      "source": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_register_confirm_seed1/evaluation/replication_summary.json"
+    },
+    "7_proof_depth": {
+      "Canonical 4-bit": {
+        "by_active_transition_count": {
+          "0": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.0,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            }
+          },
+          "1": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                0.5833333333333334,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.75,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                0.5833333333333334,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.75,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                -0.3333333333333333,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": -0.16666666666666666,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                0.75,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.9166666666666666,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                0.5,
+                0.8333333333333334
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            }
+          },
+          "2": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                0.5,
+                0.8333333333333334
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                0.5,
+                0.8333333333333334
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.0,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                0.5,
+                0.8333333333333334
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.0,
+              "n": 12
+            }
+          },
+          "3": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                0.3333333333333333,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                0.3333333333333333,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                -0.25,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": -0.08333333333333333,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                0.5833333333333334,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.75,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.0,
+              "n": 12
+            }
+          },
+          "4": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                0.16666666666666666,
+                0.5
+              ],
+              "cluster_n": 6,
+              "mean": 0.3333333333333333,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                0.16458333333333344,
+                0.5
+              ],
+              "cluster_n": 6,
+              "mean": 0.3333333333333333,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                -0.5,
+                -0.25
+              ],
+              "cluster_n": 6,
+              "mean": -0.4166666666666667,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                0.5,
+                0.5
+              ],
+              "cluster_n": 6,
+              "mean": 0.5,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                0.5833333333333334,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.75,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.0,
+              "n": 12
+            }
+          }
+        },
+        "overall_interface": {
+          "ci95": [
+            0.5666666666666667,
+            0.8
+          ],
+          "mean": 0.6833333333333333,
+          "n": 60
+        },
+        "overall_outcome": {
+          "ci95": [
+            0.7166666666666667,
+            0.9
+          ],
+          "mean": 0.8166666666666667,
+          "n": 60
+        },
+        "source": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_depth_fullrate/evaluation/challenges/proof_depth_h64_canonical4/summary.json"
+      },
+      "Redundant 5-bit": {
+        "by_active_transition_count": {
+          "0": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.0,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            }
+          },
+          "1": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                0.6666666666666666,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.8333333333333334,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                0.6666666666666666,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.8333333333333334,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                -0.3333333333333333,
+                0.16666666666666666
+              ],
+              "cluster_n": 6,
+              "mean": -0.08333333333333333,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                0.75,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.9166666666666666,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                0.6666666666666666,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.8333333333333334,
+              "n": 12
+            }
+          },
+          "2": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                0.3333333333333333,
+                0.8333333333333334
+              ],
+              "cluster_n": 6,
+              "mean": 0.5833333333333334,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                0.3333333333333333,
+                0.8333333333333334
+              ],
+              "cluster_n": 6,
+              "mean": 0.5833333333333334,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                -0.3333333333333333,
+                0.16666666666666666
+              ],
+              "cluster_n": 6,
+              "mean": -0.08333333333333333,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                0.5,
+                0.8333333333333334
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.0,
+              "n": 12
+            }
+          },
+          "3": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                0.3333333333333333,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                0.3333333333333333,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.6666666666666666,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                -0.25,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": -0.08333333333333333,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                0.6666666666666666,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.8333333333333334,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                0.5833333333333334,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.75,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "cluster_n": 6,
+              "mean": 0.0,
+              "n": 12
+            }
+          },
+          "4": {
+            "case_count": 12,
+            "interface_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "interface_constrained_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "interface_minus_outcome": {
+              "ci95": [
+                0.08333333333333333,
+                0.4166666666666667
+              ],
+              "cluster_n": 6,
+              "mean": 0.25,
+              "n": 12
+            },
+            "interface_valid_output_rate": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            },
+            "outcome_accuracy": {
+              "ci95": [
+                0.5833333333333334,
+                0.9166666666666666
+              ],
+              "cluster_n": 6,
+              "mean": 0.75,
+              "n": 12
+            },
+            "semantic_state_accuracy": {
+              "ci95": [
+                1.0,
+                1.0
+              ],
+              "cluster_n": 6,
+              "mean": 1.0,
+              "n": 12
+            }
+          }
+        },
+        "overall_interface": {
+          "ci95": [
+            0.7166666666666667,
+            0.9
+          ],
+          "mean": 0.8166666666666667,
+          "n": 60
+        },
+        "overall_outcome": {
+          "ci95": [
+            0.7166666666666667,
+            0.9
+          ],
+          "mean": 0.8166666666666667,
+          "n": 60
+        },
+        "source": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_depth_fullrate/evaluation/challenges/proof_depth_h64_redundant5/summary.json"
+      }
+    },
+    "8_redundancy_limit": {
+      "canonical_4bit_three_seed_mean": 0.07916666666666668,
+      "redundant_5bit_completed_seeds": [
+        0.128125,
+        0.121875
+      ],
+      "seed3_status": "training complete; evaluation partial at 510/640; excluded",
+      "sources": [
+        "runs/Qwen2.5-7B-Instruct/interventions/state_interface_register_redundant5_seed1/evaluation/interfaces/redundant_5bit/summary.json",
+        "runs/Qwen2.5-7B-Instruct/interventions/state_interface_register_redundant5_seed2/evaluation/interfaces/redundant_5bit/summary.json"
+      ]
+    }
+  },
+  "schema_version": 1,
+  "status_note": "Only complete summaries enter aggregate metrics. Register redundant-5-bit seed 3 is excluded because evaluation stopped at 510/640."
+}
