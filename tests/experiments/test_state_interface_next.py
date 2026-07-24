@@ -18,6 +18,9 @@ from src.experiments.depth_relief.state_interface_contract import (
 from src.experiments.depth_relief.state_interface_challenge import (
     prepare_interface_challenges,
 )
+from src.experiments.depth_relief.state_interface_substitution import (
+    _balanced_prefix,
+)
 from src.experiments.depth_relief.state_interface_equivalence import (
     _consumer_table,
 )
@@ -405,6 +408,24 @@ state_interface_challenges:
     assert {row["current_state"] for row in rows} == set(range(8))
     assert all(row["history_steps"] == 128 for row in rows)
     assert all(row["state_path"][-1] == row["current_state"] for row in rows)
+
+
+def test_substitution_subset_balances_contexts_and_code_variants() -> None:
+    cases = build_test_programs(
+        horizons=(2, 8),
+        context_count=2,
+        paths_per_state=4,
+        width=3,
+        seed=53,
+    )
+    selected = _balanced_prefix(cases, len(cases) // 2)
+    assert {case["program_context"] for case in selected} == {
+        "test_c000",
+        "test_c001",
+    }
+    assert {case["history_steps"] for case in selected} == {2, 8}
+    assert {case["current_state"] for case in selected} == set(range(8))
+    assert {case["path_code"] for case in selected} == {0, 1}
 
 
 def test_consumer_table_rejects_context_code_disagreement() -> None:

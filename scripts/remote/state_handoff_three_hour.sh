@@ -27,6 +27,16 @@ if ((${#NODES[@]} != ${#DEVICES[@]})); then
   exit 2
 fi
 
+if [[ "${STATE_HANDOFF_3H_DRY_RUN:-false}" == true ]]; then
+  echo "state-interface decisive suite dry run"
+  echo "workers: ${NODES[*]} / ${DEVICES[*]}"
+  echo "training tasks: 12"
+  echo "length-extrapolation tasks: 4"
+  echo "cross-adapter substitution tasks: 1"
+  printf 'run: %s\n' "${RUNS[@]}"
+  exit 0
+fi
+
 mkdir -p "$LOG_ROOT"
 STATUS="$LOG_ROOT/status.jsonl"
 

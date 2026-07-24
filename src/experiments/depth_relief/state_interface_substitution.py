@@ -39,6 +39,23 @@ def _read_rows(run_path: Path, consumer_run: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _balanced_prefix(
+    cases: list[dict[str, Any]], maximum: int
+) -> list[dict[str, Any]]:
+    """Select complete cells across contexts before adding more paths."""
+    ordered = sorted(
+        cases,
+        key=lambda case: (
+            int(case["path_code"]),
+            str(case["program_context"]),
+            int(case["history_steps"]),
+            int(case["current_state"]),
+            str(case.get("composition_split", "seen")),
+        ),
+    )
+    return ordered[:maximum]
+
+
 def evaluate_interface_substitution(
     run_path: Path,
     *,
@@ -71,7 +88,7 @@ def evaluate_interface_substitution(
     )
     cases = read_programs(run_path / TEST_PATH)
     maximum = min(len(cases), int(spec.get("max_cases", len(cases))))
-    selected = cases[:maximum]
+    selected = _balanced_prefix(cases, maximum)
     complete = {str(row["id"]) for row in _read_rows(run_path, consumer_run)}
     pending = [case for case in selected if str(case["id"]) not in complete]
     output = _output_dir(run_path, consumer_run) / "cases.jsonl"
