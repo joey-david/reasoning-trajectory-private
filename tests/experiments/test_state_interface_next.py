@@ -461,7 +461,7 @@ state_interface_challenges:
     interface_condition: compressed_3bit
     outcome_run: runs/outcome
     domain: horn_proof
-    proof_final: action
+    proof_final: query
     bits: 4
     seed: 57
     horizons: [64]
@@ -495,6 +495,13 @@ state_interface_challenges:
     assert {
         row["active_transition_count"] for row in rows
     } == {0, 1, 2, 3, 4}
+    assert all(row["final_rule"]["kind"] == "proof_query" for row in rows)
+    assert all(row["answer_symbols"] == ["0", "1"] for row in rows)
+    assert all(
+        apply_rule(row["final_rule"], row["current_state"], 16)
+        == row["next_state"]
+        for row in rows
+    )
 
 
 def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:

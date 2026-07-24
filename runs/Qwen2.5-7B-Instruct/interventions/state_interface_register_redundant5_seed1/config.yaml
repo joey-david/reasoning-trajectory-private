@@ -1,0 +1,72 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map: {"": 0}
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_handoff_training:
+  phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
+  frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
+  conditions: [redundant_5bit]
+  evaluation_adapter: best
+  dataset:
+    domain: register_machine
+    bits: 4
+    seed: 728101
+    train_examples: 4000
+    validation_examples: 512
+    train_horizons: [1]
+    validation_horizons: [1]
+    test_horizons: [2, 32]
+    test_composition_splits: [seen, heldout]
+    train_program_contexts: 32
+    validation_program_contexts: 8
+    test_program_contexts: 10
+    test_paths_per_state: 1
+  interfaces:
+    independent_module_contexts: true
+    producer_modes:
+      redundant_5bit: mixed
+    producer_transition_fractions:
+      redundant_5bit: 0.75
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  training:
+    seed: 730101
+    max_sequence_length: 256
+    microbatch: 8
+    gradient_accumulation: 8
+    effective_batch: 64
+    optimizer: adamw
+    learning_rate: 0.0001
+    weight_decay: 0
+    warmup_ratio: 0.03
+    epochs: 5
+    evaluation_interval: 63
+    max_gradient_norm: 1.0
+    gradient_checkpointing: true
+  evaluation:
+    max_sequence_length: 1024
+    block_size: 1
+  prompt:
+    mode: chat
+    system: Execute the two-register program exactly and return one token.
+
+state_interface_generalization:
+  outcome_control_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_register_confirm_outcome_seed1
+  primary_condition: redundant_5bit
+  gate:
+    domains: [register_machine]
+    composition_split: heldout
+    history_steps: 32
+    min_accuracy: 0.20
+    min_improvement: 0.10
+    min_state_information_fraction: 0.65
+    min_quotient_agreement: 0.65

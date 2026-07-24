@@ -8,7 +8,11 @@ import random
 from typing import Any
 
 from .benchmark import apply_rule
-from .state_handoff_programs import PROOF_STATE_SYMBOLS, _program_contexts
+from .state_handoff_programs import (
+    PROOF_STATE_SYMBOLS,
+    _program_contexts,
+    _proof_final_rule,
+)
 
 
 def _proof_rules(
@@ -70,6 +74,7 @@ def build_proof_depth_programs(
     width: int,
     seed: int,
     split: str,
+    proof_final: str = "action",
 ) -> list[dict[str, Any]]:
     """Build h-fixed Horn streams with an exact number of causal deductions."""
     if width != 4:
@@ -78,6 +83,8 @@ def build_proof_depth_programs(
         raise ValueError("Active proof depth must lie in [0, 4]")
     if horizon < max(active_depths):
         raise ValueError("Surface horizon cannot be shorter than active proof depth")
+    if proof_final not in {"action", "query"}:
+        raise ValueError("Proof-depth FINAL must be action or query")
     contexts = _program_contexts(
         split=split, count=context_count, width=width, seed=seed
     )
@@ -108,22 +115,29 @@ def build_proof_depth_programs(
                 )
                 if states[-1] != target or active_count != depth:
                     raise AssertionError("Proof-depth construction missed its target")
+                final_rule = (
+                    {
+                        "kind": "proof_action",
+                        "mapping": list(context["final_rule"]["mapping"]),
+                    }
+                    if proof_final == "action"
+                    else _proof_final_rule(
+                        context=context,
+                        width=width,
+                        seed=seed,
+                    )
+                )
                 semantic = {
-                    "family": "horn_proof_to_action",
+                    "family": f"horn_proof_to_{proof_final}",
                     "history_family": "horn_proof",
-                    "final_family": "proof_action",
+                    "final_family": f"proof_{proof_final}",
                     "format": "prose",
                     "bits": width,
                     "initial_state": 0,
                     "history": history,
-                    "final_rule": {
-                        "kind": "proof_action",
-                        "mapping": list(context["final_rule"]["mapping"]),
-                    },
+                    "final_rule": final_rule,
                     "current_state": target,
-                    "next_state": apply_rule(
-                        context["final_rule"], target, 2**width
-                    ),
+                    "next_state": apply_rule(final_rule, target, 2**width),
                     "history_steps": horizon,
                     "state_path": states,
                     "path_code": path,
@@ -139,6 +153,8 @@ def build_proof_depth_programs(
                     "state_representation": "opaque_fact_set",
                     "state_symbols": list(PROOF_STATE_SYMBOLS),
                 }
+                if proof_final == "query":
+                    semantic["answer_symbols"] = ["0", "1"]
                 digest = hashlib.sha256(
                     json.dumps(
                         semantic, sort_keys=True, separators=(",", ":")

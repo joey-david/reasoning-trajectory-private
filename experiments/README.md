@@ -240,6 +240,19 @@ worker failure, reduces every completed run, and finishes with the small h64
 active-proof-depth challenge. Logs and the append-only status ledger live
 under `runs/_confirmation/state_handoff/`.
 
+The targeted rate-reliability continuation takes a flat list of free workers.
+It starts one disjoint Qwen seed per worker, up to three, then uses all listed
+workers for the small full-rate proof-depth comparison:
+
+```bash
+STATE_HANDOFF_POLISH_WORKERS="local:0 local:1" \
+bash scripts/remote/state_handoff_closure_polish.sh
+```
+
+Each register seed trains independently, so two or three free GPUs keep the
+expected wall time near one 60--80 minute task rather than adding seed times.
+Logs and status live under `runs/_confirmation/state_handoff_polish/`.
+
 All live under
 `runs/Qwen2.5-7B-Instruct/interventions/`. The screen has two independent test
 contexts per main comparison; use it to choose claims and full runs, not as the

@@ -1,0 +1,39 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map: {"": 0}
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_interface_challenges:
+  proof_depth_h64_canonical4:
+    interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof
+    interface_condition: canonical_4bit
+    outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome
+    domain: horn_proof
+    proof_final: query
+    bits: 4
+    seed: 731001
+    program_split: proof_depth_h64_fullrate
+    horizons: [64]
+    active_depths: [0, 1, 2, 3, 4]
+    program_contexts: 6
+    paths_per_depth: 2
+    block_size: 2
+  proof_depth_h64_redundant5:
+    interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_proof
+    interface_condition: redundant_5bit
+    outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_horn_outcome
+    domain: horn_proof
+    proof_final: query
+    bits: 4
+    seed: 731001
+    program_split: proof_depth_h64_fullrate
+    horizons: [64]
+    active_depths: [0, 1, 2, 3, 4]
+    program_contexts: 6
+    paths_per_depth: 2
+    block_size: 2

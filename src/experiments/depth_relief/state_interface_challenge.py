@@ -71,7 +71,8 @@ def prepare_interface_challenges(run_path: Path) -> dict[str, Any]:
                 paths_per_depth=int(spec["paths_per_depth"]),
                 width=int(spec["bits"]),
                 seed=int(spec["seed"]),
-                split=f"challenge_{profile}",
+                split=str(spec.get("program_split", f"challenge_{profile}")),
+                proof_final=str(spec.get("proof_final", "action")),
             )
         else:
             cases = build_test_programs(
