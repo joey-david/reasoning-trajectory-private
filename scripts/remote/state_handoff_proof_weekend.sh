@@ -5,8 +5,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 PYTHON="${PYTHON:-.venv/bin/python}"
-NODES="${STATE_HANDOFF_PROOF_NODES:-ourasi}"
-DEVICES="${STATE_HANDOFF_PROOF_DEVICES:-0,1}"
+NODE_LIST="${STATE_HANDOFF_PROOF_NODES:-ourasi}"
+DEVICE_LIST="${STATE_HANDOFF_PROOF_DEVICES:-0,1}"
+IFS=', ' read -r -a NODES <<< "$NODE_LIST"
+IFS=', ' read -r -a DEVICES <<< "$DEVICE_LIST"
 ANCHOR="runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_weekend_confirmation"
 SESSION="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 LOG_ROOT="runs/_confirmation/state_handoff_proof_weekend/$SESSION"
@@ -75,14 +77,14 @@ train_run() {
   local run=$1
   "$PYTHON" scripts/orchestrate.py \
     --job state_handoff_training \
-    --nodes "$NODES" \
-    --devices "$DEVICES" \
+    --nodes "${NODES[@]}" \
+    --devices "${DEVICES[@]}" \
     --run "$run"
 }
 
 echo "proof-state weekend confirmation"
-echo "nodes: $NODES"
-echo "devices: $DEVICES"
+echo "nodes: ${NODES[*]}"
+echo "devices: ${DEVICES[*]}"
 echo "logs: $LOG_ROOT"
 echo "order: Qwen 7B seeds, Mistral 7B, Qwen 3B, Qwen 14B"
 
@@ -105,8 +107,8 @@ run_logged \
   evaluate-balanced-challenges \
   "$PYTHON" scripts/orchestrate.py \
   --job state_interface_challenge \
-  --nodes "$NODES" \
-  --devices "$DEVICES" \
+  --nodes "${NODES[@]}" \
+  --devices "${DEVICES[@]}" \
   --run "$ANCHOR" || true
 
 run_logged \
