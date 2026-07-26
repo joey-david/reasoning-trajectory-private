@@ -496,12 +496,13 @@ bank, and asks the same code both entailment questions and which rule can add a
 new fact. The 3/4/5-bit four-fact sweep and 4/5-bit five-fact sweep bracket the
 state entropy.
 
-The restart-safe runner uses only `coktailjet:1`, the A6000 at `seacove:3`, and
-`upnquick:0`. Its shared queue lets the faster A100 take more serial tasks:
+The restart-safe runner uses `coktailjet:1` and `upnquick:0`. `seacove:3` is
+excluded because its older NVIDIA driver cannot load the shared PyTorch build.
+The shared queue lets the faster A100 take more serial tasks:
 
 ```bash
-STATE_HANDOFF_CLOSED_NODES=coktailjet,seacove,upnquick \
-STATE_HANDOFF_CLOSED_DEVICES='1;3;0' \
+STATE_HANDOFF_CLOSED_NODES=coktailjet,upnquick \
+STATE_HANDOFF_CLOSED_DEVICES='1;0' \
   bash scripts/remote/state_handoff_closed_proof.sh
 ```
 

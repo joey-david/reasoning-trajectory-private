@@ -5,8 +5,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 PYTHON="${PYTHON:-.venv/bin/python}"
-NODE_LIST="${STATE_HANDOFF_CLOSED_NODES:-coktailjet,seacove,upnquick}"
-DEVICE_LIST="${STATE_HANDOFF_CLOSED_DEVICES:-1;3;0}"
+NODE_LIST="${STATE_HANDOFF_CLOSED_NODES:-coktailjet,upnquick}"
+DEVICE_LIST="${STATE_HANDOFF_CLOSED_DEVICES:-1;0}"
 IFS=', ' read -r -a NODES <<< "$NODE_LIST"
 IFS=';' read -r -a DEVICES <<< "$DEVICE_LIST"
 
@@ -78,6 +78,8 @@ run_phase() {
 prepare_run() {
   local run=$1
   "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+    check-gate "$run" &&
+    "$PYTHON" scripts/experiments/run_state_handoff_training.py \
     prepare-data "$run" &&
     "$PYTHON" scripts/experiments/run_state_handoff_training.py \
       validate-data "$run"

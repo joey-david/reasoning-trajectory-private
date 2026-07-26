@@ -9,6 +9,8 @@ model:
   trust_remote_code: false
 
 state_handoff_training:
+  phase1_source_run: runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history
+  frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
   linked_runs:
     - runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_width5_outcome
   conditions: [rate_16, rate_32]

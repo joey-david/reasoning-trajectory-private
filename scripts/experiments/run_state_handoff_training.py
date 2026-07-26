@@ -28,6 +28,7 @@ from src.experiments.depth_relief.state_handoff_information import (
     analyze_state_handoff_information,
 )
 from src.experiments.depth_relief.state_handoff_training import (
+    require_phase1_training_gate,
     state_handoff_training_status,
     train_state_handoff_condition,
 )
@@ -76,6 +77,7 @@ def main() -> int:
         "command",
         choices=(
             "prepare-data",
+            "check-gate",
             "validate-data",
             "train",
             "evaluate",
@@ -116,6 +118,9 @@ def main() -> int:
         parser.error(f"{args.command} requires --condition")
     if args.command == "prepare-data":
         result = prepare_state_handoff_datasets(args.run_path)
+    elif args.command == "check-gate":
+        require_phase1_training_gate(args.run_path)
+        result = {"run_path": str(args.run_path), "training_gate": "passed"}
     elif args.command == "validate-data":
         result = validate_state_handoff_training_data(args.run_path)
     elif args.command == "train":
