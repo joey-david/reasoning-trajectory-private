@@ -62,6 +62,9 @@ from src.experiments.depth_relief.state_interface_challenge import (
 from src.experiments.depth_relief.state_interface_proof_confirmation import (
     compare_proof_confirmation,
 )
+from src.experiments.depth_relief.state_interface_closed_proof import (
+    compare_closed_proof_confirmation,
+)
 from src.experiments.depth_relief.state_interface_substitution import (
     evaluate_interface_substitution,
 )
@@ -98,6 +101,7 @@ def main() -> int:
             "prepare-challenges",
             "evaluate-challenge",
             "compare-proof-confirmation",
+            "compare-closed-proof",
             "evaluate-substitution",
         ),
     )
@@ -197,6 +201,8 @@ def main() -> int:
         result = evaluate_interface_challenge(args.run_path, args.profile, args.side)
     elif args.command == "compare-proof-confirmation":
         result = compare_proof_confirmation(args.run_path)
+    elif args.command == "compare-closed-proof":
+        result = compare_closed_proof_confirmation(args.run_path)
     elif args.command == "evaluate-substitution":
         result = evaluate_interface_substitution(args.run_path)
     else:

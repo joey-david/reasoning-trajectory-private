@@ -11,9 +11,9 @@ from .benchmark import apply_rule
 from .state_handoff_programs import (
     _program_contexts,
     _proof_final_rule,
-    _proof_next_rule,
     _proof_state_symbols,
 )
+from .state_handoff_proof_programs import proof_next_rule
 
 
 def _proof_rules(
@@ -218,7 +218,7 @@ def build_proof_depth_programs(
                         )
                         final_answer_symbols = ["0", "1"]
                     else:
-                        final_rule = _proof_next_rule(
+                        final_rule = proof_next_rule(
                             state=target,
                             width=width,
                             seed=seed

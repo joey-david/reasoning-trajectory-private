@@ -1,0 +1,58 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map: {"": 0}
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_handoff_training:
+  linked_runs:
+    - runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_width5_outcome
+  conditions: [rate_16, rate_32]
+  evaluation_adapter: final
+  dataset:
+    domain: horn_proof
+    proof_training_contract: closed_one_rule
+    proof_consumers: [query, next_rule]
+    bits: 5
+    seed: 726105
+    train_examples: 20000
+    validation_examples: 2000
+    test_horizons: [1, 2, 4, 8]
+    test_composition_splits: [heldout]
+    train_program_contexts: 64
+    validation_program_contexts: 16
+    test_program_contexts: 8
+    test_paths_per_state: 1
+  interfaces:
+    independent_module_contexts: true
+    rate_16: {codebook_size: 16}
+    rate_32: {codebook_size: 32}
+    producer_modes: {rate_16: mixed, rate_32: mixed}
+    producer_transition_fractions: {rate_16: 0.8, rate_32: 0.8}
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  training:
+    seed: 726205
+    max_sequence_length: 512
+    microbatch: 4
+    gradient_accumulation: 16
+    effective_batch: 64
+    optimizer: adamw
+    learning_rate: 0.0001
+    weight_decay: 0
+    warmup_ratio: 0.03
+    epochs: 2
+    evaluation_interval: 250
+    max_gradient_norm: 1.0
+    gradient_checkpointing: true
+  evaluation: {max_sequence_length: 1024}
+  prompt:
+    mode: chat
+    system: Update the proof state or answer the proof question exactly. Return one token.

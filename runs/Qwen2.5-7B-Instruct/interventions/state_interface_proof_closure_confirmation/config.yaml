@@ -1,0 +1,136 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map: {"": 0}
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_interface_challenge_matrix:
+  templates:
+    balanced_depth:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [32]
+      active_depths: [1, 2, 3]
+      endpoint_cardinality: 3
+      proof_topologies: [mixed]
+      balanced_queries: true
+      program_contexts: 20
+      paths_per_depth: 2
+      block_size: 1
+    length:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [16, 64, 128, 256]
+      active_depths: [1, 2, 3]
+      endpoint_cardinality: 3
+      proof_topologies: [mixed]
+      balanced_queries: true
+      program_contexts: 4
+      paths_per_depth: 1
+      block_size: 1
+    topology:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [32]
+      active_depths: [2, 3]
+      endpoint_cardinality: 3
+      proof_topologies: [independent, chain, conjunction]
+      balanced_queries: true
+      program_contexts: 8
+      paths_per_depth: 1
+      block_size: 1
+    rule_selection:
+      domain: horn_proof
+      proof_final: next_rule
+      bits: 4
+      horizons: [32]
+      active_depths: [1, 2, 3]
+      endpoint_cardinality: 3
+      proof_topologies: [mixed, chain, conjunction]
+      program_contexts: 8
+      paths_per_depth: 2
+      block_size: 1
+    width5_depth:
+      domain: horn_proof
+      proof_final: query
+      bits: 5
+      horizons: [32]
+      active_depths: [1, 2, 3, 4]
+      endpoint_cardinality: 4
+      proof_topologies: [mixed]
+      balanced_queries: true
+      program_contexts: 15
+      paths_per_depth: 2
+      block_size: 1
+    width5_length:
+      domain: horn_proof
+      proof_final: query
+      bits: 5
+      horizons: [16, 64, 128, 256]
+      active_depths: [1, 2, 3, 4]
+      endpoint_cardinality: 4
+      proof_topologies: [mixed]
+      balanced_queries: true
+      program_contexts: 5
+      paths_per_depth: 2
+      block_size: 1
+    width5_rule_selection:
+      domain: horn_proof
+      proof_final: next_rule
+      bits: 5
+      horizons: [32]
+      active_depths: [1, 2, 3, 4]
+      endpoint_cardinality: 4
+      proof_topologies: [chain, conjunction]
+      program_contexts: 5
+      paths_per_depth: 2
+      block_size: 1
+  sources:
+    - name: closure_seed1
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed1
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_outcome_seed1
+      challenge_seed: 734101
+      conditions:
+        - {name: compressed_3bit, templates: [balanced_depth, length]}
+        - {name: canonical_4bit, templates: [balanced_depth, length, topology, rule_selection]}
+        - {name: redundant_5bit, templates: [balanced_depth, length, topology, rule_selection]}
+    - name: closure_seed2
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed2
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_outcome_seed2
+      challenge_seed: 734201
+      conditions:
+        - {name: redundant_5bit, templates: [balanced_depth, length, topology, rule_selection]}
+    - name: closure_seed3
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed3
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_outcome_seed3
+      challenge_seed: 734301
+      conditions:
+        - {name: redundant_5bit, templates: [balanced_depth, length, topology, rule_selection]}
+    - name: closure_width5
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_width5
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_width5_outcome
+      challenge_seed: 734501
+      conditions:
+        - {name: rate_16, templates: [width5_depth, width5_length]}
+        - {name: rate_32, templates: [width5_depth, width5_length, width5_rule_selection]}
+
+state_interface_closed_proof_confirmation:
+  primary_sources: [closure_seed1, closure_seed2, closure_seed3]
+  width5_source: closure_width5
+  gates:
+    min_redundant_depth3_semantic_accuracy_each_seed: 0.80
+    min_redundant_rule_selection_accuracy_each_seed: 0.75
+    min_redundant_h256_semantic_accuracy_each_seed: 0.75
+    min_mean_redundant_h256_minus_outcome: 0.10
+    max_mean_h16_minus_h256_drop: 0.10
+    max_false_positive_fact_rate: 0.001
+    max_all_facts_rate_excess: 0.05
+    min_width5_depth4_semantic_accuracy: 0.70
+    min_width5_rate32_minus_rate16_depth4: 0.10

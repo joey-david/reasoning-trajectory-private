@@ -486,6 +486,32 @@ boundaries, prompt lengths, matched compute, deterministic comparison, LoRA
 save/reload, and resume. It does not validate A100 training speed, FlashAttention,
 or any unrun model result.
 
+### Closed proof-state confirmation
+
+The follow-up trains only one-rule Horn updates, with equal mass on blocked
+unary rules, blocked conjunctions, idempotent rules, and active unconditional,
+unary, and conjunction rules. It tests recursive use through 256 rules, holds
+the endpoint distribution fixed across proof depths, adds a five-fact depth-four
+bank, and asks the same code both entailment questions and which rule can add a
+new fact. The 3/4/5-bit four-fact sweep and 4/5-bit five-fact sweep bracket the
+state entropy.
+
+The restart-safe runner uses only `coktailjet:1`, the A6000 at `seacove:3`, and
+`upnquick:0`. Its shared queue lets the faster A100 take more serial tasks:
+
+```bash
+STATE_HANDOFF_CLOSED_NODES=coktailjet,seacove,upnquick \
+STATE_HANDOFF_CLOSED_DEVICES='1;3;0' \
+  bash scripts/remote/state_handoff_closed_proof.sh
+```
+
+It owns 11 training arms and 23 challenge profiles. The final reducer writes
+`evaluation/closed_proof_confirmation_summary.json` and
+`evaluation/closed_proof_confirmation.png` under
+`state_interface_proof_closure_confirmation`. The default remote pull should
+include the nine `state_interface_proof_closure_*` folders; adapter weights are
+not needed for the result analysis.
+
 ## Causal depth relief
 
 The controlled benchmark represents an intermediate state as a fixed-length set

@@ -25,11 +25,8 @@ from .state_interface_contract import (
     INTERFACE_CONDITIONS,
     is_interface_condition,
 )
-from .state_handoff_programs import (
-    _balanced_programs,
-    build_closed_horn_programs,
-    build_test_programs,
-)
+from .state_handoff_programs import _balanced_programs, build_test_programs
+from .state_handoff_proof_programs import build_closed_horn_programs
 
 
 TRAIN_PATH = Path("training/data/train_programs.jsonl")
