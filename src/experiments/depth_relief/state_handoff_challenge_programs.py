@@ -9,15 +9,18 @@ from typing import Any
 
 from .benchmark import apply_rule
 from .state_handoff_programs import (
-    PROOF_STATE_SYMBOLS,
     _program_contexts,
     _proof_final_rule,
+    _proof_state_symbols,
 )
 
 
 def _proof_rules(
     *,
     bits: tuple[int, ...],
+    initial_bits: tuple[int, ...] = (),
+    target_bits: tuple[int, ...] | None = None,
+    width: int = 4,
     horizon: int,
     path: int,
     seed: int,
@@ -36,8 +39,9 @@ def _proof_rules(
     )
     active_by_position = dict(zip(active_positions, bits))
     rules = []
-    established: list[int] = []
-    absent = [bit for bit in range(4) if bit not in bits]
+    established = list(initial_bits)
+    target_bits = bits if target_bits is None else target_bits
+    absent = [bit for bit in range(width) if bit not in target_bits]
     for position in range(horizon):
         if position in active_by_position:
             conclusion = active_by_position[position]
@@ -110,14 +114,21 @@ def build_proof_depth_programs(
     proof_final: str = "action",
     proof_topologies: tuple[str, ...] = ("mixed",),
     balanced_queries: bool = False,
+    endpoint_cardinality: int | None = None,
 ) -> list[dict[str, Any]]:
     """Build h-fixed Horn streams with an exact number of causal deductions."""
-    if width != 4:
-        raise ValueError("Proof-depth challenges currently require four fact bits")
+    if width not in (4, 5):
+        raise ValueError("Proof-depth challenges require four or five fact bits")
     if not active_depths or any(not 0 <= depth <= width for depth in active_depths):
-        raise ValueError("Active proof depth must lie in [0, 4]")
+        raise ValueError(f"Active proof depth must lie in [0, {width}]")
     if horizon < max(active_depths):
         raise ValueError("Surface horizon cannot be shorter than active proof depth")
+    if endpoint_cardinality is not None and (
+        not max(active_depths) <= endpoint_cardinality <= width
+    ):
+        raise ValueError(
+            "Endpoint cardinality must cover every depth and fit the state width"
+        )
     if proof_final not in {"action", "query"}:
         raise ValueError("Proof-depth FINAL must be action or query")
     if balanced_queries and (proof_final != "query" or 0 in active_depths):
@@ -130,19 +141,46 @@ def build_proof_depth_programs(
     rows = []
     for context in contexts:
         for depth in active_depths:
-            masks = [mask for mask in range(2**width) if mask.bit_count() == depth]
+            cardinality = depth if endpoint_cardinality is None else endpoint_cardinality
+            masks = [
+                mask for mask in range(2**width) if mask.bit_count() == cardinality
+            ]
             for topology in proof_topologies:
                 for path in range(paths_per_depth):
                     target = masks[(int(context["index"]) + path) % len(masks)]
-                    bits = tuple(bit for bit in range(width) if target & (1 << bit))
+                    target_bits = tuple(
+                        bit for bit in range(width) if target & (1 << bit)
+                    )
+                    active_offset = (
+                        (
+                            seed
+                            + int(context["index"])
+                            + path
+                            + 17 * depth
+                        )
+                        % len(target_bits)
+                        if target_bits
+                        else 0
+                    )
+                    ordered = (
+                        target_bits[active_offset:] + target_bits[:active_offset]
+                    )
+                    bits = tuple(ordered[:depth])
+                    initial_bits = tuple(
+                        bit for bit in target_bits if bit not in bits
+                    )
+                    initial = sum(1 << bit for bit in initial_bits)
                     history = _proof_rules(
                         bits=bits,
+                        initial_bits=initial_bits,
+                        target_bits=target_bits,
+                        width=width,
                         horizon=horizon,
                         path=path,
                         seed=seed + int(context["index"]),
                         topology=topology,
                     )
-                    states = [0]
+                    states = [initial]
                     for rule in history:
                         states.append(apply_rule(rule, states[-1], 2**width))
                     active_count = sum(
@@ -183,7 +221,7 @@ def build_proof_depth_programs(
                         "final_family": f"proof_{proof_final}",
                         "format": "prose",
                         "bits": width,
-                        "initial_state": 0,
+                        "initial_state": initial,
                         "history": history,
                         "final_rule": final_rule,
                         "current_state": target,
@@ -197,12 +235,17 @@ def build_proof_depth_programs(
                         "abstraction_split": split,
                         "domain": "horn_proof",
                         "composition_split": "heldout",
-                        "proof_template": "controlled_active_depth",
+                        "proof_template": (
+                            "endpoint_balanced_active_depth"
+                            if endpoint_cardinality is not None
+                            else "controlled_active_depth"
+                        ),
                         "proof_topology": topology,
+                        "endpoint_cardinality": cardinality,
                         "proof_composition_active": depth >= 3,
                         "active_transition_count": active_count,
                         "state_representation": "opaque_fact_set",
-                        "state_symbols": list(PROOF_STATE_SYMBOLS),
+                        "state_symbols": list(_proof_state_symbols(width)),
                     }
                     if proof_final == "query":
                         semantic["answer_symbols"] = ["0", "1"]

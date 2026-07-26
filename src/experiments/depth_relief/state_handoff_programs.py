@@ -25,6 +25,15 @@ PROGRAM_DOMAINS = (
     "reasoning_mixture",
 )
 PROOF_STATE_SYMBOLS = tuple("абвгдежзийклмноп")
+PROOF_STATE_SYMBOLS_5BIT = tuple("абвгдежзийклмнопрстуфхцчшщъыьэюя")
+CLOSED_HORN_TRANSITION_CLASSES = (
+    "blocked_unary",
+    "blocked_conjunction",
+    "idempotent",
+    "active_unconditional",
+    "active_unary",
+    "active_conjunction",
+)
 
 
 def _rng(seed: int, *parts: Any) -> random.Random:
@@ -158,6 +167,160 @@ def _horn_history(
     if state != target:
         raise AssertionError("Constructed Horn proof missed its requested fact set")
     return initial, history
+
+
+def _proof_state_symbols(width: int) -> tuple[str, ...]:
+    if width == 4:
+        return PROOF_STATE_SYMBOLS
+    if width == 5:
+        return PROOF_STATE_SYMBOLS_5BIT
+    raise ValueError("Opaque proof-state labels support four or five fact bits")
+
+
+def _closed_horn_initial_states(
+    transition_class: str, width: int
+) -> tuple[int, ...]:
+    modulus = 2**width
+    states = []
+    for state in range(modulus):
+        present = state.bit_count()
+        absent = width - present
+        feasible = {
+            "blocked_unary": absent >= 1,
+            "blocked_conjunction": absent >= 1 and width >= 2,
+            "idempotent": present >= 1,
+            "active_unconditional": absent >= 1,
+            "active_unary": present >= 1 and absent >= 1,
+            "active_conjunction": present >= 2 and absent >= 1,
+        }[transition_class]
+        if feasible:
+            states.append(state)
+    return tuple(states)
+
+
+def _closed_horn_rule(
+    *,
+    initial: int,
+    transition_class: str,
+    width: int,
+    rng: random.Random,
+) -> dict[str, Any]:
+    present = [bit for bit in range(width) if initial & (1 << bit)]
+    absent = [bit for bit in range(width) if not initial & (1 << bit)]
+    if transition_class == "blocked_unary":
+        blocked = rng.choice(absent)
+        premises = [blocked]
+        conclusion = rng.randrange(width)
+    elif transition_class == "blocked_conjunction":
+        blocked = rng.choice(absent)
+        other = rng.choice([bit for bit in range(width) if bit != blocked])
+        premises = sorted((blocked, other))
+        conclusion = rng.randrange(width)
+    elif transition_class == "idempotent":
+        conclusion = rng.choice(present)
+        premises = sorted(rng.sample(present, k=min(2, len(present))))
+    elif transition_class == "active_unconditional":
+        premises = []
+        conclusion = rng.choice(absent)
+    elif transition_class == "active_unary":
+        premises = [rng.choice(present)]
+        conclusion = rng.choice(absent)
+    elif transition_class == "active_conjunction":
+        premises = sorted(rng.sample(present, k=2))
+        conclusion = rng.choice(absent)
+    else:
+        raise ValueError(f"Unknown closed Horn transition class: {transition_class}")
+    return {"kind": "horn", "premises": premises, "conclusion": conclusion}
+
+
+def build_closed_horn_programs(
+    *,
+    split: str,
+    semantic_count: int,
+    context_count: int,
+    width: int,
+    seed: int,
+    dataset: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Cover the one-rule Horn transition relation, including every identity."""
+    if width not in (4, 5):
+        raise ValueError("Closed Horn transitions require four or five fact bits")
+    contexts = _program_contexts(
+        split=split, count=context_count, width=width, seed=seed
+    )
+    cells = [
+        (context, transition_class, initial)
+        for context in contexts
+        for transition_class in CLOSED_HORN_TRANSITION_CLASSES
+        for initial in _closed_horn_initial_states(transition_class, width)
+    ]
+    if semantic_count < len(CLOSED_HORN_TRANSITION_CLASSES) * context_count:
+        raise ValueError(
+            f"{split} is too small to cover every context-transition class"
+        )
+    rows = []
+    modulus = 2**width
+    symbols = list(_proof_state_symbols(width))
+    for index in range(semantic_count):
+        context, transition_class, initial = cells[index % len(cells)]
+        path_code = index // len(cells)
+        rng = _rng(
+            seed,
+            "closed_horn",
+            split,
+            context["id"],
+            transition_class,
+            initial,
+            path_code,
+        )
+        rule = _closed_horn_rule(
+            initial=initial,
+            transition_class=transition_class,
+            width=width,
+            rng=rng,
+        )
+        current = apply_rule(rule, initial, modulus)
+        changed = current != initial
+        if changed != transition_class.startswith("active_"):
+            raise AssertionError("Closed Horn transition class changed incorrectly")
+        final_rule = _proof_final_rule(context=context, width=width, seed=seed)
+        semantic = {
+            "family": "horn_proof_to_query",
+            "history_family": "horn_proof",
+            "final_family": "proof_query",
+            "format": "prose",
+            "bits": width,
+            "initial_state": initial,
+            "history": [rule],
+            "final_rule": final_rule,
+            "current_state": current,
+            "next_state": apply_rule(final_rule, current, modulus),
+            "history_steps": 1,
+            "state_path": [initial, current],
+            "path_code": path_code,
+            "program_context": str(context["id"]),
+            "program_context_split": split,
+            "abstraction_group": str(context["id"]),
+            "abstraction_split": split,
+            "domain": "horn_proof",
+            "composition_split": "seen",
+            "proof_template": "closed_one_rule_transition",
+            "proof_transition_class": transition_class,
+            "proof_composition_active": transition_class == "active_conjunction",
+            "active_transition_count": int(changed),
+            "answer_symbols": ["0", "1"],
+            "state_representation": "opaque_fact_set",
+            "state_symbols": symbols,
+        }
+        digest = hashlib.sha256(
+            json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()[:12]
+        semantic["id"] = (
+            f"handoff_{split}_{context['id']}_closed_{transition_class}_"
+            f"s{initial}_p{path_code}_{digest}"
+        )
+        rows.append(semantic)
+    return rows
 
 
 def _resolved_domain(dataset: dict[str, Any], context_index: int) -> str:
@@ -334,10 +497,10 @@ def _program_case(
         "abstraction_split": split,
         **extra,
     }
-    if domain == "horn_proof" and width == 4:
+    if domain == "horn_proof" and width in (4, 5):
         semantic.update(
             state_representation="opaque_fact_set",
-            state_symbols=list(PROOF_STATE_SYMBOLS),
+            state_symbols=list(_proof_state_symbols(width)),
         )
     elif width == 4:
         configured_symbols = dataset.get("state_symbols")

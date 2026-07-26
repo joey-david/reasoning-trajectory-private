@@ -4,7 +4,12 @@ import json
 
 import pytest
 
-from src.experiments.depth_relief.state_handoff_data import build_test_programs
+from src.experiments.depth_relief.state_handoff_data import (
+    TRAIN_PATH,
+    build_test_programs,
+    prepare_state_handoff_datasets,
+    read_programs,
+)
 from src.experiments.depth_relief.benchmark import answer_symbols, apply_rule
 from src.experiments.depth_relief.state_handoff_training import _base_and_adapter
 from src.experiments.depth_relief.state_interface_data import (
@@ -490,6 +495,142 @@ state_interface_challenges:
         apply_rule(row["final_rule"], row["current_state"], 16) == row["next_state"]
         for row in rows
     )
+
+
+def test_closed_horn_training_covers_active_and_identity_updates(tmp_path) -> None:
+    run_path = tmp_path / "closed"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_handoff_training:
+  dataset:
+    domain: horn_proof
+    proof_training_contract: closed_one_rule
+    bits: 4
+    seed: 58
+    train_examples: 768
+    validation_examples: 384
+    test_horizons: [2]
+    train_program_contexts: 4
+    validation_program_contexts: 2
+    test_program_contexts: 2
+    test_paths_per_state: 1
+""".strip()
+        + "\n"
+    )
+    first = prepare_state_handoff_datasets(run_path)
+    second = prepare_state_handoff_datasets(run_path)
+    rows = read_programs(run_path / TRAIN_PATH)
+    assert first == second
+    assert first["splits"]["train"]["proof_transition_class_counts"].keys() == {
+        "active_conjunction",
+        "active_unary",
+        "active_unconditional",
+        "blocked_conjunction",
+        "blocked_unary",
+        "idempotent",
+    }
+    assert all(row["history_steps"] == 1 for row in rows)
+    assert all(len(row["history"]) == 1 for row in rows)
+    for row in rows:
+        changed = row["initial_state"] != row["current_state"]
+        assert changed == row["proof_transition_class"].startswith("active_")
+        assert (
+            apply_rule(row["history"][0], row["initial_state"], 16)
+            == row["current_state"]
+        )
+
+
+def test_endpoint_balanced_depth_keeps_targets_fixed_across_depth(tmp_path) -> None:
+    run_path = tmp_path / "balanced-depth"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_interface_challenges:
+  proof_depth:
+    interface_run: runs/interface
+    interface_condition: redundant_5bit
+    outcome_run: runs/outcome
+    domain: horn_proof
+    proof_final: query
+    bits: 4
+    seed: 60
+    horizons: [32]
+    active_depths: [1, 2, 3]
+    endpoint_cardinality: 3
+    balanced_queries: true
+    program_contexts: 4
+    paths_per_depth: 2
+    block_size: 1
+""".strip()
+        + "\n"
+    )
+    manifest = prepare_interface_challenges(run_path)
+    rows = [
+        json.loads(line)
+        for line in (
+            run_path / "evaluation/challenges/proof_depth/programs.jsonl"
+        )
+        .read_text()
+        .splitlines()
+    ]
+    assert manifest["profiles"]["proof_depth"]["endpoint_cardinalities"] == [3]
+    assert {row["current_state"] for row in rows} == {7, 11, 13, 14}
+    assert all(row["current_state"].bit_count() == 3 for row in rows)
+    assert all(
+        row["initial_state"].bit_count()
+        == 3 - row["active_transition_count"]
+        for row in rows
+    )
+    for context in {row["program_context"] for row in rows}:
+        for path in {row["path_code"] for row in rows}:
+            selected = [
+                row
+                for row in rows
+                if row["program_context"] == context and row["path_code"] == path
+            ]
+            assert len({row["current_state"] for row in selected}) == 1
+
+
+def test_five_fact_depth_four_has_multiple_matched_endpoints(tmp_path) -> None:
+    run_path = tmp_path / "five-fact"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_interface_challenges:
+  proof_depth:
+    interface_run: runs/interface
+    interface_condition: rate_32
+    outcome_run: runs/outcome
+    domain: horn_proof
+    proof_final: query
+    bits: 5
+    seed: 62
+    horizons: [32]
+    active_depths: [1, 2, 3, 4]
+    endpoint_cardinality: 4
+    balanced_queries: true
+    program_contexts: 5
+    paths_per_depth: 1
+    block_size: 1
+""".strip()
+        + "\n"
+    )
+    prepare_interface_challenges(run_path)
+    rows = [
+        json.loads(line)
+        for line in (
+            run_path / "evaluation/challenges/proof_depth/programs.jsonl"
+        )
+        .read_text()
+        .splitlines()
+    ]
+    assert {row["current_state"] for row in rows} == {15, 23, 27, 29, 30}
+    depth_four = [
+        row for row in rows if row["active_transition_count"] == 4
+    ]
+    assert len({row["current_state"] for row in depth_four}) == 5
+    assert all(len(row["state_symbols"]) == 32 for row in rows)
 
 
 def test_balanced_proof_queries_hold_answer_rate_fixed_by_depth(tmp_path) -> None:

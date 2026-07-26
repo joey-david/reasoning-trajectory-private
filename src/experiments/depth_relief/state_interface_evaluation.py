@@ -103,6 +103,24 @@ def _advance_states(
     return tuple(sorted(set(result)))
 
 
+def _horn_transition_class(
+    rule: dict[str, Any], before: int, after: int
+) -> str | None:
+    if rule.get("kind") != "horn":
+        return None
+    premises = tuple(int(bit) for bit in rule.get("premises", ()))
+    if after != before:
+        return {
+            0: "active_unconditional",
+            1: "active_unary",
+        }.get(len(premises), "active_conjunction")
+    conclusion = int(rule["conclusion"])
+    supported = all(before & (1 << bit) for bit in premises)
+    if supported and before & (1 << conclusion):
+        return "idempotent"
+    return "blocked_conjunction" if len(premises) >= 2 else "blocked_unary"
+
+
 def evaluate_interface_program_hf(
     *,
     model: Any,
@@ -193,6 +211,24 @@ def evaluate_interface_program_hf(
             name=f"block_{start // block_size}",
         )
         predicted_code = _prediction(result)
+        predicted_states = (
+            semantic_states_for_code(
+                condition=condition,
+                case=case,
+                code_index=predicted_code,
+                interface_config=interface_config,
+            )
+            if predicted_code is not None
+            else ()
+        )
+        true_before = int(case["state_path"][start])
+        transition_class = (
+            _horn_transition_class(
+                local["history"][0], true_before, true_state
+            )
+            if len(local["history"]) == 1
+            else None
+        )
         result.update(
             supplied_code=(None if start == 0 else steps[-1]["prediction"]),
             compatible_input_states=list(compatible_inputs),
@@ -202,6 +238,11 @@ def evaluate_interface_program_hf(
             globally_correct=predicted_code == global_expected,
             compatible_output_codes=sorted(possible_codes),
             quotient_transition_identifiable=len(possible_codes) == 1,
+            true_input_state=true_before,
+            true_output_state=true_state,
+            predicted_semantic_states=list(predicted_states),
+            locally_semantic_correct=true_state in predicted_states,
+            proof_transition_class=transition_class,
         )
         steps.append(result)
 

@@ -27,6 +27,7 @@ from .state_interface_contract import (
 )
 from .state_handoff_programs import (
     _balanced_programs,
+    build_closed_horn_programs,
     build_test_programs,
 )
 
@@ -81,6 +82,20 @@ def _split_summary(rows: list[dict[str, Any]], width: int) -> dict[str, Any]:
         result["composition_splits"] = sorted(
             {str(row["composition_split"]) for row in rows}
         )
+    if any("proof_transition_class" in row for row in rows):
+        result["proof_transition_class_counts"] = {
+            transition_class: sum(
+                row.get("proof_transition_class") == transition_class
+                for row in rows
+            )
+            for transition_class in sorted(
+                {
+                    str(row["proof_transition_class"])
+                    for row in rows
+                    if "proof_transition_class" in row
+                }
+            )
+        }
     return result
 
 
@@ -89,33 +104,56 @@ def prepare_state_handoff_datasets(run_path: Path) -> dict[str, Any]:
     config = load_config(run_path).get("state_handoff_training", {})
     dataset = config.get("dataset", {})
     width = int(dataset.get("bits", 3))
-    if not 2 <= width <= 4:
-        raise ValueError("Discrete state-handoff training supports two to four bits")
+    if not 2 <= width <= 5:
+        raise ValueError("Discrete state-handoff training supports two to five bits")
     sequences_per_condition = int(dataset.get("train_examples", 20_000))
     validation_sequences = int(dataset.get("validation_examples", 2_000))
     if sequences_per_condition % 2 or validation_sequences % 2:
         raise ValueError("Matched two-call training example counts must be even")
     seed = int(dataset.get("seed", 721_301))
-    train = _balanced_programs(
-        split="train",
-        semantic_count=sequences_per_condition // 2,
-        horizons=tuple(int(value) for value in dataset.get("train_horizons", (1, 2))),
-        context_count=int(dataset.get("train_program_contexts", 50)),
-        width=width,
-        seed=seed,
-        dataset=dataset,
+    closed_horn = (
+        str(dataset.get("proof_training_contract", "endpoint"))
+        == "closed_one_rule"
     )
-    validation = _balanced_programs(
-        split="validation",
-        semantic_count=validation_sequences // 2,
-        horizons=tuple(
-            int(value) for value in dataset.get("validation_horizons", (1, 2))
-        ),
-        context_count=int(dataset.get("validation_program_contexts", 15)),
-        width=width,
-        seed=seed,
-        dataset=dataset,
-    )
+    builder = build_closed_horn_programs if closed_horn else _balanced_programs
+    shared = {
+        "width": width,
+        "seed": seed,
+        "dataset": dataset,
+    }
+    if closed_horn:
+        train = builder(
+            split="train",
+            semantic_count=sequences_per_condition // 2,
+            context_count=int(dataset.get("train_program_contexts", 50)),
+            **shared,
+        )
+        validation = builder(
+            split="validation",
+            semantic_count=validation_sequences // 2,
+            context_count=int(dataset.get("validation_program_contexts", 15)),
+            **shared,
+        )
+    else:
+        train = builder(
+            split="train",
+            semantic_count=sequences_per_condition // 2,
+            horizons=tuple(
+                int(value) for value in dataset.get("train_horizons", (1, 2))
+            ),
+            context_count=int(dataset.get("train_program_contexts", 50)),
+            **shared,
+        )
+        validation = builder(
+            split="validation",
+            semantic_count=validation_sequences // 2,
+            horizons=tuple(
+                int(value)
+                for value in dataset.get("validation_horizons", (1, 2))
+            ),
+            context_count=int(dataset.get("validation_program_contexts", 15)),
+            **shared,
+        )
     test = build_test_programs(
         horizons=tuple(int(value) for value in dataset.get("test_horizons", (2, 4, 8))),
         context_count=int(dataset.get("test_program_contexts", 30)),

@@ -122,6 +122,11 @@ def prepare_interface_challenges(run_path: Path) -> dict[str, Any]:
                             for value in spec.get("proof_topologies", ("mixed",))
                         ),
                         balanced_queries=bool(spec.get("balanced_queries", False)),
+                        endpoint_cardinality=(
+                            int(spec["endpoint_cardinality"])
+                            if "endpoint_cardinality" in spec
+                            else None
+                        ),
                     )
                 )
         else:
@@ -153,6 +158,13 @@ def prepare_interface_challenges(run_path: Path) -> dict[str, Any]:
                     str(case["proof_topology"])
                     for case in cases
                     if "proof_topology" in case
+                }
+            ),
+            "endpoint_cardinalities": sorted(
+                {
+                    int(case["endpoint_cardinality"])
+                    for case in cases
+                    if "endpoint_cardinality" in case
                 }
             ),
             "outcome_owner_profile": str(spec.get("outcome_owner_profile", profile)),
@@ -231,8 +243,54 @@ def _summarize_challenge_ids(
         for step in interface_index[case_id]["steps"]
         if step.get("locally_correct") is not None
     ]
+    local_semantic_values = [
+        bool(step["locally_semantic_correct"])
+        for case_id in ids
+        for step in interface_index[case_id]["steps"]
+        if step.get("locally_semantic_correct") is not None
+    ]
+    exact_state_steps = [
+        step
+        for case_id in ids
+        for step in interface_index[case_id]["steps"]
+        if len(step.get("predicted_semantic_states", ())) == 1
+    ]
+    false_positive_facts = sum(
+        (
+            int(step["predicted_semantic_states"][0])
+            & ~int(step["true_output_state"])
+        ).bit_count()
+        for step in exact_state_steps
+    )
+    false_negative_facts = sum(
+        (
+            int(step["true_output_state"])
+            & ~int(step["predicted_semantic_states"][0])
+        ).bit_count()
+        for step in exact_state_steps
+    )
+    fact_decisions = sum(
+        int(program_index[case_id]["bits"])
+        for case_id in ids
+        for step in interface_index[case_id]["steps"]
+        if len(step.get("predicted_semantic_states", ())) == 1
+    )
+    all_facts_predictions = sum(
+        int(step["predicted_semantic_states"][0])
+        == (1 << int(program_index[case_id]["bits"])) - 1
+        for case_id in ids
+        for step in interface_index[case_id]["steps"]
+        if len(step.get("predicted_semantic_states", ())) == 1
+    )
+    all_facts_targets = sum(
+        int(step["true_output_state"])
+        == (1 << int(program_index[case_id]["bits"])) - 1
+        for case_id in ids
+        for step in interface_index[case_id]["steps"]
+        if len(step.get("predicted_semantic_states", ())) == 1
+    )
     clusters = [str(program_index[case_id]["program_context"]) for case_id in ids]
-    result = {
+    result: dict[str, Any] = {
         "case_count": len(ids),
         "interface_accuracy": cluster_bootstrap_mean_ci(
             interface_values, clusters, seed=seed
@@ -250,6 +308,26 @@ def _summarize_challenge_ids(
             semantic_values, clusters, seed=seed + 4
         ),
         "local_semantic_closure": bootstrap_mean_ci(local_values, seed=seed + 5),
+        "local_quotient_semantic_closure": bootstrap_mean_ci(
+            local_semantic_values, seed=seed + 7
+        ),
+        "false_positive_fact_rate": (
+            false_positive_facts / fact_decisions if fact_decisions else None
+        ),
+        "false_negative_fact_rate": (
+            false_negative_facts / fact_decisions if fact_decisions else None
+        ),
+        "exact_state_step_count": len(exact_state_steps),
+        "all_facts_prediction_rate": (
+            all_facts_predictions / len(exact_state_steps)
+            if exact_state_steps
+            else None
+        ),
+        "all_facts_target_rate": (
+            all_facts_targets / len(exact_state_steps)
+            if exact_state_steps
+            else None
+        ),
         "interface_minus_outcome": cluster_bootstrap_mean_ci(
             [
                 int(left) - int(right)
@@ -259,6 +337,19 @@ def _summarize_challenge_ids(
             seed=seed + 6,
         ),
     }
+    if all("gold_final" in interface_index[case_id] for case_id in ids):
+        result["gold_code_continuation_accuracy"] = cluster_bootstrap_mean_ci(
+            [
+                bool(
+                    interface_index[case_id]["gold_final"][
+                        "is_expected_unconstrained"
+                    ]
+                )
+                for case_id in ids
+            ],
+            clusters,
+            seed=seed + 8,
+        )
     if all("next_state" in program_index[case_id] for case_id in ids):
         result["answer_positive_rate"] = sum(
             int(program_index[case_id]["next_state"]) for case_id in ids
@@ -377,7 +468,20 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
                     }
                 ),
             ),
+            "by_proof_query_mode": (
+                "proof_query_mode",
+                sorted(
+                    {
+                        str(row["final_rule"]["mode"])
+                        for row in programs
+                        if row.get("final_rule", {}).get("kind") == "proof_query"
+                    }
+                ),
+            ),
         }
+        for row in programs:
+            if row.get("final_rule", {}).get("kind") == "proof_query":
+                row["proof_query_mode"] = str(row["final_rule"]["mode"])
         for offset, (output_key, (field, values)) in enumerate(strata.items()):
             if values:
                 result[output_key] = {
@@ -389,6 +493,33 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
                         seed=83_200 + 100 * offset + index,
                     )
                     for index, value in enumerate(values)
+                }
+        transition_classes = sorted(
+            {
+                str(step["proof_transition_class"])
+                for row in interface
+                for step in row["steps"]
+                if step.get("proof_transition_class") is not None
+            }
+        )
+        if transition_classes:
+            result["by_proof_transition_class"] = {}
+            for index, transition_class in enumerate(transition_classes):
+                selected_steps = [
+                    step
+                    for row in interface
+                    for step in row["steps"]
+                    if step.get("proof_transition_class") == transition_class
+                ]
+                result["by_proof_transition_class"][transition_class] = {
+                    "step_count": len(selected_steps),
+                    "semantic_accuracy": bootstrap_mean_ci(
+                        [
+                            bool(step["locally_semantic_correct"])
+                            for step in selected_steps
+                        ],
+                        seed=83_600 + index,
+                    ),
                 }
     write_json(challenge_dir(run_path, profile) / "summary.json", result)
     return result
