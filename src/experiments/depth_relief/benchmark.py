@@ -218,6 +218,12 @@ def apply_rule(rule: dict[str, Any], state: int, modulus: int) -> int:
         if mode == "parity":
             return int((state & required).bit_count() % 2)
         raise ValueError(f"Unknown proof-query mode: {mode!r}")
+    if kind == "proof_next_rule":
+        for index, candidate in enumerate(rule["candidates"]):
+            updated = apply_rule(candidate, state, modulus)
+            if updated != state:
+                return index
+        return len(rule["candidates"])
     raise ValueError(f"Unknown transition kind: {kind!r}")
 
 
@@ -285,6 +291,15 @@ def rule_text(rule: dict[str, Any], width: int) -> str:
         if mode == "parity":
             return f"return the parity of established facts among {facts}"
         raise ValueError(f"Unknown proof-query mode: {mode!r}")
+    if kind == "proof_next_rule":
+        candidates = "; ".join(
+            f"{index}: {rule_text(candidate, width)}"
+            for index, candidate in enumerate(rule["candidates"])
+        )
+        return (
+            "return the lowest numbered rule that would establish a new fact, "
+            f"or {len(rule['candidates'])} if none applies: [{candidates}]"
+        )
     raise ValueError(f"Unknown transition kind: {kind!r}")
 
 

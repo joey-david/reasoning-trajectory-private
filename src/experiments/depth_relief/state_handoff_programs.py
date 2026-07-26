@@ -283,11 +283,18 @@ def build_closed_horn_programs(
         changed = current != initial
         if changed != transition_class.startswith("active_"):
             raise AssertionError("Closed Horn transition class changed incorrectly")
-        final_rule = _proof_final_rule(context=context, width=width, seed=seed)
+        final_rule, proof_answer_symbols = _proof_consumer_rule(
+            context=context,
+            state=current,
+            width=width,
+            seed=seed,
+            dataset=dataset,
+            path_code=path_code,
+        )
         semantic = {
-            "family": "horn_proof_to_query",
+            "family": f"horn_proof_to_{final_rule['kind']}",
             "history_family": "horn_proof",
-            "final_family": "proof_query",
+            "final_family": str(final_rule["kind"]),
             "format": "prose",
             "bits": width,
             "initial_state": initial,
@@ -308,7 +315,12 @@ def build_closed_horn_programs(
             "proof_transition_class": transition_class,
             "proof_composition_active": transition_class == "active_conjunction",
             "active_transition_count": int(changed),
-            "answer_symbols": ["0", "1"],
+            "answer_symbols": proof_answer_symbols,
+            "proof_consumer": (
+                "next_rule"
+                if final_rule["kind"] == "proof_next_rule"
+                else "query"
+            ),
             "state_representation": "opaque_fact_set",
             "state_symbols": symbols,
         }
@@ -341,6 +353,93 @@ def _proof_final_rule(
         "required_mask": rng.randrange(1, 2**width),
         "mode": ("all", "any", "parity")[int(context["index"]) % 3],
     }
+
+
+def _proof_next_rule(
+    *,
+    state: int,
+    width: int,
+    seed: int,
+    desired_index: int | None = None,
+) -> dict[str, Any]:
+    """Build four candidate rules with one state-changing choice when possible."""
+    rng = _rng(seed, "proof_next_rule", state, desired_index)
+    present = [bit for bit in range(width) if state & (1 << bit)]
+    absent = [bit for bit in range(width) if not state & (1 << bit)]
+    if not absent:
+        candidates = [
+            {
+                "kind": "horn",
+                "premises": [present[index % len(present)]],
+                "conclusion": present[index % len(present)],
+            }
+            for index in range(4)
+        ]
+        return {"kind": "proof_next_rule", "candidates": candidates}
+    active_index = (
+        rng.randrange(4) if desired_index is None else int(desired_index) % 4
+    )
+    conclusion = rng.choice(absent)
+    active = {
+        "kind": "horn",
+        "premises": ([rng.choice(present)] if present else []),
+        "conclusion": conclusion,
+    }
+    candidates = []
+    for index in range(4):
+        if index == active_index:
+            candidates.append(active)
+        elif present and index % 2:
+            fact = present[index % len(present)]
+            candidates.append(
+                {"kind": "horn", "premises": [fact], "conclusion": fact}
+            )
+        else:
+            blocked = absent[(index + seed) % len(absent)]
+            candidates.append(
+                {
+                    "kind": "horn",
+                    "premises": [blocked],
+                    "conclusion": blocked,
+                }
+            )
+    applicable = [
+        index
+        for index, candidate in enumerate(candidates)
+        if apply_rule(candidate, state, 2**width) != state
+    ]
+    if applicable != [active_index]:
+        raise AssertionError("Proof next-rule consumer is not uniquely applicable")
+    return {"kind": "proof_next_rule", "candidates": candidates}
+
+
+def _proof_consumer_rule(
+    *,
+    context: dict[str, Any],
+    state: int,
+    width: int,
+    seed: int,
+    dataset: dict[str, Any],
+    path_code: int,
+) -> tuple[dict[str, Any], list[str]]:
+    consumers = tuple(
+        str(value) for value in dataset.get("proof_consumers", ("query",))
+    )
+    if not consumers or any(value not in {"query", "next_rule"} for value in consumers):
+        raise ValueError("Proof consumers must contain query and/or next_rule")
+    consumer = consumers[(int(context["index"]) // 2 + path_code) % len(consumers)]
+    if consumer == "query":
+        return (
+            _proof_final_rule(context=context, width=width, seed=seed),
+            ["0", "1"],
+        )
+    rule = _proof_next_rule(
+        state=state,
+        width=width,
+        seed=seed + 101 * int(context["index"]) + path_code,
+        desired_index=(int(context["index"]) + path_code) % 4,
+    )
+    return rule, ["0", "1", "2", "3", "4"]
 
 
 def _program_case(
@@ -423,16 +522,30 @@ def _program_case(
                 "kind": "proof_action",
                 "mapping": list(context["final_rule"]["mapping"]),
             }
+            proof_answer_symbols = list(_proof_state_symbols(width))
+            proof_consumer = "action"
         else:
-            final_rule = _proof_final_rule(
-                context=context, width=width, seed=seed
+            final_rule, proof_answer_symbols = _proof_consumer_rule(
+                context=context,
+                state=target,
+                width=width,
+                seed=seed,
+                dataset=dataset,
+                path_code=path_code,
             )
-        family = "horn_proof_to_query"
+            proof_consumer = (
+                "next_rule"
+                if final_rule["kind"] == "proof_next_rule"
+                else "query"
+            )
+        family = f"horn_proof_to_{final_rule['kind']}"
         history_family = "horn_proof"
-        final_family = "proof_query"
+        final_family = str(final_rule["kind"])
         extra = {
             "domain": domain,
             "composition_split": composition_split,
+            "answer_symbols": proof_answer_symbols,
+            "proof_consumer": proof_consumer,
         }
     else:
         if width != 4:

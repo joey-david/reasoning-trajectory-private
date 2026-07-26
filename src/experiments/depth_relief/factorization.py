@@ -195,6 +195,15 @@ def _assignment_rule_text(rule: dict[str, Any], width: int) -> str:
             f"answer = proof_query(state, mask={rule['required_mask']}, "
             f"mode={rule.get('mode', 'all')})"
         )
+    if kind == "proof_next_rule":
+        candidates = "; ".join(
+            f"{index}: {_assignment_rule_text(candidate, width)}"
+            for index, candidate in enumerate(rule["candidates"])
+        )
+        return (
+            "answer = first_state_changing_rule(state, "
+            f"[{candidates}], default={len(rule['candidates'])})"
+        )
     raise ValueError(f"Unknown transition kind: {kind!r}")
 
 

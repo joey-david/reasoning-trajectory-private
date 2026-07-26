@@ -506,6 +506,7 @@ state_handoff_training:
   dataset:
     domain: horn_proof
     proof_training_contract: closed_one_rule
+    proof_consumers: [query, next_rule]
     bits: 4
     seed: 58
     train_examples: 768
@@ -532,6 +533,7 @@ state_handoff_training:
     }
     assert all(row["history_steps"] == 1 for row in rows)
     assert all(len(row["history"]) == 1 for row in rows)
+    assert {row["proof_consumer"] for row in rows} == {"query", "next_rule"}
     for row in rows:
         changed = row["initial_state"] != row["current_state"]
         assert changed == row["proof_transition_class"].startswith("active_")
@@ -539,6 +541,13 @@ state_handoff_training:
             apply_rule(row["history"][0], row["initial_state"], 16)
             == row["current_state"]
         )
+        if row["proof_consumer"] == "next_rule":
+            assert row["final_rule"]["kind"] == "proof_next_rule"
+            assert row["answer_symbols"] == ["0", "1", "2", "3", "4"]
+            assert (
+                apply_rule(row["final_rule"], row["current_state"], 16)
+                == row["next_state"]
+            )
 
 
 def test_endpoint_balanced_depth_keeps_targets_fixed_across_depth(tmp_path) -> None:
@@ -631,6 +640,51 @@ state_interface_challenges:
     ]
     assert len({row["current_state"] for row in depth_four}) == 5
     assert all(len(row["state_symbols"]) == 32 for row in rows)
+
+
+def test_next_rule_consumer_selects_one_applicable_proof_action(tmp_path) -> None:
+    run_path = tmp_path / "next-rule"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_interface_challenges:
+  proof_action:
+    interface_run: runs/interface
+    interface_condition: redundant_5bit
+    outcome_run: runs/outcome
+    domain: horn_proof
+    proof_final: next_rule
+    bits: 4
+    seed: 63
+    horizons: [16]
+    active_depths: [1, 2, 3]
+    endpoint_cardinality: 3
+    program_contexts: 4
+    paths_per_depth: 2
+    block_size: 1
+""".strip()
+        + "\n"
+    )
+    prepare_interface_challenges(run_path)
+    rows = [
+        json.loads(line)
+        for line in (
+            run_path / "evaluation/challenges/proof_action/programs.jsonl"
+        )
+        .read_text()
+        .splitlines()
+    ]
+    assert {row["proof_consumer"] for row in rows} == {"next_rule"}
+    assert {row["next_state"] for row in rows} == {0, 1, 2, 3}
+    for row in rows:
+        candidates = row["final_rule"]["candidates"]
+        active = [
+            index
+            for index, rule in enumerate(candidates)
+            if apply_rule(rule, row["current_state"], 16)
+            != row["current_state"]
+        ]
+        assert active == [row["next_state"]]
 
 
 def test_balanced_proof_queries_hold_answer_rate_fixed_by_depth(tmp_path) -> None:

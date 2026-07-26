@@ -478,6 +478,16 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
                     }
                 ),
             ),
+            "by_proof_consumer": (
+                "proof_consumer",
+                sorted(
+                    {
+                        str(row["proof_consumer"])
+                        for row in programs
+                        if "proof_consumer" in row
+                    }
+                ),
+            ),
         }
         for row in programs:
             if row.get("final_rule", {}).get("kind") == "proof_query":

@@ -11,6 +11,7 @@ from .benchmark import apply_rule
 from .state_handoff_programs import (
     _program_contexts,
     _proof_final_rule,
+    _proof_next_rule,
     _proof_state_symbols,
 )
 
@@ -129,8 +130,8 @@ def build_proof_depth_programs(
         raise ValueError(
             "Endpoint cardinality must cover every depth and fit the state width"
         )
-    if proof_final not in {"action", "query"}:
-        raise ValueError("Proof-depth FINAL must be action or query")
+    if proof_final not in {"action", "query", "next_rule"}:
+        raise ValueError("Proof-depth FINAL must be action, query, or next_rule")
     if balanced_queries and (proof_final != "query" or 0 in active_depths):
         raise ValueError(
             "Balanced proof queries require query FINAL and positive active depths"
@@ -191,13 +192,14 @@ def build_proof_depth_programs(
                             "Proof-depth construction missed its target"
                         )
                     desired_answer = (int(context["index"]) + path) % 2
-                    final_rule = (
-                        {
+                    if proof_final == "action":
+                        final_rule = {
                             "kind": "proof_action",
                             "mapping": list(context["final_rule"]["mapping"]),
                         }
-                        if proof_final == "action"
-                        else (
+                        final_answer_symbols = list(_proof_state_symbols(width))
+                    elif proof_final == "query":
+                        final_rule = (
                             _balanced_proof_query(
                                 target=target,
                                 desired_answer=desired_answer,
@@ -214,7 +216,19 @@ def build_proof_depth_programs(
                                 seed=seed,
                             )
                         )
-                    )
+                        final_answer_symbols = ["0", "1"]
+                    else:
+                        final_rule = _proof_next_rule(
+                            state=target,
+                            width=width,
+                            seed=seed
+                            + 101 * int(context["index"])
+                            + 17 * path
+                            + depth,
+                            desired_index=desired_answer
+                            + 2 * (path % 2),
+                        )
+                        final_answer_symbols = ["0", "1", "2", "3", "4"]
                     semantic = {
                         "family": f"horn_proof_to_{proof_final}",
                         "history_family": "horn_proof",
@@ -246,9 +260,10 @@ def build_proof_depth_programs(
                         "active_transition_count": active_count,
                         "state_representation": "opaque_fact_set",
                         "state_symbols": list(_proof_state_symbols(width)),
+                        "answer_symbols": final_answer_symbols,
+                        "proof_consumer": proof_final,
                     }
                     if proof_final == "query":
-                        semantic["answer_symbols"] = ["0", "1"]
                         semantic["balanced_query_target"] = desired_answer
                     digest = hashlib.sha256(
                         json.dumps(
