@@ -37,7 +37,10 @@ from src.experiments.depth_relief.state_interface_stress import (
     prepare_stress_profile,
     read_stress_programs,
 )
-from src.orchestration.jobs.state_handoff_training import pending_tasks
+from src.orchestration.jobs.state_handoff_training import (
+    linked_training_status,
+    pending_tasks,
+)
 
 
 class CharacterTokenizer:
@@ -69,6 +72,41 @@ def test_linked_training_runs_share_one_dynamic_gpu_queue(tmp_path) -> None:
         {"run_path": str(interface), "condition": "canonical_opaque"},
         {"run_path": str(outcome), "condition": "outcome_only"},
     ]
+    assert linked_training_status(interface) == {
+        "run_path": str(interface),
+        "total": 2,
+        "complete": 0,
+        "pending_count": 2,
+        "pending": tasks,
+    }
+
+    for run_path, condition, evaluation_path in (
+        (
+            interface,
+            "canonical_opaque",
+            interface / "evaluation/interfaces/canonical_opaque/summary.json",
+        ),
+        (
+            outcome,
+            "outcome_only",
+            outcome / "evaluation/outcome_only/summary.json",
+        ),
+    ):
+        manifest_path = (
+            run_path / "training" / condition / "checkpoint_manifest.json"
+        )
+        manifest_path.parent.mkdir(parents=True)
+        manifest_path.write_text('{"status": "complete"}\n')
+        evaluation_path.parent.mkdir(parents=True)
+        evaluation_path.write_text('{"complete": true}\n')
+
+    assert linked_training_status(interface) == {
+        "run_path": str(interface),
+        "total": 2,
+        "complete": 2,
+        "pending_count": 0,
+        "pending": [],
+    }
 
 
 def test_stress_histories_are_deterministic_balanced_and_exact(tmp_path) -> None:

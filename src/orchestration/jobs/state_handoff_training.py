@@ -69,6 +69,18 @@ def pending_tasks(run_path: Path) -> tuple[list[Task], int, int]:
     return pending, total, total - len(pending)
 
 
+def linked_training_status(run_path: Path) -> dict[str, Any]:
+    """Summarize completion across an anchor and all linked training runs."""
+    pending, total, complete = pending_tasks(run_path)
+    return {
+        "run_path": str(run_path),
+        "total": total,
+        "complete": complete,
+        "pending_count": len(pending),
+        "pending": pending,
+    }
+
+
 def setup_worker(run_path: Path) -> "StateHandoffTrainingWorker":
     """Validate the gate before accepting long-running condition tasks."""
     members = _member_runs(run_path)

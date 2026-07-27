@@ -106,24 +106,41 @@ run_phase \
   --devices "${DEVICES[@]}" \
   --run "$TRAINING_ANCHOR" || true
 
-run_phase \
-  challenges \
-  "$PYTHON" scripts/orchestrate.py \
-  --job state_interface_challenge \
-  --nodes "${NODES[@]}" \
-  --devices "${DEVICES[@]}" \
-  --run "$CHALLENGE_ANCHOR" || true
+training_ready=0
+"$PYTHON" scripts/experiments/run_state_handoff_training.py \
+  check-linked-training "$TRAINING_ANCHOR" \
+  2>&1 | tee -a "$LOG_ROOT/training-completeness.log"
+training_check_exit=${PIPESTATUS[0]}
+if ((training_check_exit == 0)); then
+  training_ready=1
+  record training-completeness 1 complete 0
+else
+  record training-completeness 1 incomplete "$training_check_exit"
+  echo "challenges skipped: linked training is incomplete" >&2
+  echo "restart this script to resume only the pending training tasks" >&2
+  record challenges 0 skipped 0
+fi
 
-for run in \
-  "$TRAINING_ANCHOR" \
-  runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed2 \
-  runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed3 \
-  runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_width5
-do
-  "$PYTHON" scripts/experiments/run_state_handoff_training.py \
-    compare-interfaces "$run" \
-    >"$LOG_ROOT/$(basename "$run")-interfaces.json" 2>&1 || true
-done
+if ((training_ready)); then
+  run_phase \
+    challenges \
+    "$PYTHON" scripts/orchestrate.py \
+    --job state_interface_challenge \
+    --nodes "${NODES[@]}" \
+    --devices "${DEVICES[@]}" \
+    --run "$CHALLENGE_ANCHOR" || true
+
+  for run in \
+    "$TRAINING_ANCHOR" \
+    runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed2 \
+    runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed3 \
+    runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_width5
+  do
+    "$PYTHON" scripts/experiments/run_state_handoff_training.py \
+      compare-interfaces "$run" \
+      >"$LOG_ROOT/$(basename "$run")-interfaces.json" 2>&1 || true
+  done
+fi
 
 run_phase \
   reduce \

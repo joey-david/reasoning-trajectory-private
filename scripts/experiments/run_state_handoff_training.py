@@ -78,6 +78,7 @@ def main() -> int:
         choices=(
             "prepare-data",
             "check-gate",
+            "check-linked-training",
             "validate-data",
             "train",
             "evaluate",
@@ -121,6 +122,14 @@ def main() -> int:
     elif args.command == "check-gate":
         require_phase1_training_gate(args.run_path)
         result = {"run_path": str(args.run_path), "training_gate": "passed"}
+    elif args.command == "check-linked-training":
+        from src.orchestration.jobs.state_handoff_training import (
+            linked_training_status,
+        )
+
+        result = linked_training_status(args.run_path)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return int(result["pending_count"] > 0)
     elif args.command == "validate-data":
         result = validate_state_handoff_training_data(args.run_path)
     elif args.command == "train":
