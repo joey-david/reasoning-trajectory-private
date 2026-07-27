@@ -462,6 +462,14 @@ def validate_state_interface_training_data(run_path: Path) -> dict[str, Any]:
             "max_sequence_length", maximum
         )
     )
+    block_size = int(
+        experiment.get("evaluation", {}).get(
+            "block_size",
+            experiment.get("interfaces", {}).get("block_size", 2),
+        )
+    )
+    if block_size < 1:
+        raise ValueError("Interface evaluation block size must be positive")
     common = {
         "tokenizer": tokenizer,
         "prompt_config": experiment.get("prompt", {}),
@@ -477,12 +485,25 @@ def validate_state_interface_training_data(run_path: Path) -> dict[str, Any]:
     )
     if not train["matched_forward_passes_and_tokens"]:
         raise ValueError("State-interface training budgets are not matched")
+    test = read_programs(run_path / TEST_PATH)
+    incomplete_horizons = sorted(
+        {
+            int(case["history_steps"])
+            for case in test
+            if int(case["history_steps"]) % block_size
+        }
+    )
+    if incomplete_horizons:
+        raise ValueError(
+            f"Interface evaluation block size {block_size} does not divide "
+            f"test horizons {incomplete_horizons}"
+        )
     test_max = 0
-    for case in read_programs(run_path / TEST_PATH):
+    for case in test:
         local = {
             **case,
-            "history": list(case["history"][:2]),
-            "history_steps": 2,
+            "history": list(case["history"][:block_size]),
+            "history_steps": block_size,
         }
         for condition in conditions:
             symbols = interface_code_symbols(

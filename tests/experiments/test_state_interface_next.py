@@ -15,6 +15,7 @@ from src.experiments.depth_relief.state_handoff_training import _base_and_adapte
 from src.experiments.depth_relief.state_interface_data import (
     interface_training_sequence_pair,
     render_interface_encoder_prompt,
+    validate_state_interface_training_data,
 )
 from src.experiments.depth_relief.factorization import render_factorization_prompts
 from src.experiments.depth_relief.state_interface_contract import (
@@ -586,6 +587,48 @@ state_handoff_training:
                 apply_rule(row["final_rule"], row["current_state"], 16)
                 == row["next_state"]
             )
+
+
+def test_interface_validation_rejects_incomplete_evaluation_blocks(
+    tmp_path, monkeypatch
+) -> None:
+    run_path = tmp_path / "incomplete-block"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+model:
+  name: test
+state_handoff_training:
+  conditions: [canonical_opaque]
+  interfaces:
+    independent_module_contexts: false
+  dataset:
+    test_horizons: [1, 2]
+  evaluation:
+    block_size: 2
+""".strip()
+        + "\n"
+    )
+    for relative, rows in (
+        (TRAIN_PATH, []),
+        ("training/data/validation_programs.jsonl", []),
+        (
+            "evaluation/test_programs.jsonl",
+            [{"id": "h1", "history_steps": 1}],
+        ),
+    ):
+        path = run_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    monkeypatch.setattr(
+        "src.models.hf_loader.load_hf_tokenizer", lambda _config: CharacterTokenizer()
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"block size 2 does not divide test horizons \[1\]",
+    ):
+        validate_state_interface_training_data(run_path)
 
 
 def test_endpoint_balanced_depth_keeps_targets_fixed_across_depth(tmp_path) -> None:

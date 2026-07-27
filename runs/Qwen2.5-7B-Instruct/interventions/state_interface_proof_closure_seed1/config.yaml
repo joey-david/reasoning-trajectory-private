@@ -68,6 +68,7 @@ state_handoff_training:
     gradient_checkpointing: true
   evaluation:
     max_sequence_length: 1024
+    block_size: 1
   prompt:
     mode: chat
     system: Update the proof state or answer the proof question exactly. Return one token.
