@@ -5,8 +5,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 PYTHON="${PYTHON:-.venv/bin/python}"
-NODE_LIST="${STATE_HANDOFF_CLOSED_NODES:-coktailjet,upnquick}"
-DEVICE_LIST="${STATE_HANDOFF_CLOSED_DEVICES:-1;0}"
+NODE_LIST="${STATE_HANDOFF_CLOSED_NODES:-coktailjet,kaisertrot}"
+DEVICE_LIST="${STATE_HANDOFF_CLOSED_DEVICES:-0,1;0,1}"
 IFS=', ' read -r -a NODES <<< "$NODE_LIST"
 IFS=';' read -r -a DEVICES <<< "$DEVICE_LIST"
 
@@ -37,7 +37,7 @@ if [[ "${STATE_HANDOFF_CLOSED_DRY_RUN:-false}" == true ]]; then
   echo "training tasks: 11"
   echo "challenge profiles: 23"
   echo "challenge cases across interface profiles: 2248"
-  echo "the faster upnquick:0 worker takes another task whenever it finishes"
+  echo "each worker takes another task whenever it finishes"
   printf 'run: %s\n' "${RUNS[@]}"
   exit 0
 fi
