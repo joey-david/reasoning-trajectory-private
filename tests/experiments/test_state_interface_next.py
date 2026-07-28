@@ -375,6 +375,34 @@ def test_full_support_proofs_cover_and_separate_all_states() -> None:
         assert sum(row["next_state"] for row in selected) == len(selected) // 2
 
 
+def test_challenge_preparation_routes_full_state_support(tmp_path) -> None:
+    run_path = tmp_path / "full"
+    run_path.mkdir()
+    (run_path / "config.yaml").write_text(
+        """
+state_interface_challenges:
+  all_states:
+    interface_run: runs/interface
+    interface_condition: canonical_4bit
+    outcome_run: runs/outcome
+    domain: horn_proof
+    proof_final: query
+    bits: 4
+    seed: 419
+    horizons: [8]
+    full_state_support: true
+    program_contexts: 2
+    block_size: 1
+""".strip()
+        + "\n"
+    )
+    manifest = prepare_interface_challenges(run_path)
+    profile = manifest["profiles"]["all_states"]
+    assert profile["case_count"] == 128
+    assert profile["states"] == list(range(16))
+    assert profile["active_depths"] == [0, 1, 2, 3, 4]
+
+
 def test_configured_rate_sweep_has_exact_information_fibers() -> None:
     case = build_test_programs(
         horizons=(2,),
@@ -950,7 +978,9 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
                         "candidate_probability_mass": 1.0,
                         "prompt_token_count": 10,
                     },
-                    "predicted_semantic_states": [depth],
+                    "predicted_semantic_states": (
+                        [depth, depth + 8] if depth == 0 else [depth]
+                    ),
                     "steps": [],
                 }
             )
@@ -992,6 +1022,14 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
             "mean"
         ]
         == 1.0
+    )
+    assert (
+        summary["by_active_transition_count"]["0"]["semantic_state_accuracy"]["mean"]
+        == 1.0
+    )
+    assert (
+        summary["by_active_transition_count"]["0"]["exact_state_accuracy"]["mean"]
+        == 0.0
     )
 
 

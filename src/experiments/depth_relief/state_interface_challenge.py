@@ -303,9 +303,9 @@ def _summarize_challenge_ids(
         "exact_state_accuracy": cluster_bootstrap_mean_ci(
             exact_state_values, clusters, seed=seed + 5
         ),
-        "local_semantic_closure": bootstrap_mean_ci(local_values, seed=seed + 5),
+        "local_semantic_closure": bootstrap_mean_ci(local_values, seed=seed + 6),
         "local_exact_state_closure": bootstrap_mean_ci(
-            local_exact_values, seed=seed + 6
+            local_exact_values, seed=seed + 7
         ),
         "interface_minus_outcome": cluster_bootstrap_mean_ci(
             [
@@ -313,7 +313,7 @@ def _summarize_challenge_ids(
                 for left, right in zip(interface_values, outcome_values)
             ],
             clusters,
-            seed=seed + 7,
+            seed=seed + 8,
         ),
     }
     result.update(
@@ -321,7 +321,7 @@ def _summarize_challenge_ids(
             ids,
             program_index=program_index,
             interface_index=interface_index,
-            seed=seed + 8,
+            seed=seed + 9,
         )
     )
     if all("next_state" in program_index[case_id] for case_id in ids):
@@ -466,6 +466,13 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
         for row in programs:
             if row.get("final_rule", {}).get("kind") == "proof_query":
                 row["proof_query_mode"] = str(row["final_rule"]["mode"])
+        result["overall"] = _summarize_challenge_ids(
+            [str(row["id"]) for row in programs],
+            program_index=program_index,
+            interface_index=interface_index,
+            outcome_index=indexed,
+            seed=83_150,
+        )
         for offset, (output_key, (field, values)) in enumerate(strata.items()):
             if values:
                 result[output_key] = {

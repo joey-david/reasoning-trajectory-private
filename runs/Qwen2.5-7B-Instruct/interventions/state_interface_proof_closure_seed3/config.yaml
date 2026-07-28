@@ -13,7 +13,7 @@ state_handoff_training:
   frozen_screen_source_run: runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest
   linked_runs:
     - runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_outcome_seed3
-  conditions: [redundant_5bit]
+  conditions: [canonical_4bit, redundant_5bit]
   evaluation_adapter: final
   dataset:
     domain: horn_proof
@@ -31,8 +31,8 @@ state_handoff_training:
     test_paths_per_state: 1
   interfaces:
     independent_module_contexts: true
-    producer_modes: {redundant_5bit: mixed}
-    producer_transition_fractions: {redundant_5bit: 0.8}
+    producer_modes: {canonical_4bit: mixed, redundant_5bit: mixed}
+    producer_transition_fractions: {canonical_4bit: 0.8, redundant_5bit: 0.8}
   lora:
     rank: 16
     alpha: 32

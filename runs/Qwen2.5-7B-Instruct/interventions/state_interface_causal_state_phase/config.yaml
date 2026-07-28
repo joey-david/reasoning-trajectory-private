@@ -1,0 +1,86 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map: {"": 0}
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+state_interface_challenge_matrix:
+  templates:
+    balanced_depth:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [32]
+      active_depths: [1, 2, 3]
+      endpoint_cardinality: 3
+      proof_topologies: [mixed]
+      balanced_queries: true
+      program_contexts: 10
+      paths_per_depth: 2
+      block_size: 1
+    length:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [16, 64, 128, 256]
+      active_depths: [1, 2, 3]
+      endpoint_cardinality: 3
+      proof_topologies: [mixed]
+      balanced_queries: true
+      program_contexts: 4
+      paths_per_depth: 1
+      block_size: 1
+    full_support:
+      domain: horn_proof
+      proof_final: query
+      bits: 4
+      horizons: [32]
+      full_state_support: true
+      program_contexts: 2
+      block_size: 1
+  sources:
+    - name: closure_seed1
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed1
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_outcome_seed1
+      challenge_seed: 736101
+      conditions:
+        - compressed_3bit
+        - canonical_4bit
+        - padded_5bit
+        - redundant_5bit
+    - name: closure_seed2
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed2
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_outcome_seed2
+      challenge_seed: 736201
+      conditions:
+        - canonical_4bit
+        - redundant_5bit
+    - name: closure_seed3
+      interface_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_seed3
+      outcome_run: runs/Qwen2.5-7B-Instruct/interventions/state_interface_proof_closure_outcome_seed3
+      challenge_seed: 736301
+      conditions:
+        - canonical_4bit
+        - redundant_5bit
+
+state_interface_causal_state:
+  primary_sources: [closure_seed1, closure_seed2, closure_seed3]
+  conditions:
+    lossy: compressed_3bit
+    canonical: canonical_4bit
+    padded: padded_5bit
+    aliased: redundant_5bit
+  gates:
+    min_canonical_full_support_exact_each_seed: 0.90
+    min_canonical_depth3_exact_each_seed: 0.90
+    min_canonical_h256_final_each_seed: 0.90
+    min_mean_canonical_h256_minus_outcome: 0.10
+    min_canonical_h256_advantage_ci_low: 0.0
+    max_mean_canonical_h16_to_h256_drop: 0.05
+    min_lossy_exact_gap_seed1: 0.20
+    max_padded_exact_gap_seed1: 0.05
+    min_mean_alias_exact_gap: 0.10

@@ -66,6 +66,9 @@ from src.experiments.depth_relief.state_interface_proof_confirmation import (
 from src.experiments.depth_relief.state_interface_closed_proof import (
     compare_closed_proof_confirmation,
 )
+from src.experiments.depth_relief.state_interface_causal_state import (
+    compare_causal_state_phase,
+)
 from src.experiments.depth_relief.state_interface_substitution import (
     evaluate_interface_substitution,
 )
@@ -105,6 +108,7 @@ def main() -> int:
             "evaluate-challenge",
             "compare-proof-confirmation",
             "compare-closed-proof",
+            "compare-causal-state",
             "evaluate-substitution",
         ),
     )
@@ -217,6 +221,8 @@ def main() -> int:
         result = compare_proof_confirmation(args.run_path)
     elif args.command == "compare-closed-proof":
         result = compare_closed_proof_confirmation(args.run_path)
+    elif args.command == "compare-causal-state":
+        result = compare_causal_state_phase(args.run_path)
     elif args.command == "evaluate-substitution":
         result = evaluate_interface_substitution(args.run_path)
     else:

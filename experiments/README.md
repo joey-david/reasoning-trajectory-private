@@ -513,6 +513,40 @@ It owns 11 training arms and 23 challenge profiles. The final reducer writes
 include the nine `state_interface_proof_closure_*` folders; adapter weights are
 not needed for the result analysis.
 
+### Canonical causal-state test
+
+This locked follow-up separates three terms that the first proof sweep mixed:
+state rate, code aliases, and active proof depth. It adds only three adapters:
+one 32-symbol padded code for seed 1 and two new 16-symbol canonical seeds.
+The padded code maps each of the 16 proof states to one fixed even-indexed
+symbol and leaves the odd symbols unused. It therefore matches the redundant
+code's output alphabet without giving one state two path-dependent names.
+
+Every condition then runs on the same three saved program banks:
+
+- `full_support` reaches each of the 16 fact sets from the empty set and asks
+  each of four single-fact queries. These queries separate every pair of
+  states. The report distinguishes exact recovery from membership in a lossy
+  code fiber.
+- `balanced_depth` holds the final state to a three-fact set while varying the
+  number of state-changing deductions from one to three in a 32-rule stream.
+- `length` holds active deductions to one, two, or three while padding the
+  stream to 16, 64, 128, or 256 rules.
+
+Run the restart-safe suite on one host with two 48 GB or larger GPUs:
+
+```bash
+STATE_CAUSAL_NODES=local STATE_CAUSAL_DEVICES=0,1 \
+  bash scripts/remote/state_handoff_causal_state.sh
+```
+
+Only three training tasks should be pending. The challenge queue contains 24
+interface profiles, 9 shared one-pass controls, 1,888 interface cases, and
+92,672 recursive transition calls. The target runtime is 7--10 hours. The
+reducer writes `causal_state_phase_summary.json`, `rate_sufficiency.png`,
+`gauge_closure.png`, and `depth_length.png` under
+`state_interface_causal_state_phase/evaluation/`.
+
 ## Causal depth relief
 
 The controlled benchmark represents an intermediate state as a fixed-length set
