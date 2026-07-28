@@ -12,7 +12,10 @@ from src.runtime.data import write_jsonl
 
 from .factorization import render_factorization_prompts
 from .metrics import bootstrap_mean_ci, cluster_bootstrap_mean_ci
-from .state_handoff_challenge_programs import build_proof_depth_programs
+from .state_handoff_challenge_programs import (
+    build_full_support_proof_programs,
+    build_proof_depth_programs,
+)
 from .state_handoff_evaluation import (
     _load_evaluation_model,
     evaluate_program_hf,
@@ -101,7 +104,24 @@ def prepare_interface_challenges(run_path: Path) -> dict[str, Any]:
                 else {}
             ),
         }
-        if "active_depths" in spec:
+        if spec.get("full_state_support"):
+            if str(spec["domain"]) != "horn_proof":
+                raise ValueError(
+                    "Full-state-support challenges require the Horn-proof domain"
+                )
+            horizons = tuple(int(value) for value in spec["horizons"])
+            cases = []
+            for horizon in horizons:
+                cases.extend(
+                    build_full_support_proof_programs(
+                        horizon=horizon,
+                        context_count=int(spec["program_contexts"]),
+                        width=int(spec["bits"]),
+                        seed=int(spec["seed"]),
+                        split=str(spec.get("program_split", f"challenge_{profile}")),
+                    )
+                )
+        elif "active_depths" in spec:
             horizons = tuple(int(value) for value in spec["horizons"])
             if str(spec["domain"]) != "horn_proof":
                 raise ValueError(
@@ -241,11 +261,26 @@ def _summarize_challenge_ids(
         in interface_index[case_id]["predicted_semantic_states"]
         for case_id in ids
     ]
+    exact_state_values = [
+        (
+            interface_index[case_id]["predicted_semantic_states"]
+            == [int(program_index[case_id]["current_state"])]
+        )
+        for case_id in ids
+    ]
     local_values = [
         bool(step["locally_correct"])
         for case_id in ids
         for step in interface_index[case_id]["steps"]
         if step.get("locally_correct") is not None
+    ]
+    local_exact_values = [
+        (
+            step.get("predicted_semantic_states")
+            == [int(step["true_output_state"])]
+        )
+        for case_id in ids
+        for step in interface_index[case_id]["steps"]
     ]
     clusters = [str(program_index[case_id]["program_context"]) for case_id in ids]
     result: dict[str, Any] = {
@@ -265,14 +300,20 @@ def _summarize_challenge_ids(
         "semantic_state_accuracy": cluster_bootstrap_mean_ci(
             semantic_values, clusters, seed=seed + 4
         ),
+        "exact_state_accuracy": cluster_bootstrap_mean_ci(
+            exact_state_values, clusters, seed=seed + 5
+        ),
         "local_semantic_closure": bootstrap_mean_ci(local_values, seed=seed + 5),
+        "local_exact_state_closure": bootstrap_mean_ci(
+            local_exact_values, seed=seed + 6
+        ),
         "interface_minus_outcome": cluster_bootstrap_mean_ci(
             [
                 int(left) - int(right)
                 for left, right in zip(interface_values, outcome_values)
             ],
             clusters,
-            seed=seed + 6,
+            seed=seed + 7,
         ),
     }
     result.update(
@@ -280,7 +321,7 @@ def _summarize_challenge_ids(
             ids,
             program_index=program_index,
             interface_index=interface_index,
-            seed=seed + 7,
+            seed=seed + 8,
         )
     )
     if all("next_state" in program_index[case_id] for case_id in ids):

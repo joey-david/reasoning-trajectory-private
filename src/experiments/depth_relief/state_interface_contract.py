@@ -34,6 +34,7 @@ CODEBOOK_SIZES = {
     "redundant_4bit": 16,
     "compressed_3bit": 8,
     "canonical_4bit": 16,
+    "padded_5bit": 32,
     "redundant_5bit": 32,
 }
 INTERFACE_CONDITIONS = tuple(CODEBOOK_SIZES)
@@ -81,6 +82,7 @@ def _validate_state_space(condition: str, case: dict[str, Any]) -> int:
         "redundant_4bit": 8,
         "compressed_3bit": 16,
         "canonical_4bit": 16,
+        "padded_5bit": 16,
         "redundant_5bit": 16,
     }.get(condition)
     if required is not None and count != required:
@@ -156,6 +158,12 @@ def interface_code_index(
         )[int(state)]
     if condition == "canonical_4bit":
         return _configured_permutation(
+            condition=condition,
+            interface_config=interface_config,
+            default=DEFAULT_CANONICAL_4BIT_PERMUTATION,
+        )[int(state)]
+    if condition == "padded_5bit":
+        return 2 * _configured_permutation(
             condition=condition,
             interface_config=interface_config,
             default=DEFAULT_CANONICAL_4BIT_PERMUTATION,

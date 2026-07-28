@@ -103,6 +103,98 @@ def _balanced_proof_query(
     }
 
 
+def build_full_support_proof_programs(
+    *,
+    horizon: int,
+    context_count: int,
+    width: int,
+    seed: int,
+    split: str,
+) -> list[dict[str, Any]]:
+    """Cover every proof state with a separating family of bit queries."""
+    if width != 4:
+        raise ValueError("Full-support proof challenges require four fact bits")
+    if horizon < width:
+        raise ValueError("Full-support horizon must fit every active deduction")
+    contexts = _program_contexts(
+        split=split, count=context_count, width=width, seed=seed
+    )
+    symbols = list(_proof_state_symbols(width))
+    rows = []
+    for context in contexts:
+        for target in range(2**width):
+            target_bits = tuple(
+                bit for bit in range(width) if target & (1 << bit)
+            )
+            path = int(context["index"]) % 2
+            history = _proof_rules(
+                bits=target_bits,
+                width=width,
+                horizon=horizon,
+                path=path,
+                seed=seed + int(context["index"]),
+                topology="independent",
+            )
+            states = [0]
+            for rule in history:
+                states.append(apply_rule(rule, states[-1], 2**width))
+            if states[-1] != target:
+                raise AssertionError("Full-support proof construction missed its target")
+            active_count = sum(
+                left != right for left, right in zip(states, states[1:])
+            )
+            if active_count != target.bit_count():
+                raise AssertionError("Full-support active depth is not exact")
+            for query_bit in range(width):
+                final_rule = {
+                    "kind": "proof_query",
+                    "required_mask": 1 << query_bit,
+                    "mode": "all",
+                }
+                semantic = {
+                    "family": "horn_proof_to_query",
+                    "history_family": "horn_proof",
+                    "final_family": "proof_query",
+                    "format": "prose",
+                    "bits": width,
+                    "initial_state": 0,
+                    "history": history,
+                    "final_rule": final_rule,
+                    "current_state": target,
+                    "next_state": apply_rule(final_rule, target, 2**width),
+                    "history_steps": horizon,
+                    "state_path": states,
+                    "path_code": path,
+                    "program_context": str(context["id"]),
+                    "program_context_split": split,
+                    "abstraction_group": str(context["id"]),
+                    "abstraction_split": split,
+                    "domain": "horn_proof",
+                    "composition_split": "heldout",
+                    "proof_template": "full_state_support",
+                    "proof_topology": "independent",
+                    "endpoint_cardinality": target.bit_count(),
+                    "proof_composition_active": active_count >= 3,
+                    "active_transition_count": active_count,
+                    "state_representation": "opaque_fact_set",
+                    "state_symbols": symbols,
+                    "answer_symbols": ["0", "1"],
+                    "proof_consumer": "query",
+                    "proof_query_bit": query_bit,
+                }
+                digest = hashlib.sha256(
+                    json.dumps(
+                        semantic, sort_keys=True, separators=(",", ":")
+                    ).encode()
+                ).hexdigest()[:12]
+                semantic["id"] = (
+                    f"handoff_{split}_{context['id']}_h{horizon}_"
+                    f"s{target}_q{query_bit}_{digest}"
+                )
+                rows.append(semantic)
+    return rows
+
+
 def build_proof_depth_programs(
     *,
     active_depths: tuple[int, ...],

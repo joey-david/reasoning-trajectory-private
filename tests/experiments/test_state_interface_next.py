@@ -23,6 +23,9 @@ from src.experiments.depth_relief.state_interface_contract import (
     interface_code_index,
     semantic_states_for_code,
 )
+from src.experiments.depth_relief.state_handoff_challenge_programs import (
+    build_full_support_proof_programs,
+)
 from src.experiments.depth_relief.state_interface_challenge import (
     _write_summary,
     configured_challenge_profiles,
@@ -306,6 +309,70 @@ def test_four_bit_rate_contracts_have_expected_fibers() -> None:
         )
         for variant in (0, 1)
     } == {18, 19}
+
+
+def test_padded_five_bit_code_has_no_alias_entropy() -> None:
+    case = build_test_programs(
+        horizons=(2,),
+        context_count=1,
+        paths_per_state=1,
+        width=4,
+        seed=415,
+        dataset={"domain": "horn_proof"},
+    )[0]
+    indices = [
+        interface_code_index(
+            condition="padded_5bit",
+            case=case,
+            state=state,
+            interface_config={},
+        )
+        for state in range(16)
+    ]
+    assert len(set(indices)) == 16
+    assert all(index % 2 == 0 for index in indices)
+    assert all(
+        semantic_states_for_code(
+            condition="padded_5bit",
+            case=case,
+            code_index=index,
+            interface_config={},
+        )
+        == (state,)
+        for state, index in enumerate(indices)
+    )
+    assert all(
+        semantic_states_for_code(
+            condition="padded_5bit",
+            case=case,
+            code_index=index,
+            interface_config={},
+        )
+        == ()
+        for index in range(1, 32, 2)
+    )
+
+
+def test_full_support_proofs_cover_and_separate_all_states() -> None:
+    rows = build_full_support_proof_programs(
+        horizon=8,
+        context_count=2,
+        width=4,
+        seed=417,
+        split="full_support",
+    )
+    assert len(rows) == 2 * 16 * 4
+    assert {row["current_state"] for row in rows} == set(range(16))
+    assert {row["path_code"] for row in rows} == {0, 1}
+    assert {row["proof_query_bit"] for row in rows} == {0, 1, 2, 3}
+    assert all(row["state_path"][-1] == row["current_state"] for row in rows)
+    assert all(
+        row["active_transition_count"] == row["current_state"].bit_count()
+        for row in rows
+    )
+    for query_bit in range(4):
+        selected = [row for row in rows if row["proof_query_bit"] == query_bit]
+        assert sum(row["next_state"] for row in selected) == len(selected) // 2
 
 
 def test_configured_rate_sweep_has_exact_information_fibers() -> None:
