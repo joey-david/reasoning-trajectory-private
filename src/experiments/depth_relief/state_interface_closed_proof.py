@@ -293,7 +293,7 @@ def compare_closed_proof_confirmation(run_path: Path) -> dict[str, Any]:
                 for value in h256
             ),
             h256_beats_outcome=(
-                bootstrap_mean_ci(h256_advantage, seed=84_104)["ci_low"] > 0
+                metrics["redundant_h256_minus_outcome"]["ci95"][0] > 0
                 and sum(h256_advantage) / len(h256_advantage)
                 >= float(gates["min_mean_redundant_h256_minus_outcome"])
             ),
