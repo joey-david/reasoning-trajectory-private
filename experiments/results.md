@@ -39,7 +39,7 @@ Status meanings:
 | Dense register confirmation | failed | Does a minimal four-bit state interface turn one-step two-register instructions into stable h32 program execution across seeds and model families? | Qwen `state_interface_register_confirm_{seed1,seed2,seed3}` plus matched outcomes; Mistral `state_interface_register_confirm{,_outcome}` | `scripts/remote/state_handoff_paper_confirmation.sh` | Per-run `evaluation/generalization_summary.json`; Qwen seed 1 also writes `evaluation/replication_summary.json` and `evaluation/challenges/proof_active_depth_h64/summary.json` | The H32 mixed-composition gate failed in all three Qwen seeds and Mistral. Qwen held-out H32 averages 7.92% interface versus 5.83% one-pass, only +2.08 points; Mistral scores 6.88% versus 6.25%. This is not a long-horizon repair. The sharper result is a replicated gap between local and global reliability: Qwen self-conditioned transitions remain 88.55–90.69% semantically correct, yet about 31 calls reduce final state accuracy to 5.63–10.00%. On repeated single-family H32 programs, Qwen still reaches 31.88% versus 9.79% one-pass. Gold-code continuation is 88.13–100%, which makes producer closure and mixed-operation error accumulation the main limits. |
 | Register rate-reliability continuation | pilot | Does one redundant channel bit raise self-conditioned transition reliability enough to survive mixed h32 programs, and does it help a proof state under fixed surface length? | Qwen `state_interface_register_redundant5_seed{1,2,3}`; `state_interface_proof_depth_fullrate` | `scripts/remote/state_handoff_closure_polish.sh` | Register conditions write `evaluation/interfaces/redundant_5bit/summary.json`; proof profiles write `evaluation/challenges/*/summary.json`; paper map: `experiments/state_handoff_paper/evidence.json` | The mixed-register repair fails: completed five-bit seeds score 12.81% and 12.19% at h32, with only 7.45% and 10.31% local closure; the third seed finished training but stopped at 510/640 evaluation cases and is excluded. The valid fixed-h64 proof repeat is more promising: redundant five-bit reaches 81.67% overall, equal to one-pass, and 100% at four active deductions versus 75% one-pass. Canonical four-bit reaches 68.33% overall and 33.33% at depth four. Each depth has only 12 cases, so the proof result is a positive pilot, not a confirmation. |
 | Balanced proof-state confirmation | prepared | Does a rate-matched explicit proof state preserve deeper deductions across prompt length, proof topology, model scale, and model family? | Three Qwen-7B seeds; Qwen2.5-3B and 14B; Mistral-7B; anchor `state_interface_proof_weekend_confirmation` | `scripts/remote/state_handoff_proof_weekend.sh` | Anchor `evaluation/proof_confirmation_{summary.json,png}` plus 33 profile summaries under `evaluation/challenges/` | Trains compressed three-bit, canonical four-bit, and redundant five-bit proof interfaces on matched h2 programs. The 14,112-case confirmation fixes the pilot confound: all depth strata use nonempty proof states and exactly balanced binary queries. It tests active depth 1–4 at fixed h64, surface h16/64/128 at fixed depth mix, and independent/chain/conjunction proofs at depths three and four. Qwen-7B supplies three seeds; Qwen 3B/7B/14B tests scale; Mistral-7B tests family transfer. Prepared and locally validated; no new model result yet. |
-| Canonical causal-state confirmation | prepared | Does reliable recursive proof state require enough rate, one canonical code per state, and transition closure; does active deduction depth matter more than padded rule count? | Qwen `state_interface_proof_closure_seed{1,2,3}` plus anchor `state_interface_causal_state_phase` | `scripts/remote/state_handoff_causal_state.sh` | Anchor `evaluation/{causal_state_phase_summary.json,rate_sufficiency.png,gauge_closure.png,depth_length.png,consumer_basis.png}` plus 30 challenge summaries | Five new matched adapters form a three-seed causal contrast. The padded arm maps state `s` to `2s`; the aliased arm maps it to `2s+path_bit`, so they share the 32-symbol alphabet and every even state token while differing by exactly one bit of `H(C|S)`. Full support crosses 16 states, four separating future queries, two variants, and eight distinct histories without repeated producer calls. Exact state, worst-state recovery, gold-code causal continuation, h256 state/final accuracy, and paired one-pass differences are locked gates. All challenge arms use checkpoints selected only by held-out one-step state accuracy. Prepared and locally validated; no new result yet. |
+| Canonical causal-state confirmation | canonical | Does reliable recursive proof state require enough rate, one canonical code per state, and transition closure; does active deduction depth matter more than padded rule count? | Qwen `state_interface_proof_closure_seed{1,2,3}` plus anchor `state_interface_causal_state_phase` | `scripts/remote/state_handoff_causal_state.sh` | Anchor `evaluation/{causal_state_phase_summary.json,rate_sufficiency.png,gauge_closure.png,depth_length.png,consumer_basis.png}` plus 30 challenge summaries | The canonical 4-bit interface recovers all 16 proof-ledger states in the full-support bank, scores 100% exact at active depths 1--3 in all three seeds, and keeps exact state through h256. H256 final accuracy is 97.22% mean versus 72.22% one-pass, a paired +25 points (context bootstrap 95% CI +12.5 to +38.89). The matched 3-bit code has 0% exact state, while a 5-bit padded canonical code matches 4-bit exact closure. A 5-bit path-aliased code falls to 30--40% exact state at depth 3. The locked suite still fails its easy full-support alias-gap gate and its universal consumer gate; see the technical readout. |
 
 Explicit-handoff local validation covers deterministic analysis of the completed
 32B and 7B artifacts, predicted-code equivalence, recursive continuation,
@@ -47,6 +47,58 @@ five-family stress, matched closure/control, the completed three-hour screen,
 three Qwen register seeds, and one Mistral register comparison. The new
 redundant-register continuation has two complete seeds and one partial
 evaluation; the proof-depth result remains a small one-checkpoint pilot.
+
+### Canonical causal-state technical readout
+
+Each Qwen seed trained on disjoint synthetic Horn contexts. Per condition and
+epoch, 10,000 semantic programs produced 20,000 fixed-256-token forwards,
+5,120,000 padded compute tokens, and 20,000 supervised one-token targets.
+Training ran two epochs with identical compute across conditions. Eighty
+percent of producer prompts supplied an opaque code and one Horn rule and
+targeted the next code; 20% encoded a decimal proof ledger. A second prompt
+supplied only a code and a proof query or next-rule request and targeted one
+answer token. Producer, consumer, validation, and test contexts are disjoint.
+The four code contracts are `s mod 8` (lossy), `s` (canonical), `2s` (padded),
+and `2s + path_bit` (aliased). Padded and aliased conditions therefore share
+the same 32-token output alphabet and every even state code.
+
+Evaluation applies one saved adapter call per Horn rule, discards prior rules
+after every call, and then calls the consumer with only the last code and the
+query. Exact-state accuracy requires the predicted code to decode to the
+single true 4-bit ledger. Local exact closure applies the symbolic rule to the
+model's own supplied state, so an earlier error cannot make a later correct
+transition look wrong. Gold-code continuation supplies the true code directly
+to the consumer. The one-pass control instead receives the whole rule stream
+and query in one call. Thus this tests reusable scaffolded computation, not
+inference-compute efficiency: an h256 interface case uses 257 model calls.
+
+| Test | Canonical 4-bit | Padded 5-bit | Aliased 5-bit | Lossy 3-bit |
+| --- | --- | --- | --- | --- |
+| All 16 states, 128 cases per seed | 100% exact in 3/3 seeds; worst state 100% | 100% exact in 3/3 | 100% semantic state in 3/3 | 0% exact; `H(S\|C)=1` bit |
+| Fixed h32, three state-changing deductions | 100%, 100%, 100% | 100%, 100%, 100% | 40%, 30%, 35% | 0% in seed 1 |
+| H256 exact state / local closure | 100% / 100% in 3/3 | 100% / 100% in 3/3 | 37.5/69.40%, 45.83/71.50%, 37.5/63.85% | 0% / 0% in seed 1 |
+| H256 final answer | 100%, 100%, 91.67% | 100%, 100%, 75% | 62.5%, 83.33%, 75% | 75% in seed 1 |
+| Full-support gold-code continuation | 95.31%, 100%, 98.44% | 96.88%, 100%, 81.25% | 77.34%, 92.97%, 89.84% | 65.63% in seed 1 |
+
+The rate result is exact: the three-bit code retains three of four state bits
+and cannot identify any singleton ledger, although a binary final query can
+still be right. Extra unused symbols do not hurt state production: canonical
+and padded exact-state curves match at every locked point. The path-conditioned
+bit does not hurt the easy full-support bank because that bank mainly adds
+independent facts; it does hurt recursive deduction. At depth three, padded
+beats aliased by 60, 70, and 65 points across seeds. This was a supporting
+metric, not the suite's prespecified alias gate, so report it as a replicated
+follow-up finding rather than relabeling the overall gate as passed.
+
+The two failed locked checks set the claim boundary. First, full-support exact
+state is 100% for both padded and aliased codes, so the prespecified
+full-support alias gap is zero. Second, gold-code continuation does not exceed
+95% for every code surface and seed; padded seed 3 reaches only 81.25%.
+Canonical gold codes do clear 95% in every seed. We can therefore claim exact,
+long-horizon closure for the canonical interface and a matched-budget cost of
+path aliases under chained deduction. We cannot yet claim that every
+sufficient code surface yields an equally reliable consumer, that h256 means
+256 active deductions, or that the result is inference-compute matched.
 
 ### Three-hour screen technical readout
 

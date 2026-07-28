@@ -66,32 +66,44 @@ def plot_gauge(
 
     figure, axis = plt.subplots(figsize=(6.2, 3.8))
     for source in sources:
-        points = []
-        for condition, marker, color in (
-            ("padded_5bit", "^", "#228833"),
-            ("redundant_5bit", "s", "#cc6677"),
-        ):
+        depth_three = []
+        for condition in ("padded_5bit", "redundant_5bit"):
             x = information[source][condition]["true"][
                 "code_given_state_bits"
             ]
-            y = 100 * _mean(
+            full_y = 100 * _mean(
                 results[source][condition]["full_support"],
                 "overall",
                 "exact_state_accuracy",
             )
-            points.append((x, y))
-            axis.scatter(x, y, marker=marker, color=color, s=55)
+            depth_y = 100 * _mean(
+                results[source][condition]["balanced_depth"],
+                "by_active_transition_count",
+                "3",
+                "exact_state_accuracy",
+            )
+            depth_three.append((x, depth_y))
+            axis.scatter(
+                x,
+                full_y,
+                marker="o",
+                facecolors="none",
+                edgecolors="#777777",
+                s=55,
+            )
+            axis.scatter(x, depth_y, marker="s", color="#cc6677", s=55)
         axis.plot(
-            [point[0] for point in points],
-            [point[1] for point in points],
-            color="#999999",
-            linewidth=0.8,
+            [point[0] for point in depth_three],
+            [point[1] for point in depth_three],
+            color="#cc6677",
+            linewidth=1.0,
         )
     canonical_values = [
         100
         * _mean(
-            results[source]["canonical_4bit"]["full_support"],
-            "overall",
+            results[source]["canonical_4bit"]["balanced_depth"],
+            "by_active_transition_count",
+            "3",
             "exact_state_accuracy",
         )
         for source in sources
@@ -101,14 +113,21 @@ def plot_gauge(
         color="#4477aa",
         linestyle="--",
         linewidth=1.2,
-        label="4-bit canonical mean",
+        label="4-bit canonical, depth 3",
     )
-    axis.scatter([], [], marker="^", color="#228833", label="5-bit padded")
-    axis.scatter([], [], marker="s", color="#cc6677", label="5-bit aliased")
+    axis.scatter(
+        [],
+        [],
+        marker="o",
+        facecolors="none",
+        edgecolors="#777777",
+        label="Full-support coverage",
+    )
+    axis.scatter([], [], marker="s", color="#cc6677", label="Depth-3 deduction")
     axis.set_xlabel("Imposed code alias entropy, H(C|S) (bits)")
-    axis.set_ylabel("Full-support exact state accuracy (%)")
+    axis.set_ylabel("Exact state accuracy (%)")
     axis.set_ylim(0, 105)
-    axis.set_title("Path aliases add a gauge-fixing burden")
+    axis.set_title("Aliases preserve coverage but break recursive deduction")
     axis.legend(frameon=False, fontsize=8)
     axis.grid(color="#dddddd", linewidth=0.7)
     axis.spines[["top", "right"]].set_visible(False)
