@@ -1,0 +1,19 @@
+model:
+  name: mistralai/Mistral-7B-Instruct-v0.3
+  revision: c170c708c41dac9275d15a8fff4eca08d52bab71
+  backend: hf
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+causal_reasoning_suite:
+  runs:
+    - runs/Mistral-7B-Instruct-v0.3/interventions/causal_reasoning_equivalent_state
+    - runs/Mistral-7B-Instruct-v0.3/interventions/causal_reasoning_future_utility
+    - runs/Mistral-7B-Instruct-v0.3/interventions/causal_reasoning_hysteresis
+    - runs/Mistral-7B-Instruct-v0.3/interventions/causal_reasoning_unresolved_dependency
+    - runs/Mistral-7B-Instruct-v0.3/interventions/causal_reasoning_boundary_handoff
+    - runs/Mistral-7B-Instruct-v0.3/interventions/causal_reasoning_query_switch

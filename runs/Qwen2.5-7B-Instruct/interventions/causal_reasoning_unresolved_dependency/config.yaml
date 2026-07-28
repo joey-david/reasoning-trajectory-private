@@ -1,0 +1,11 @@
+causal_reasoning:
+  experiment: unresolved_dependency
+  hypothesis: Models retain and later discharge explicit unresolved dependencies.
+  seed: 729104
+  case_count: 160
+  probe_layers: [3, 7, 11, 15, 19, 23, 27]
+  max_sequence_length: 512
+  settling_jsd_threshold: 0.5
+  prompt:
+    mode: chat
+    system: Track the stated reasoning state exactly and return only the requested symbol.

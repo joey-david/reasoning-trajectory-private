@@ -24,6 +24,7 @@ Status meanings:
 | Symbolic parser audit | pilot | How faithful is the restricted-AST symbolic-update parser on real trace windows? | `runs/SmolLM3-3B/screening/frontier_identification/gsm_symb_pure_mixed_latents_10k` | `.venv/bin/python scripts/experiments/symbolic/audit_symbolic_parser.py` | `experiments/symbolic_parser_audit_report.json` | 8-window hand audit: micro-recall improved 0.815→0.963 (+5 FN → 1 FN) by fixing leading-paren capture, adding prose-arithmetic detection (+/-/× as words), BIND-with-expression-RHS extension, currency-symbol support, and unit-word skipping in BIND continuations. Micro-precision 0.88→0.79 reflects 6 semantically-correct extra detections not tracked by gold labels rather than genuine regressions. Full 580-trace corpus shows +1915 updates (+10.9%), led by +953 OPERATE (+16.4%). See `src/experiments/symbolic.py`. |
 | H3 process-isomer patching | failed | Does causal patching of process-isomer components rescue target behavior? | `runs/SmolLM3-3B/failed/h3_process_isomer_replay`; `runs/SmolLM3-3B/failed/h3_process_isomer_patching`; `runs/SmolLM3-3B/failed/h3_process_isomer_patching_mlp18` | `H3_DEVICES=0,1 scripts/experiments/run_h3_protocol.sh primary` | `runs/SmolLM3-3B/failed/h3_process_isomer_patching/analysis/report.json` | Prespecified attention-18 primary and MLP-18 fallback are kept as failed-hypothesis artifacts. |
 | Solution-object extraction | active | Can latent solution objects be extracted, decoded, and used causally? | `runs/SmolLM3-3B/interventions/solution_object_extraction_small`; `runs/SmolLM3-3B/interventions/solution_object_extraction_medium` | `.venv/bin/python scripts/experiments/solution_object_extraction/solution_object_extraction.py run runs/SmolLM3-3B/interventions/solution_object_extraction_medium` | `runs/SmolLM3-3B/interventions/solution_object_extraction_medium/analysis/experiments/solution_object_extraction/` | Medium validation passes the improved artifact contract; retrieval and low-leakage causal evidence are promising, but real mixed-success trajectory G/H remains the next decisive stage. |
+| Six causal reasoning questions | prepared | Which simple interventions change a formally marked reasoning state and its continuation? | Six `causal_reasoning_*` folders each under Qwen2.5-7B-Instruct and Mistral-7B-Instruct-v0.3 | `scripts/remote/causal_reasoning.sh` | Each child owns `evaluation/{cases.jsonl,summary.json}`; each model anchor owns `evaluation/suite_summary.json` | Tests equivalent-state swaps, future-use swaps, correction hysteresis, unresolved dependencies, one/three-token boundary bandwidth, and query switching. Each model has 160 paired cases per question with fixed 80/40/40 train/validation/test splits. Prepared, token-validated, and locally smoked; no 7B result yet. |
 | State materialization | canonical | Does a history collapse into a reusable current state? | `runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history` | `.venv/bin/python scripts/experiments/depth_relief.py analyze-abstraction-information runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history` | `runs/Qwen2.5-32B-Instruct/interventions/state_abstraction_matched_history/depth_relief/state_abstraction/{information_summary,interchange_summary}.json` | Read, Update, and constituent steps are perfect, but h2 Compose is 13.44% despite 76.98% Synthesize; h4 Synthesize and Compose are 12.71%. Explicit state is invariant and decodable, while implicit endpoints retain path information. The tested late-layer state subspace does not beat its random control. |
 | Explicit state handoff | active | Does a rate-limited, interchangeable state contract enable reusable reasoning modules? | 32B source run above; `runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `scripts/remote/state_handoff.sh continuation-confirm-7b`; `scripts/remote/state_handoff.sh interface-final-eval-7b` | `runs/Qwen2.5-7B-Instruct/interventions/state_handoff_killtest/evaluation/{comparison_summary,information_summary}.json`; `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/evaluation/interfaces/comparison_summary.json` | Recursive decimal reuse is perfect through h32 on 9,600 cases. The final opaque adapters show an exact rate result: the 2-bit code has perfect closure and exactly 50% answer accuracy. Canonical 3-bit reaches 74.27/58.65/42.19/42.19% at h2/4/8/16; redundant 4-bit reaches 97.71/80.63/63.85/59.48%. Context-bound codes remain near chance. |
 | Predicted-code equivalence | pilot | Do independently emitted tokens share causal meaning even when their surface forms differ? | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `.venv/bin/python scripts/experiments/run_state_handoff_training.py compare-interfaces runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls` | `runs/Qwen2.5-7B-Instruct/interventions/state_interface_rate_controls/evaluation/interfaces/*/predicted_equivalence_summary.json` | Artifact-only predicted-donor analysis separates exact token agreement from agreement after grouping codes by downstream behavior. Redundant same-state agreement rises from 36.02% exact to 61.81% by behavior; predicted-donor preservation is 71.42%, versus 12.37% for frequency-free random codes. This is evidence for partial code equivalence, not full interchangeability. |
@@ -47,6 +48,50 @@ five-family stress, matched closure/control, the completed three-hour screen,
 three Qwen register seeds, and one Mistral register comparison. The new
 redundant-register continuation has two complete seeds and one partial
 evaluation; the proof-depth result remains a small one-checkpoint pilot.
+
+### Six causal questions: technical contract
+
+These six runs ask separate causal questions and share only data, capture, and
+scoring code. Each case marks one exact text span before the final query. The
+evaluator records that span's residual state at every decoder layer, replaces
+the recipient residual with a donor residual, and scores the model's next-token
+distribution over a validated one-token alphabet. It does not generate a chain
+or use an LLM judge. The recipient keeps its own earlier KV state, except in the
+boundary and query-switch tests where the recipient text removes the derivation.
+
+- **Equivalent state:** two different orders and wordings derive the same
+  four-bit fact ledger. A same-state donor should preserve the answer; a donor
+  that flips the queried fact should transfer its answer. A third donor changes
+  another fact while keeping the same answer, so answer-only and state-level
+  effects can be told apart.
+- **Future utility:** a prompt computes registers A and B, marks the state, then
+  delays the query by 2, 8, or 24 inert lines. The paired donor changes which
+  register the stated goal will reuse. Residual probes predict the selected
+  register, reuse count, and delay; a character n-gram text-only probe reports
+  how much of that signal the wording already exposes.
+- **Reasoning hysteresis:** the same modular arithmetic task contains an initial
+  wrong intermediate value, either followed by a correction or left unchanged.
+  The run compares text correction, hidden-state correction, both together, and
+  an old-plan state inserted into corrected text against a clean restart.
+- **Unresolved dependency:** `x` appears up front, arrives only after 2/8/24
+  inert lines, or never arrives. The answer is exact modular arithmetic. A
+  known-state donor tests whether the settled value can replace a repaid debt;
+  the unpaid condition measures guessing rather than silently treating missing
+  data as known.
+- **Boundary handoff:** a complete four-fact derivation supplies one marked
+  boundary while the recipient says that the derivation was removed. The run
+  compares no patch, the last one or three boundary-token residuals at one
+  layer, and the last token at all layers.
+- **Query switch:** a source trace builds a fact ledger for query A. The
+  recipient removes the trace and asks query B. Its controls are no patch and a
+  donor that built the same ledger for query B.
+
+Layer choice uses only the 40-case validation split; the fixed 40-case test
+split supplies the reported intervention result. The remaining 80 cases fit
+the two feature probes. Summaries include constrained and unconstrained
+accuracy, candidate probability mass, expected-answer probability shifts,
+context-level bootstrap intervals, full layer curves, and validation-selected
+test cells. Qwen and Mistral use independent data seeds and pinned revisions.
 
 ### Canonical causal-state technical readout
 

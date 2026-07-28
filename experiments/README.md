@@ -164,6 +164,42 @@ reusable artifacts. Analysis can also be rerun without inference:
 - Remote jobs are resumable and should be synchronized with
   `scripts/remote.sh`; do not commit large activation artifacts.
 
+## Six causal reasoning questions
+
+The Qwen and Mistral anchors each list six independent child runs:
+
+```text
+runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_suite
+runs/Mistral-7B-Instruct-v0.3/interventions/causal_reasoning_suite
+```
+
+Prepare deterministic data, inspect one full paired case per question, and
+check exact tokenizer contracts without model inference:
+
+```bash
+.venv/bin/python scripts/experiments/causal_reasoning.py prepare \
+  runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_suite
+.venv/bin/python scripts/experiments/causal_reasoning.py inspect \
+  runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_suite
+.venv/bin/python scripts/experiments/causal_reasoning.py validate-tokens \
+  runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_suite
+```
+
+The restart-safe remote runner assigns Qwen to `ourasi:0,1` and Mistral to
+`coktailjet:0,1`, runs both model suites at once, retries each suite once, then
+reduces every completed child:
+
+```bash
+CAUSAL_REASONING_DRY_RUN=true bash scripts/remote/causal_reasoning.sh
+bash scripts/remote/causal_reasoning.sh
+```
+
+Override a host or device list with `CAUSAL_QWEN_NODE`,
+`CAUSAL_QWEN_DEVICES`, `CAUSAL_MISTRAL_NODE`, and
+`CAUSAL_MISTRAL_DEVICES`. Standard pulls include compact JSON results but skip
+the feature NPZ files. Add `--hidden-states` and name only these run folders if
+the raw probe features are needed for a new local reduction.
+
 ## Explicit one-token state handoff
 
 This follow-up asks whether a decimal state token can turn correct local updates
