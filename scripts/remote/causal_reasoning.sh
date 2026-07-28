@@ -6,7 +6,7 @@ cd "$REPO_ROOT"
 
 PYTHON="${PYTHON:-.venv/bin/python}"
 QWEN_NODE="${CAUSAL_QWEN_NODE:-ourasi}"
-QWEN_DEVICES="${CAUSAL_QWEN_DEVICES:-0,1}"
+QWEN_DEVICES="${CAUSAL_QWEN_DEVICES:-0}"
 MISTRAL_NODE="${CAUSAL_MISTRAL_NODE:-coktailjet}"
 MISTRAL_DEVICES="${CAUSAL_MISTRAL_DEVICES:-0,1}"
 QWEN_SUITE="runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_suite"

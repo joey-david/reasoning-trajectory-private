@@ -185,7 +185,7 @@ check exact tokenizer contracts without model inference:
   runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_suite
 ```
 
-The restart-safe remote runner assigns Qwen to `ourasi:0,1` and Mistral to
+The restart-safe remote runner assigns Qwen to `ourasi:0` and Mistral to
 `coktailjet:0,1`, runs both model suites at once, retries each suite once, then
 reduces every completed child:
 
