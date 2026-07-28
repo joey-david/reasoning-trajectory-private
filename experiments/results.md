@@ -90,7 +90,7 @@ Layer choice uses only the 40-case validation split; the fixed 40-case test
 split supplies the reported intervention result. The remaining 80 cases fit
 the two feature probes. Summaries include constrained and unconstrained
 accuracy, candidate probability mass, expected-answer probability shifts,
-context-level bootstrap intervals, full layer curves, and validation-selected
+paired-case bootstrap intervals, full layer curves, and validation-selected
 test cells. Qwen and Mistral use independent data seeds and pinned revisions.
 
 ### Canonical causal-state technical readout
