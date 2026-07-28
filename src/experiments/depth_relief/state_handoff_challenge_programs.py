@@ -26,6 +26,7 @@ def _proof_rules(
     path: int,
     seed: int,
     topology: str = "mixed",
+    seeded_fillers: bool = False,
 ) -> list[dict[str, Any]]:
     if topology not in {"mixed", "independent", "chain", "conjunction"}:
         raise ValueError(f"Unknown proof topology: {topology}")
@@ -56,11 +57,19 @@ def _proof_rules(
                 premises = established[-min(2, len(established)) :]
             established.append(conclusion)
         elif absent:
-            blocked = absent[(position + path) % len(absent)]
+            blocked = (
+                rng.choice(absent)
+                if seeded_fillers
+                else absent[(position + path) % len(absent)]
+            )
             premises = [blocked]
             conclusion = blocked
         elif established:
-            conclusion = established[(position + path) % len(established)]
+            conclusion = (
+                rng.choice(established)
+                if seeded_fillers
+                else established[(position + path) % len(established)]
+            )
             premises = [conclusion]
         else:
             blocked = rng.randrange(4)
@@ -116,6 +125,10 @@ def build_full_support_proof_programs(
         raise ValueError("Full-support proof challenges require four fact bits")
     if horizon < width:
         raise ValueError("Full-support horizon must fit every active deduction")
+    if context_count < 2 * width or context_count % (2 * width):
+        raise ValueError(
+            "Full-support contexts must contain complete query-by-variant blocks"
+        )
     contexts = _program_contexts(
         split=split, count=context_count, width=width, seed=seed
     )
@@ -127,13 +140,20 @@ def build_full_support_proof_programs(
                 bit for bit in range(width) if target & (1 << bit)
             )
             path = int(context["index"]) % 2
+            ordered_bits = list(target_bits)
+            random.Random(
+                seed + 1_009 * (int(context["index"]) // 2) + 97 * target
+            ).shuffle(ordered_bits)
+            if path and len(ordered_bits) > 1:
+                ordered_bits = ordered_bits[1:] + ordered_bits[:1]
             history = _proof_rules(
-                bits=target_bits,
+                bits=tuple(ordered_bits),
                 width=width,
                 horizon=horizon,
                 path=path,
                 seed=seed + int(context["index"]),
                 topology="independent",
+                seeded_fillers=True,
             )
             states = [0]
             for rule in history:
@@ -145,53 +165,53 @@ def build_full_support_proof_programs(
             )
             if active_count != target.bit_count():
                 raise AssertionError("Full-support active depth is not exact")
-            for query_bit in range(width):
-                final_rule = {
-                    "kind": "proof_query",
-                    "required_mask": 1 << query_bit,
-                    "mode": "all",
-                }
-                semantic = {
-                    "family": "horn_proof_to_query",
-                    "history_family": "horn_proof",
-                    "final_family": "proof_query",
-                    "format": "prose",
-                    "bits": width,
-                    "initial_state": 0,
-                    "history": history,
-                    "final_rule": final_rule,
-                    "current_state": target,
-                    "next_state": apply_rule(final_rule, target, 2**width),
-                    "history_steps": horizon,
-                    "state_path": states,
-                    "path_code": path,
-                    "program_context": str(context["id"]),
-                    "program_context_split": split,
-                    "abstraction_group": str(context["id"]),
-                    "abstraction_split": split,
-                    "domain": "horn_proof",
-                    "composition_split": "heldout",
-                    "proof_template": "full_state_support",
-                    "proof_topology": "independent",
-                    "endpoint_cardinality": target.bit_count(),
-                    "proof_composition_active": active_count >= 3,
-                    "active_transition_count": active_count,
-                    "state_representation": "opaque_fact_set",
-                    "state_symbols": symbols,
-                    "answer_symbols": ["0", "1"],
-                    "proof_consumer": "query",
-                    "proof_query_bit": query_bit,
-                }
-                digest = hashlib.sha256(
-                    json.dumps(
-                        semantic, sort_keys=True, separators=(",", ":")
-                    ).encode()
-                ).hexdigest()[:12]
-                semantic["id"] = (
-                    f"handoff_{split}_{context['id']}_h{horizon}_"
-                    f"s{target}_q{query_bit}_{digest}"
-                )
-                rows.append(semantic)
+            query_bit = (int(context["index"]) // 2) % width
+            final_rule = {
+                "kind": "proof_query",
+                "required_mask": 1 << query_bit,
+                "mode": "all",
+            }
+            semantic = {
+                "family": "horn_proof_to_query",
+                "history_family": "horn_proof",
+                "final_family": "proof_query",
+                "format": "prose",
+                "bits": width,
+                "initial_state": 0,
+                "history": history,
+                "final_rule": final_rule,
+                "current_state": target,
+                "next_state": apply_rule(final_rule, target, 2**width),
+                "history_steps": horizon,
+                "state_path": states,
+                "path_code": path,
+                "program_context": str(context["id"]),
+                "program_context_split": split,
+                "abstraction_group": str(context["id"]),
+                "abstraction_split": split,
+                "domain": "horn_proof",
+                "composition_split": "heldout",
+                "proof_template": "full_state_support",
+                "proof_topology": "independent",
+                "endpoint_cardinality": target.bit_count(),
+                "proof_composition_active": active_count >= 3,
+                "active_transition_count": active_count,
+                "state_representation": "opaque_fact_set",
+                "state_symbols": symbols,
+                "answer_symbols": ["0", "1"],
+                "proof_consumer": "query",
+                "proof_query_bit": query_bit,
+            }
+            digest = hashlib.sha256(
+                json.dumps(
+                    semantic, sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest()[:12]
+            semantic["id"] = (
+                f"handoff_{split}_{context['id']}_h{horizon}_"
+                f"s{target}_q{query_bit}_{digest}"
+            )
+            rows.append(semantic)
     return rows
 
 

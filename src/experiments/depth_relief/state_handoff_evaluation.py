@@ -192,15 +192,22 @@ def evaluate_program_hf(
     }
 
 
-def _load_evaluation_model(run_path: Path, condition: str) -> tuple[Any, Any]:
+def _load_evaluation_model(
+    run_path: Path,
+    condition: str,
+    *,
+    adapter_preference: str | None = None,
+) -> tuple[Any, Any]:
     from peft import PeftModel
 
     config = load_config(run_path)
     manifest_path = condition_training_dir(run_path, condition) / "checkpoint_manifest.json"
     manifest = json.loads(manifest_path.read_text())
-    preference = config.get("state_handoff_training", {}).get(
+    preference = adapter_preference or config.get("state_handoff_training", {}).get(
         "evaluation_adapter", "best"
     )
+    if preference not in {"best", "final"}:
+        raise ValueError(f"Unknown evaluation adapter preference: {preference}")
     if preference == "best" and manifest.get("best_checkpoint"):
         adapter = Path(manifest["best_checkpoint"]) / "adapter"
     else:

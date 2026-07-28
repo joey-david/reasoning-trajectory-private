@@ -163,11 +163,7 @@ def interface_code_index(
             default=DEFAULT_CANONICAL_4BIT_PERMUTATION,
         )[int(state)]
     if condition == "padded_5bit":
-        return 2 * _configured_permutation(
-            condition=condition,
-            interface_config=interface_config,
-            default=DEFAULT_CANONICAL_4BIT_PERMUTATION,
-        )[int(state)]
+        return 2 * int(state)
     if condition == "context_bound":
         seed = int(interface_config.get(condition, {}).get("seed", 721_701))
         return _context_permutation(case, seed, count)[int(state)]

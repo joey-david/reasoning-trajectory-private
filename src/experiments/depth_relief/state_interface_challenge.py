@@ -72,6 +72,15 @@ def configured_challenge_profiles(run_path: Path) -> dict[str, dict[str, Any]]:
                     "seed": int(source["challenge_seed"]),
                     "outcome_owner_profile": outcome_owner,
                 }
+                if (
+                    "evaluation_adapter" in source
+                    or "evaluation_adapter" in matrix
+                ):
+                    spec["evaluation_adapter"] = str(
+                        source.get(
+                            "evaluation_adapter", matrix.get("evaluation_adapter")
+                        )
+                    )
                 profiles[profile] = spec
     return profiles
 
@@ -192,6 +201,9 @@ def prepare_interface_challenges(run_path: Path) -> dict[str, Any]:
                 }
             ),
             "outcome_owner_profile": str(spec.get("outcome_owner_profile", profile)),
+            "evaluation_adapter": str(
+                spec.get("evaluation_adapter", "run_config")
+            ),
         }
     manifest = {"schema_version": 1, "profiles": result}
     write_json(run_path / "evaluation/challenges/manifest.json", manifest)
@@ -268,6 +280,13 @@ def _summarize_challenge_ids(
         )
         for case_id in ids
     ]
+    gold_code_values = [
+        bool(
+            interface_index[case_id]["gold_final"]
+            and interface_index[case_id]["gold_final"]["is_expected_unconstrained"]
+        )
+        for case_id in ids
+    ]
     local_values = [
         bool(step["locally_correct"])
         for case_id in ids
@@ -303,9 +322,12 @@ def _summarize_challenge_ids(
         "exact_state_accuracy": cluster_bootstrap_mean_ci(
             exact_state_values, clusters, seed=seed + 5
         ),
-        "local_semantic_closure": bootstrap_mean_ci(local_values, seed=seed + 6),
+        "gold_code_continuation_accuracy": cluster_bootstrap_mean_ci(
+            gold_code_values, clusters, seed=seed + 6
+        ),
+        "local_semantic_closure": bootstrap_mean_ci(local_values, seed=seed + 7),
         "local_exact_state_closure": bootstrap_mean_ci(
-            local_exact_values, seed=seed + 7
+            local_exact_values, seed=seed + 8
         ),
         "interface_minus_outcome": cluster_bootstrap_mean_ci(
             [
@@ -313,7 +335,7 @@ def _summarize_challenge_ids(
                 for left, right in zip(interface_values, outcome_values)
             ],
             clusters,
-            seed=seed + 8,
+            seed=seed + 9,
         ),
     }
     result.update(
@@ -321,7 +343,7 @@ def _summarize_challenge_ids(
             ids,
             program_index=program_index,
             interface_index=interface_index,
-            seed=seed + 9,
+            seed=seed + 10,
         )
     )
     if all("next_state" in program_index[case_id] for case_id in ids):
@@ -422,6 +444,20 @@ def _write_summary(run_path: Path, profile: str) -> dict[str, Any]:
                     }
                 ),
             ),
+            "by_current_state": (
+                "current_state",
+                sorted({int(row["current_state"]) for row in programs}),
+            ),
+            "by_proof_query_bit": (
+                "proof_query_bit",
+                sorted(
+                    {
+                        int(row["proof_query_bit"])
+                        for row in programs
+                        if "proof_query_bit" in row
+                    }
+                ),
+            ),
             "by_surface_horizon": (
                 "history_steps",
                 sorted(
@@ -508,7 +544,15 @@ def evaluate_interface_challenge(
         str(spec["interface_condition"]) if side == "interface" else "outcome_only"
     )
     source_config = load_config(source_run)
-    model, tokenizer = _load_evaluation_model(source_run, condition)
+    model, tokenizer = _load_evaluation_model(
+        source_run,
+        condition,
+        adapter_preference=(
+            str(spec["evaluation_adapter"])
+            if "evaluation_adapter" in spec
+            else None
+        ),
+    )
     experiment = source_config["state_handoff_training"]
     cases = _read(challenge_dir(run_path, profile) / "programs.jsonl")
     completed = {str(row["id"]) for row in _read(_side_path(run_path, profile, side))}

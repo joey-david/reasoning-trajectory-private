@@ -516,22 +516,30 @@ not needed for the result analysis.
 ### Canonical causal-state test
 
 This locked follow-up separates three terms that the first proof sweep mixed:
-state rate, code aliases, and active proof depth. It adds only three adapters:
-one 32-symbol padded code for seed 1 and two new 16-symbol canonical seeds.
-The padded code maps each of the 16 proof states to one fixed even-indexed
-symbol and leaves the odd symbols unused. It therefore matches the redundant
-code's output alphabet without giving one state two path-dependent names.
+state rate, code aliases, and active proof depth. It adds only five adapters:
+three 32-symbol padded-code seeds and two new 16-symbol canonical seeds. The
+padded code maps state `s` to symbol `2s` and leaves the odd symbols unused;
+the aliased code maps the same state to `2s + path_bit`. This matches every
+even state-to-token assignment and changes only the path-dependent alias.
 
 Every condition then runs on the same three saved program banks:
 
-- `full_support` reaches each of the 16 fact sets from the empty set and asks
-  each of four single-fact queries. These queries separate every pair of
-  states. The report distinguishes exact recovery from membership in a lossy
-  code fiber.
+- `full_support` crosses all 16 fact sets with four single-fact queries and
+  both alias variants over eight distinct histories. Each producer trajectory
+  runs once; query and alias are crossed rather than correlated. The queries
+  separate every pair of states, and the report distinguishes exact recovery
+  from membership in a lossy code fiber.
 - `balanced_depth` holds the final state to a three-fact set while varying the
   number of state-changing deductions from one to three in a 32-rule stream.
 - `length` holds active deductions to one, two, or three while padding the
   stream to 16, 64, 128, or 256 rules.
+
+The primary statistics use exact state recovery, including the worst of all 16
+states, because a binary proof answer can remain correct after state collapse.
+Gold-code calls delete the history and intervene with each state code before
+all four future fact queries; `consumer_basis.png` shows the resulting causal
+truth table. Final-answer accuracy remains a downstream consequence rather
+than the state metric.
 
 Run the restart-safe suite on one host with two 48 GB or larger GPUs:
 
@@ -540,11 +548,13 @@ STATE_CAUSAL_NODES=local STATE_CAUSAL_DEVICES=0,1 \
   bash scripts/remote/state_handoff_causal_state.sh
 ```
 
-Only three training tasks should be pending. The challenge queue contains 24
-interface profiles, 9 shared one-pass controls, 1,888 interface cases, and
-92,672 recursive transition calls. The target runtime is 7--10 hours. The
-reducer writes `causal_state_phase_summary.json`, `rate_sufficiency.png`,
-`gauge_closure.png`, and `depth_length.png` under
+All arms use the checkpoint selected by held-out one-step state accuracy, never
+the long-horizon test. Exactly five training tasks should be pending. The
+challenge queue contains 30 interface profiles, 9 shared one-pass controls,
+2,840 interface cases, and 171,520 recursive transition calls. The target
+runtime is 9--12 hours. The reducer writes
+`causal_state_phase_summary.json`, `rate_sufficiency.png`,
+`gauge_closure.png`, `depth_length.png`, and `consumer_basis.png` under
 `state_interface_causal_state_phase/evaluation/`.
 
 ## Causal depth relief

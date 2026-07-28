@@ -28,11 +28,11 @@ fi
 if [[ "${STATE_CAUSAL_DRY_RUN:-false}" == true ]]; then
   echo "causal-state confirmation dry run"
   echo "workers: ${NODES[*]} / ${DEVICES[*]}"
-  echo "new training tasks: 3"
-  echo "challenge profiles: 24"
-  echo "interface challenge cases: 1888"
-  echo "interface transition calls: 92672"
-  echo "target runtime on two 48GB or larger GPUs: 7-10 hours"
+  echo "new training tasks: 5"
+  echo "challenge profiles: 30"
+  echo "interface challenge cases: 2840"
+  echo "interface transition calls: 171520"
+  echo "target runtime on two 48GB or larger GPUs: 9-12 hours"
   exit 0
 fi
 

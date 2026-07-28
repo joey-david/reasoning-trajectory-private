@@ -330,7 +330,7 @@ def test_padded_five_bit_code_has_no_alias_entropy() -> None:
         for state in range(16)
     ]
     assert len(set(indices)) == 16
-    assert all(index % 2 == 0 for index in indices)
+    assert indices == list(range(0, 32, 2))
     assert all(
         semantic_states_for_code(
             condition="padded_5bit",
@@ -351,17 +351,33 @@ def test_padded_five_bit_code_has_no_alias_entropy() -> None:
         == ()
         for index in range(1, 32, 2)
     )
+    assert all(
+        interface_code_index(
+            condition="padded_5bit",
+            case=case,
+            state=state,
+            interface_config={},
+        )
+        == interface_code_index(
+            condition="redundant_5bit",
+            case=case,
+            state=state,
+            interface_config={},
+            variant=0,
+        )
+        for state in range(16)
+    )
 
 
 def test_full_support_proofs_cover_and_separate_all_states() -> None:
     rows = build_full_support_proof_programs(
         horizon=8,
-        context_count=2,
+        context_count=8,
         width=4,
         seed=417,
         split="full_support",
     )
-    assert len(rows) == 2 * 16 * 4
+    assert len(rows) == 8 * 16
     assert {row["current_state"] for row in rows} == set(range(16))
     assert {row["path_code"] for row in rows} == {0, 1}
     assert {row["proof_query_bit"] for row in rows} == {0, 1, 2, 3}
@@ -373,6 +389,11 @@ def test_full_support_proofs_cover_and_separate_all_states() -> None:
     for query_bit in range(4):
         selected = [row for row in rows if row["proof_query_bit"] == query_bit]
         assert sum(row["next_state"] for row in selected) == len(selected) // 2
+        assert {row["path_code"] for row in selected} == {0, 1}
+        for state in range(16):
+            matched = [row for row in selected if row["current_state"] == state]
+            assert len(matched) == 2
+            assert matched[0]["history"] != matched[1]["history"]
 
 
 def test_challenge_preparation_routes_full_state_support(tmp_path) -> None:
@@ -391,7 +412,7 @@ state_interface_challenges:
     seed: 419
     horizons: [8]
     full_state_support: true
-    program_contexts: 2
+    program_contexts: 8
     block_size: 1
 """.strip()
         + "\n"
@@ -914,6 +935,7 @@ def test_challenge_matrix_expands_sources_conditions_and_templates(tmp_path) -> 
     (run_path / "config.yaml").write_text(
         """
 state_interface_challenge_matrix:
+  evaluation_adapter: best
   templates:
     depth:
       domain: horn_proof
@@ -941,6 +963,7 @@ state_interface_challenge_matrix:
         "small__redundant_5bit__depth",
     }
     assert profiles["small__canonical_4bit__depth"]["seed"] == 61
+    assert profiles["small__canonical_4bit__depth"]["evaluation_adapter"] == "best"
     assert (
         profiles["small__redundant_5bit__depth"]["outcome_owner_profile"]
         == "small__canonical_4bit__depth"
@@ -978,6 +1001,9 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
                         "candidate_probability_mass": 1.0,
                         "prompt_token_count": 10,
                     },
+                    "gold_final": {
+                        "is_expected_unconstrained": True,
+                    },
                     "predicted_semantic_states": (
                         [depth, depth + 8] if depth == 0 else [depth]
                     ),
@@ -1003,6 +1029,7 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
         )
     summary = _write_summary(tmp_path, "proof_depth")
     assert set(summary["by_active_transition_count"]) == {"0", "1"}
+    assert set(summary["by_current_state"]) == {"0", "1"}
     assert (
         summary["by_active_transition_count"]["1"]["interface_minus_outcome"]["mean"]
         == 1.0
@@ -1031,6 +1058,7 @@ def test_proof_depth_summary_pairs_results_by_active_count(tmp_path) -> None:
         summary["by_active_transition_count"]["0"]["exact_state_accuracy"]["mean"]
         == 0.0
     )
+    assert summary["overall"]["gold_code_continuation_accuracy"]["mean"] == 1.0
 
 
 def test_substitution_subset_balances_contexts_and_code_variants() -> None:
