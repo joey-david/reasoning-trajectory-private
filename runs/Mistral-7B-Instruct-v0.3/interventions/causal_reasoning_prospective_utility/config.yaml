@@ -1,0 +1,11 @@
+causal_reasoning:
+  experiment: prospective_utility
+  hypothesis: A result token is causally marked by whether later computation will reuse it.
+  seed: 729402
+  case_count: 160
+  probe_layers: [0, 1, 3, 7, 11, 15, 19, 23, 27, 30]
+  max_sequence_length: 768
+  settling_jsd_threshold: 0.5
+  prompt:
+    mode: chat
+    system: Track the register program exactly. Your entire response must be exactly one digit, with no words or punctuation.

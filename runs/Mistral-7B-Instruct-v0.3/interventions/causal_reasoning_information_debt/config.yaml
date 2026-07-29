@@ -1,0 +1,11 @@
+causal_reasoning:
+  experiment: information_debt
+  hypothesis: Models distinguish and preserve known, recoverable, deferred, and irrelevant dependencies.
+  seed: 729404
+  case_count: 160
+  probe_layers: [0, 1, 3, 7, 11, 15, 19, 23, 27, 30]
+  max_sequence_length: 768
+  settling_jsd_threshold: 0.5
+  prompt:
+    mode: chat
+    system: Maintain unresolved dependencies exactly. Your entire response must be exactly one digit, with no words or punctuation.

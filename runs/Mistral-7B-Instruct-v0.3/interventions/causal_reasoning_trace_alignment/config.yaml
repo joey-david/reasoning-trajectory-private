@@ -1,0 +1,11 @@
+causal_reasoning:
+  experiment: trace_alignment
+  hypothesis: Patch utility follows trace-coordinate alignment more than formal value equality.
+  seed: 729401
+  case_count: 160
+  probe_layers: [0, 1, 3, 7, 11, 15, 19, 23, 27, 30]
+  max_sequence_length: 768
+  settling_jsd_threshold: 0.5
+  prompt:
+    mode: chat
+    system: Continue from the stated current value. Your entire response must be exactly one digit, with no words or punctuation.

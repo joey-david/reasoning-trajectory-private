@@ -1,0 +1,11 @@
+causal_reasoning:
+  experiment: correction_hysteresis
+  hypothesis: A corrected value token can retain or erase the state induced by an earlier error.
+  seed: 729403
+  case_count: 160
+  probe_layers: [0, 1, 3, 7, 11, 15, 19, 23, 27, 30]
+  max_sequence_length: 768
+  settling_jsd_threshold: 0.5
+  prompt:
+    mode: chat
+    system: Use the verified current state. Your entire response must be exactly one digit, with no words or punctuation.

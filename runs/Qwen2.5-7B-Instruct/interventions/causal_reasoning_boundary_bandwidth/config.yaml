@@ -1,0 +1,11 @@
+causal_reasoning:
+  experiment: boundary_bandwidth
+  hypothesis: Handoff success rises with the amount of prior-step state transplanted.
+  seed: 729305
+  case_count: 160
+  probe_layers: [0, 1, 3, 7, 11, 15, 19, 23, 26]
+  max_sequence_length: 768
+  settling_jsd_threshold: 0.5
+  prompt:
+    mode: chat
+    system: Read the final fact ledger exactly. Your entire response must be exactly one digit, with no words or punctuation.

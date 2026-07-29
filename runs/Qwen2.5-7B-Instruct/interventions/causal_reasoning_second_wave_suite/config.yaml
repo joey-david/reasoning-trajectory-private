@@ -1,0 +1,19 @@
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  revision: a09a35458c702b33eeacc393d103063234e8bc28
+  backend: hf
+  required_gpus: 1
+  device_map:
+    "": 0
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+causal_reasoning_suite:
+  runs:
+    - runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_trace_alignment
+    - runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_prospective_utility
+    - runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_correction_hysteresis
+    - runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_information_debt
+    - runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_boundary_bandwidth
+    - runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_query_reuse

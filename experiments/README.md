@@ -164,7 +164,7 @@ reusable artifacts. Analysis can also be rerun without inference:
 - Remote jobs are resumable and should be synchronized with
   `scripts/remote.sh`; do not commit large activation artifacts.
 
-## Six causal reasoning questions
+## First-wave causal reasoning questions
 
 The Qwen and Mistral anchors each list six independent child runs:
 
@@ -199,6 +199,50 @@ Override a host or device list with `CAUSAL_QWEN_NODE`,
 `CAUSAL_MISTRAL_DEVICES`. Standard pulls include compact JSON results but skip
 the feature NPZ files. Add `--hidden-states` and name only these run folders if
 the raw probe features are needed for a new local reduction.
+
+### Second-wave discriminating suite
+
+The first wave showed that replacing a constant boundary marker did not alter
+the continuation. The second wave keeps those artifacts intact and targets
+the state-bearing object for each question. Its six child runs live under:
+
+```text
+runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_second_wave_suite
+runs/Mistral-7B-Instruct-v0.3/interventions/causal_reasoning_second_wave_suite
+```
+
+The children test:
+
+- trace alignment crossed with same/different values, using both direct read
+  and add-modulo continuation;
+- future utility at the actual A or B result token;
+- text and hidden correction at the actual corrected value;
+- known, recoverable, deferred, irrelevant, and unpaid dependencies;
+- one-token, boundary-span, and full-history handoff bandwidth;
+- answer-focused versus complete world traces under a new query.
+
+Every child has 160 fixed cases and an 80/40/40 train/validation/test split.
+The reducer reports unconstrained output validity, candidate mass, paired
+probability shifts, factor-specific results, representation geometry, and the
+correlation between donor similarity and patch effect. It selects patch layers
+on validation only.
+
+Prepare and inspect without GPU inference:
+
+```bash
+.venv/bin/python scripts/experiments/causal_reasoning.py prepare \
+  runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_second_wave_suite
+.venv/bin/python scripts/experiments/causal_reasoning.py inspect \
+  runs/Qwen2.5-7B-Instruct/interventions/causal_reasoning_second_wave_suite
+CAUSAL_REASONING_DRY_RUN=true \
+  bash scripts/remote/causal_reasoning_second_wave.sh
+```
+
+Run Qwen on `ourasi:0` and shard Mistral over `coktailjet:0,1`:
+
+```bash
+bash scripts/remote/causal_reasoning_second_wave.sh
+```
 
 ## Explicit one-token state handoff
 

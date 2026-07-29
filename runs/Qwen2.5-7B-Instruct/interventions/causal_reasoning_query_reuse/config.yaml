@@ -1,0 +1,11 @@
+causal_reasoning:
+  experiment: query_reuse
+  hypothesis: Query-independent world states transfer to new questions better than answer-specific traces.
+  seed: 729306
+  case_count: 160
+  probe_layers: [0, 1, 3, 7, 11, 15, 19, 23, 26]
+  max_sequence_length: 768
+  settling_jsd_threshold: 0.5
+  prompt:
+    mode: chat
+    system: Track the stated world. Your entire response must be exactly one digit, with no words or punctuation.
