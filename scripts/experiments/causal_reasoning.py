@@ -82,7 +82,8 @@ def validate_tokens(suite_path: Path) -> dict:
         max_tokens = 0
         checkpoint_widths = set()
         for case in load_samples(run_path / "dataset.jsonl"):
-            for raw in case["prompts"].values():
+            case_widths = {}
+            for name, raw in case["prompts"].items():
                 prompt = format_prompt_spec(
                     tokenizer,
                     PromptSpec(
@@ -101,13 +102,32 @@ def validate_tokens(suite_path: Path) -> dict:
                     return_offsets_mapping=True,
                 )
                 max_tokens = max(max_tokens, len(encoded["input_ids"]))
-                checkpoint_widths.add(
-                    sum(
-                        end > prompt.checkpoint_start
-                        and start < prompt.checkpoint_end
-                        for start, end in encoded["offset_mapping"]
-                    )
+                width = sum(
+                    end > prompt.checkpoint_start
+                    and start < prompt.checkpoint_end
+                    for start, end in encoded["offset_mapping"]
                 )
+                case_widths[str(name)] = width
+                checkpoint_widths.add(width)
+            for evaluation in case["evaluations"]:
+                source = evaluation.get("source")
+                if source is None:
+                    continue
+                recipient = str(evaluation["recipient"])
+                requested = evaluation.get("token_width", 1)
+                if requested == "all":
+                    if case_widths[str(source)] != case_widths[recipient]:
+                        raise ValueError(
+                            f"{case['id']} all-token patch spans differ: "
+                            f"{case_widths[str(source)]} versus "
+                            f"{case_widths[recipient]}"
+                        )
+                elif int(requested) > min(
+                    case_widths[str(source)], case_widths[recipient]
+                ):
+                    raise ValueError(
+                        f"{case['id']} requests {requested} patch tokens"
+                    )
         limit = int(config["max_sequence_length"])
         if max_tokens > limit:
             raise ValueError(

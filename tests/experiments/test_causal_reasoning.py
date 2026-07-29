@@ -104,6 +104,65 @@ class CausalReasoningDatasetTests(unittest.TestCase):
             [6, 7, 8],
         )
 
+    def test_trace_alignment_crosses_surface_and_value(self):
+        row = build_experiment_cases(
+            "trace_alignment", count=8, seed=729_301
+        )[0]
+        target = row["prompts"]["target"]
+        aligned = row["prompts"]["aligned_different"]
+        misaligned = row["prompts"]["misaligned_different"]
+        target_text = target["text"]
+        aligned_text = aligned["text"]
+        target_span = target_text[
+            target["checkpoint_start"] : target["checkpoint_end"]
+        ]
+        aligned_span = aligned_text[
+            aligned["checkpoint_start"] : aligned["checkpoint_end"]
+        ]
+        def masked(prompt):
+            text = prompt["text"]
+            return (
+                text[: prompt["checkpoint_start"]]
+                + "<VALUE>"
+                + text[prompt["checkpoint_end"] :]
+            )
+
+        self.assertNotEqual(target_span, aligned_span)
+        self.assertEqual(masked(target), masked(aligned))
+        self.assertNotEqual(
+            masked(target),
+            masked(misaligned),
+        )
+
+    def test_second_wave_targets_actual_values_and_full_spans(self):
+        utility = build_experiment_cases(
+            "prospective_utility", count=8, seed=729_302
+        )[0]
+        relevant = utility["prompts"]["a_relevant"]
+        self.assertTrue(
+            relevant["text"][
+                relevant["checkpoint_start"] : relevant["checkpoint_end"]
+            ].isdigit()
+        )
+        correction = build_experiment_cases(
+            "correction_hysteresis", count=8, seed=729_303
+        )[0]
+        corrected = correction["prompts"]["corrected"]
+        self.assertTrue(
+            corrected["text"][
+                corrected["checkpoint_start"] : corrected["checkpoint_end"]
+            ].isdigit()
+        )
+        boundary = build_experiment_cases(
+            "boundary_bandwidth", count=8, seed=729_305
+        )[0]
+        full_span = next(
+            item
+            for item in boundary["evaluations"]
+            if item["name"] == "history_full_all_layers"
+        )
+        self.assertEqual(full_span["token_width"], "all")
+
 
 class CausalReasoningArtifactTests(unittest.TestCase):
     def test_feature_probes_include_text_only_controls(self):

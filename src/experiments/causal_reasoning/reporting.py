@@ -135,6 +135,133 @@ def _summarize_representations(
     return result
 
 
+def _factor_breakdown(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    cells: defaultdict[
+        tuple[str, str, str, int, str, str],
+        list[tuple[dict[str, Any], dict[str, Any]]],
+    ] = defaultdict(list)
+    for case in rows:
+        scalar_labels = {
+            str(key): str(value)
+            for key, value in case.get("labels", {}).items()
+            if isinstance(value, (bool, int, float, str))
+        }
+        for result in case["results"]:
+            for factor, value in scalar_labels.items():
+                cells[
+                    (
+                        str(result["condition"]),
+                        str(result["layer_mode"]),
+                        (
+                            "none"
+                            if result["layer"] is None
+                            else str(result["layer"])
+                        ),
+                        int(result["token_width"]),
+                        factor,
+                        value,
+                    )
+                ].append((case, result))
+    summaries = []
+    for key, selected in sorted(cells.items()):
+        condition, mode, layer, width, factor, value = key
+        groups = [str(case["group"]) for case, _ in selected]
+        summaries.append(
+            {
+                "condition": condition,
+                "layer_mode": mode,
+                "layer": None if layer == "none" else int(layer),
+                "token_width": width,
+                "factor": factor,
+                "value": value,
+                "case_count": len(selected),
+                "accuracy": cluster_bootstrap_mean_ci(
+                    [bool(result["is_expected"]) for _, result in selected],
+                    groups,
+                    seed=86_121,
+                ),
+                "candidate_probability_mass": cluster_bootstrap_mean_ci(
+                    [
+                        float(result["candidate_probability_mass"])
+                        for _, result in selected
+                    ],
+                    groups,
+                    seed=86_122,
+                ),
+                "expected_probability_change": cluster_bootstrap_mean_ci(
+                    [
+                        float(
+                            result.get("expected_probability_change", 0.0)
+                        )
+                        for _, result in selected
+                    ],
+                    groups,
+                    seed=86_123,
+                ),
+            }
+        )
+    return summaries
+
+
+def _rank(values: np.ndarray) -> np.ndarray:
+    order = np.argsort(values, kind="mergesort")
+    ranks = np.empty(len(values), dtype=np.float64)
+    ranks[order] = np.arange(len(values), dtype=np.float64)
+    return ranks
+
+
+def _correlation(left: list[float], right: list[float]) -> dict[str, Any]:
+    x = np.asarray(left, dtype=np.float64)
+    y = np.asarray(right, dtype=np.float64)
+    if len(x) < 3 or np.std(x) < 1e-12 or np.std(y) < 1e-12:
+        return {"n": len(x), "pearson": None, "spearman": None}
+    return {
+        "n": len(x),
+        "pearson": float(np.corrcoef(x, y)[0, 1]),
+        "spearman": float(np.corrcoef(_rank(x), _rank(y))[0, 1]),
+    }
+
+
+def _similarity_effect(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    points: defaultdict[
+        tuple[str, int], list[tuple[float, float]]
+    ] = defaultdict(list)
+    for case in rows:
+        representations = {
+            (str(item["pair"]), int(item["layer"])): float(
+                item["cosine_similarity"]
+            )
+            for item in case.get("representation", [])
+        }
+        for result in case["results"]:
+            pair = result.get("representation_pair")
+            layer = result.get("layer")
+            if (
+                pair is None
+                or result["layer_mode"] != "single"
+                or layer is None
+                or (str(pair), int(layer)) not in representations
+            ):
+                continue
+            point = (
+                representations[(str(pair), int(layer))],
+                float(result["expected_probability_change"]),
+            )
+            points[(str(pair), int(layer))].append(point)
+            points[("__all__", int(layer))].append(point)
+    return [
+        {
+            "representation_pair": pair,
+            "layer": layer,
+            **_correlation(
+                [point[0] for point in selected],
+                [point[1] for point in selected],
+            ),
+        }
+        for (pair, layer), selected in sorted(points.items())
+    ]
+
+
 def _best_layers(
     validation: dict[str, Any],
     test: dict[str, Any],
@@ -420,6 +547,18 @@ def reduce_experiment(run_path: Path) -> dict[str, Any]:
                 [row for row in outputs if row["split"] == split]
             )
             for split in ("train", "validation", "test")
+        },
+        "factor_breakdown": {
+            split: _factor_breakdown(
+                [row for row in outputs if row["split"] == split]
+            )
+            for split in ("validation", "test")
+        },
+        "similarity_effect_correlation": {
+            split: _similarity_effect(
+                [row for row in outputs if row["split"] == split]
+            )
+            for split in ("validation", "test")
         },
         "validation_selected_test": _best_layers(
             by_split["validation"], by_split["test"]

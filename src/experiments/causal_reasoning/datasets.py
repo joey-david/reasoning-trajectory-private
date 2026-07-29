@@ -7,6 +7,19 @@ import json
 import random
 from typing import Any, Callable
 
+from .alignment_datasets import (
+    build_correction_hysteresis,
+    build_prospective_utility,
+    build_trace_alignment,
+)
+from .dataset_utils import marker_prompt as _prompt
+from .dataset_utils import split as _split
+from .handoff_datasets import (
+    build_boundary_bandwidth,
+    build_query_reuse,
+)
+from .memory_datasets import build_information_debt
+
 
 EXPERIMENTS = (
     "equivalent_state",
@@ -15,28 +28,13 @@ EXPERIMENTS = (
     "unresolved_dependency",
     "boundary_handoff",
     "query_switch",
+    "trace_alignment",
+    "prospective_utility",
+    "correction_hysteresis",
+    "information_debt",
+    "boundary_bandwidth",
+    "query_reuse",
 )
-
-
-def _split(index: int, count: int) -> str:
-    fraction = index / count
-    if fraction < 0.5:
-        return "train"
-    if fraction < 0.75:
-        return "validation"
-    return "test"
-
-
-def _prompt(lines: list[str], marker: str = "<<STATE>>") -> dict[str, Any]:
-    text = "\n".join(lines)
-    start = text.rfind(marker)
-    if start < 0:
-        raise ValueError(f"Prompt lacks checkpoint marker {marker!r}")
-    return {
-        "text": text,
-        "checkpoint_start": start,
-        "checkpoint_end": start + len(marker),
-    }
 
 
 def _proof_steps(
@@ -719,6 +717,17 @@ BUILDERS: dict[str, Callable[..., list[dict[str, Any]]]] = {
     "query_switch": build_query_switch,
 }
 
+BUILDERS.update(
+    {
+        "trace_alignment": build_trace_alignment,
+        "prospective_utility": build_prospective_utility,
+        "correction_hysteresis": build_correction_hysteresis,
+        "information_debt": build_information_debt,
+        "boundary_bandwidth": build_boundary_bandwidth,
+        "query_reuse": build_query_reuse,
+    }
+)
+
 
 def build_experiment_cases(
     experiment: str, *, count: int, seed: int
@@ -763,11 +772,29 @@ def validate_experiment_cases(
                 raise ValueError(
                     f"Expected candidate is outside the alphabet in {row['id']}"
                 )
+            width = evaluation.get("token_width", 1)
+            if width != "all" and int(width) < 1:
+                raise ValueError(f"Invalid token width in {row['id']}")
+        pair_names = {
+            str(pair["name"])
+            for pair in row.get("representation_pairs", [])
+        }
         for pair in row.get("representation_pairs", []):
             if pair["left"] not in prompts or pair["right"] not in prompts:
                 raise ValueError(
                     f"Unknown representation pair prompt in {row['id']}"
                 )
+        for evaluation in row["evaluations"]:
+            pair = evaluation.get("representation_pair")
+            if pair is not None and str(pair) not in pair_names:
+                raise ValueError(
+                    f"Unknown effect representation pair in {row['id']}"
+                )
+        if (
+            row.get("feature_prompt") is not None
+            and row["feature_prompt"] not in prompts
+        ):
+            raise ValueError(f"Unknown feature prompt in {row['id']}")
     payload = "\n".join(
         json.dumps(row, sort_keys=True, separators=(",", ":")) for row in rows
     )

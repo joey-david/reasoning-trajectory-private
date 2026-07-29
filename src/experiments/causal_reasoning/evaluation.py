@@ -86,9 +86,12 @@ def _baseline_record(
 
 def _selected_positions(
     evaluation: PromptEvaluation,
-    width: int,
+    width: int | str,
 ) -> tuple[int, ...]:
     positions = evaluation.checkpoint_token_indices
+    if width == "all":
+        return positions
+    width = int(width)
     if not 1 <= width <= len(positions):
         raise ValueError(
             f"Requested {width} checkpoint tokens from {len(positions)}"
@@ -234,9 +237,16 @@ def evaluate_case(
             )
             continue
         source = evaluations[str(source_name)]
-        width = int(specification.get("token_width", 1))
-        _selected_positions(source, width)
-        recipient_positions = _selected_positions(recipient, width)
+        width_spec = specification.get("token_width", 1)
+        source_positions = _selected_positions(source, width_spec)
+        recipient_positions = _selected_positions(recipient, width_spec)
+        if len(source_positions) != len(recipient_positions):
+            raise ValueError(
+                f"{case['id']} patch spans differ: "
+                f"{len(source_positions)} source versus "
+                f"{len(recipient_positions)} recipient tokens"
+            )
+        width = len(source_positions)
         modes = [
             str(value)
             for value in specification.get("layer_modes", ["single"])
@@ -301,6 +311,9 @@ def evaluate_case(
                         "layer": center,
                         "patched_layers": layers,
                         "token_width": width,
+                        "representation_pair": specification.get(
+                            "representation_pair"
+                        ),
                         **scored,
                     }
                 )
