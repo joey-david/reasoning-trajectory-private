@@ -41,9 +41,7 @@ __all__ = [
 ]
 
 
-def _formatted_prompt(
-    tokenizer: Any, text: str, prompt_config: dict[str, Any]
-) -> str:
+def _formatted_prompt(tokenizer: Any, text: str, prompt_config: dict[str, Any]) -> str:
     return format_model_prompt(tokenizer, text, {"prompt": prompt_config})
 
 
@@ -58,11 +56,10 @@ def _code_prompt_preamble(case: dict[str, Any], condition: str) -> str:
         facts = tuple(chr(ord("A") + bit) for bit in range(int(case["bits"])))
         entries = []
         for state, label in enumerate(labels):
-            present = ",".join(
-                facts[bit]
-                for bit in range(len(facts))
-                if state & (1 << bit)
-            ) or "none"
+            present = (
+                ",".join(facts[bit] for bit in range(len(facts)) if state & (1 << bit))
+                or "none"
+            )
             entries.append(f"{label}={{{present}}}")
         semantics = (
             f"The hidden state is the established-fact bitmask for "
@@ -232,9 +229,7 @@ def interface_training_sequence_pair(
     )
     state_sequence["producer_mode"] = producer_mode
     state_sequence["producer_transition_fraction"] = transition_fraction
-    state_sequence["producer_prompt_kind"] = (
-        "encoder" if use_encoder else "transition"
-    )
+    state_sequence["producer_prompt_kind"] = "encoder" if use_encoder else "transition"
     consumer_prompt = render_interface_consumer_prompt(
         tokenizer=tokenizer,
         case=case,
@@ -280,9 +275,7 @@ def build_interface_training_pairs(
         interface_config.get("producer_modes", {}).get(condition, "mixed")
     )
     transition_fraction = float(
-        interface_config.get("producer_transition_fractions", {}).get(
-            condition, 0.5
-        )
+        interface_config.get("producer_transition_fractions", {}).get(condition, 0.5)
     )
     if cases:
         symbols = interface_code_symbols(condition, interface_config)
@@ -386,9 +379,7 @@ def matched_interface_compute_manifest(
             "target_tokens": sum(
                 sum(label != -100 for label in row["labels"]) for row in sequences
             ),
-            "codebook_size": interface_codebook_size(
-                condition, interface_config
-            ),
+            "codebook_size": interface_codebook_size(condition, interface_config),
             "capacity_bits": math.log2(
                 interface_codebook_size(condition, interface_config)
             ),
@@ -404,19 +395,20 @@ def matched_interface_compute_manifest(
                 )
             ),
             "producer_prompt_counts": {
-                kind: sum(
-                    row.get("producer_prompt_kind") == kind
-                    for row in sequences
-                )
+                kind: sum(row.get("producer_prompt_kind") == kind for row in sequences)
                 for kind in ("encoder", "transition")
             },
         }
     comparable = list(summaries.values())
-    keys = ("semantic_programs", "forward_passes", "fixed_padding_compute_tokens", "active_input_tokens", "target_tokens")
+    keys = (
+        "semantic_programs",
+        "forward_passes",
+        "fixed_padding_compute_tokens",
+        "active_input_tokens",
+        "target_tokens",
+    )
     matched = all(
-        row[key] == comparable[0][key]
-        for row in comparable[1:]
-        for key in keys
+        row[key] == comparable[0][key] for row in comparable[1:] for key in keys
     )
     return {
         "schema_version": 1,
@@ -458,9 +450,7 @@ def validate_state_interface_training_data(run_path: Path) -> dict[str, Any]:
     tokenizer = load_hf_tokenizer(config["model"])
     maximum = int(experiment.get("training", {}).get("max_sequence_length", 256))
     evaluation_maximum = int(
-        experiment.get("evaluation", {}).get(
-            "max_sequence_length", maximum
-        )
+        experiment.get("evaluation", {}).get("max_sequence_length", maximum)
     )
     block_size = int(
         experiment.get("evaluation", {}).get(
