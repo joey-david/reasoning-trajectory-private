@@ -60,6 +60,21 @@ persistent write interface: if problem mentions dominate, all later tests use
 read-time aggregation as their mechanism and “write” means a candidate source,
 not a mutable state slot.
 
+### Locked pilot result
+
+The 200-case pilot passed on both models. Among clean/corrupt pairs that changed
+the preferred answer, restoring the prior computed result had mean normalized
+effects of 0.895 on Qwen2.5-7B-Instruct and 0.896 on Mistral-7B-Instruct-v0.3.
+Restoring the changed problem mention gave 0.093 and 0.053. The paired gaps were
+0.802 (95% interval 0.782--0.822; 197 cases) and 0.844 (0.833--0.854; 195
+cases). The next stage therefore treats the model-written result as the causal
+source. This does not show that a hidden mutable state exists.
+
+Free-generation accuracy was 0.76 on two-event and 0.78 on ten-event Qwen
+cases. Mistral fell from 0.84 to 0.27. The latter supplies long-run failures for
+the head test; Qwen tests whether the same measure separates errors without a
+mean length collapse.
+
 ## Experiment 1: controlled causal map
 
 Create ordinary word problems with several named quantities. Events read one
