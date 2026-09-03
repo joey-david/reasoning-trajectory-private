@@ -1,0 +1,15 @@
+model:
+  name: /lustre/fsmisc/dataset/HuggingFace_Models/Qwen/Qwen2.5-7B-Instruct
+  backend: hf
+  required_gpus: 1
+  device_map: {"": 0}
+  dtype: bfloat16
+  attn_implementation: eager
+  trust_remote_code: false
+
+state_routing_horizon:
+  case_count: 200
+  seed: 260530233
+  layer_stride: 2
+  max_new_tokens: 384
+  shards: 8
