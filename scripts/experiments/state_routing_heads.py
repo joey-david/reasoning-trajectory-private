@@ -27,8 +27,11 @@ from src.experiments.state_routing_heads import (  # noqa: E402
 )
 from src.experiments.state_routing_repair import (  # noqa: E402
     STEERING_ALPHAS,
+    intermediate_read_sites,
+    intermediate_steering_case,
     steering_case,
     steering_eligible,
+    summarize_intermediate_steering,
     summarize_steering,
 )
 from src.models.hf_loader import (  # noqa: E402
@@ -264,6 +267,68 @@ def reduce_steering(run_path: Path, *, alpha: float | None) -> dict:
     return result
 
 
+def steer_intermediate(
+    run_path: Path, *, shard: int, shards: int, alpha: float
+) -> dict:
+    model, tokenizer = _load_model(run_path)
+    path = run_path / "evaluation/intermediate_steering.jsonl"
+    done = {str(row["id"]) for row in load_samples(path)} if path.exists() else set()
+    dataset = {str(row["id"]): row for row in load_samples(run_path / "dataset.jsonl")}
+    measurements = {
+        str(row["id"]): row
+        for row in load_samples(run_path / "evaluation/measurements.jsonl")
+    }
+    free = {
+        str(row["id"]): row
+        for row in load_samples(run_path / "evaluation/free_routing.jsonl")
+    }
+    all_sites = [
+        (dataset[row_id], site)
+        for row_id in free
+        for site in intermediate_read_sites(
+            dataset[row_id], measurements[row_id], free[row_id]
+        )
+        if site["split"] == "test"
+    ]
+    failed = [
+        value for value in all_sites if value[1]["saved_operand"] != value[1]["answer"]
+    ]
+    correct = [
+        value for value in all_sites if value[1]["saved_operand"] == value[1]["answer"]
+    ]
+    sites = failed + sorted(correct, key=lambda value: value[1]["id"])[:100]
+    sites = [value for index, value in enumerate(sites) if index % shards == shard]
+    heads = json.loads((run_path / "evaluation/heads.json").read_text())
+    written = 0
+    for row, site in sites:
+        if str(site["id"]) in done:
+            continue
+        append_jsonl(
+            path,
+            intermediate_steering_case(
+                model=model,
+                tokenizer=tokenizer,
+                row=row,
+                measurement=measurements[str(row["id"])],
+                site=site,
+                head_spec=heads,
+                alpha=alpha,
+            ),
+        )
+        written += 1
+    return {"selected": len(sites), "written": written}
+
+
+def reduce_intermediate(run_path: Path) -> dict:
+    rows = load_samples(run_path / "evaluation/intermediate_steering.jsonl")
+    ids = [str(row["id"]) for row in rows]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate intermediate-steering ids")
+    result = summarize_intermediate_steering(rows)
+    write_json(run_path / "evaluation/intermediate_steering_summary.json", result)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -279,6 +344,8 @@ def main() -> int:
             "reduce-free",
             "steer",
             "reduce-steering",
+            "steer-intermediate",
+            "reduce-intermediate",
         ),
     )
     parser.add_argument("run_path", type=Path)
@@ -313,8 +380,16 @@ def main() -> int:
         result = reduce_free(args.run_path)
     elif args.action == "steer":
         result = steer(args.run_path, shard=args.shard, shards=args.shards)
-    else:
+    elif args.action == "reduce-steering":
         result = reduce_steering(args.run_path, alpha=args.alpha)
+    elif args.action == "steer-intermediate":
+        if args.alpha is None:
+            parser.error("steer-intermediate requires --alpha")
+        result = steer_intermediate(
+            args.run_path, shard=args.shard, shards=args.shards, alpha=args.alpha
+        )
+    else:
+        result = reduce_intermediate(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

@@ -11,7 +11,7 @@ The working claim is:
 > results it needs. A value-weighted routing margin, measured at the causal
 > source found by intervention, predicts the first free-generation error beyond
 > the lengths used to fit it. Routing-only repair can extend that horizon
-> without supplying the answer.
+> without changing the values stored in the trace.
 
 This splits failures into four testable types: the value is no longer carried
 by the write (**storage**); a new write is not made usable (**update**); the
@@ -91,8 +91,27 @@ Cross-context Q/K transfer also failed its controls. Successful-donor Q+K
 repaired 0.125 of aligned Qwen failures and 0.308 of Mistral failures, while
 preserving only 0.500 and 0.486 of correct reads; a failed donor repaired 0.196
 on Qwen. We therefore reject semantically stable donor Q/K as the repair
-interface. The next intervention uses only the target trace's own value vectors
-and tests valid-source steering against stale-source and matched-head steering.
+interface.
+
+The replacement intervention redirects half of each frozen head's output mass
+to a source value already present in the same trace. Qwen development selected
+this strength; it transferred unchanged to Mistral. On held-out 12--20-event
+traces, valid-source steering repaired 45/54 Qwen errors (0.833; exact 95%
+interval 0.707--0.921) and 25/25 Mistral errors (1.000; 0.863--1.000).
+Layer-matched heads repaired 0/54 and 1/25; the stale target write repaired
+0/79. The intervention preserved 45/45 and 35/35 correct reads (pooled exact
+lower bound 0.955). All cases had a correct literal target value before the
+wrong answer, valid and stale values differed, and reconstructed baseline
+logits had to match the saved answer.
+
+This is an oracle-source result: it identifies where the valid write is, but it
+does not replace its value, alter any prior token, or change model weights. For
+a head output `y = sum_t a_t v_t`, the intervention
+`y' = (1-alpha)y + alpha v_s` is exactly the attention distribution
+`a'_t = (1-alpha)a_t + alpha 1[t=s]`. It therefore changes routing while
+holding the available value vectors fixed. The result supports a causal
+stored-but-misrouted failure class at the final read. It does not yet establish
+repair of an intermediate read or downstream trajectory.
 
 ## Experiment 1: controlled causal map
 

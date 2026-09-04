@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 from typing import Any
 
 import numpy as np
@@ -14,6 +15,8 @@ from src.models.introspection import get_decoder_layers, get_input_device
 
 
 STEERING_ALPHAS = (0.1, 0.25, 0.5, 0.75)
+_EVENT_RE = re.compile(r"(?m)^\s*\d+\.\s+\w+\s+must\s+(add|subtract)\s+(\d+)\.")
+_LINE_RE = re.compile(r"(?m)^\s*(?P<step>\d+)[.)]\s*(?P<body>.*)$")
 
 
 def steering_eligible(
@@ -188,6 +191,193 @@ def steering_case(
         "conditions": {
             name: _score(value, candidate_ids, answer) for name, value in logits.items()
         },
+    }
+
+
+def intermediate_read_sites(
+    row: dict[str, Any], measurement: dict[str, Any], free_row: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Find parsed state reads backed by a correct earlier model write."""
+    generated = str(measurement["generation"]["text"])
+    lines = {
+        int(match.group("step")) - 1: match for match in _LINE_RE.finditer(generated)
+    }
+    events = list(_EVENT_RE.finditer(str(row["question"])))
+    writes = {int(write["event"]): write for write in free_row["parsed_writes"]}
+    gold = {
+        index: int(
+            row["clean"]["text"][slice(*row["clean"]["spans"][write["span_key"]])]
+        )
+        for index, write in enumerate(row["clean"]["writes"])
+    }
+    prior: dict[str, int] = {}
+    sites = []
+    for event, expected in enumerate(row["clean"]["writes"]):
+        name = str(expected["name"])
+        source_event = prior.get(name)
+        prior[name] = event
+        if source_event is None or event not in lines or event >= len(events):
+            continue
+        source = writes.get(source_event)
+        if (
+            source is None
+            or not source["literal_digit"]
+            or int(source["value"]) != gold[source_event]
+        ):
+            continue
+        operation, amount_text = events[event].groups()
+        amount = int(amount_text)
+        symbol = "+" if operation == "add" else "-"
+        operand = re.search(
+            rf"(?<![\d-])(?P<value>\d)(?!\d)\s*{re.escape(symbol)}\s*{amount}"
+            r"\s*(?:mod(?:ulo)?\s*10\s*)?=",
+            lines[event].group("body"),
+            re.IGNORECASE,
+        )
+        if operand is None:
+            continue
+        wrong_sources = [
+            write
+            for earlier, write in writes.items()
+            if earlier < event
+            and write["name"] != name
+            and write["literal_digit"]
+            and int(write["value"]) == gold[earlier]
+            and int(write["value"]) != gold[source_event]
+        ]
+        if not wrong_sources:
+            continue
+        start = lines[event].start("body") + operand.start("value")
+        sites.append(
+            {
+                "id": f"{row['id']}:{event}",
+                "event": event,
+                "split": row["split"],
+                "operand_start": start,
+                "saved_operand": int(operand.group("value")),
+                "answer": gold[source_event],
+                "result_answer": gold[event],
+                "operation": operation,
+                "amount": amount,
+                "source_span": source["char_span"],
+                "wrong_source_span": max(
+                    wrong_sources, key=lambda write: int(write["event"])
+                )["char_span"],
+            }
+        )
+    return sites
+
+
+def intermediate_steering_case(
+    *,
+    model: Any,
+    tokenizer: Any,
+    row: dict[str, Any],
+    measurement: dict[str, Any],
+    site: dict[str, Any],
+    head_spec: dict[str, Any],
+    alpha: float,
+) -> dict[str, Any]:
+    """Repair one state read, then test the next arithmetic write."""
+    question = str(row["question"])
+    generated = str(measurement["generation"]["text"])
+    context = question + generated[: int(site["operand_start"])]
+    offset = len(question)
+
+    def position(span: list[int]) -> int:
+        return _token_positions(
+            tokenizer, context, [offset + int(span[0]), offset + int(span[1])]
+        )[0]
+
+    selected = head_spec["selected"]
+    operands = {
+        "baseline": _forward(model, tokenizer, context),
+        "valid": _steer(
+            model, tokenizer, context, position(site["source_span"]), selected, alpha
+        ),
+        "wrong_source": _steer(
+            model,
+            tokenizer,
+            context,
+            position(site["wrong_source_span"]),
+            selected,
+            alpha,
+        ),
+        "control_heads": _steer(
+            model,
+            tokenizer,
+            context,
+            position(site["source_span"]),
+            head_spec["layer_matched_controls"],
+            alpha,
+        ),
+    }
+    contract = token_contract(tokenizer, row)
+    candidate_ids = [int(contract["candidate_ids"][digit]) for digit in range(10)]
+    operand_scores = {
+        name: _score(logits, candidate_ids, int(site["answer"]))
+        for name, logits in operands.items()
+    }
+    symbol = "+" if site["operation"] == "add" else "-"
+    result_scores = {}
+    for name, score in operand_scores.items():
+        result_context = (
+            context + str(score["prediction"]) + f" {symbol} {site['amount']} mod 10 ="
+        )
+        result_scores[name] = _score(
+            _forward(model, tokenizer, result_context),
+            candidate_ids,
+            int(site["result_answer"]),
+        )
+    return {
+        "schema_version": 1,
+        **site,
+        "conditions": {
+            name: {"operand": operand_scores[name], "result": result_scores[name]}
+            for name in operands
+        },
+    }
+
+
+def summarize_intermediate_steering(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Score state-read repair and its next computed write on held-out traces."""
+    aligned = [
+        row
+        for row in rows
+        if row["conditions"]["baseline"]["operand"]["prediction"]
+        == row["saved_operand"]
+    ]
+    test = [row for row in aligned if row["split"] == "test"]
+    failed = [row for row in test if row["saved_operand"] != row["answer"]]
+    correct = [row for row in test if row["saved_operand"] == row["answer"]]
+
+    def rates(name: str, subset: list[dict[str, Any]]) -> dict[str, float] | None:
+        if not subset:
+            return None
+        operand = [
+            row["conditions"][name]["operand"]["prediction"] == row["answer"]
+            for row in subset
+        ]
+        result = [
+            row["conditions"][name]["result"]["prediction"] == row["result_answer"]
+            for row in subset
+        ]
+        return {
+            "read": sum(operand) / len(subset),
+            "next_write": sum(a and b for a, b in zip(operand, result)) / len(subset),
+        }
+
+    return {
+        "schema_version": 1,
+        "case_count": len(rows),
+        "baseline_aligned": len(aligned),
+        "test_failed_reads": len(failed),
+        "test_correct_reads": len(correct),
+        "failed_read_repair": {
+            name: rates(name, failed)
+            for name in ("valid", "wrong_source", "control_heads")
+        },
+        "correct_read_preservation": rates("valid", correct),
     }
 
 

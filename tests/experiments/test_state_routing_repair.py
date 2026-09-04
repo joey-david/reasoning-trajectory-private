@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from src.experiments.state_routing_heads import build_head_cases, parse_generated_writes
 from src.experiments.state_routing_repair import (
+    intermediate_read_sites,
     steering_eligible,
+    summarize_intermediate_steering,
     summarize_steering,
 )
 
@@ -64,3 +67,67 @@ def test_summary_selects_safe_development_strength_then_scores_test() -> None:
     assert result["test"]["valid_repair"] == 1.0
     assert result["test"]["preservation"] == 1.0
     assert all(result["gate"].values())
+
+
+def test_intermediate_sites_parse_canonical_model_trace() -> None:
+    sites = []
+    for seed in range(10):
+        [row] = build_head_cases(
+            screen_count=1, development_count=0, test_count=0, seed=seed
+        )
+        generated = row["clean"]["text"].split("Solution:\n", 1)[1]
+        names = [write["name"] for write in row["clean"]["writes"]]
+        sites.extend(
+            intermediate_read_sites(
+                row,
+                {"generation": {"text": generated}},
+                {"parsed_writes": parse_generated_writes(generated, names)},
+            )
+        )
+    assert sites
+    assert all(site["saved_operand"] == site["answer"] for site in sites)
+
+
+def test_intermediate_summary_requires_read_and_next_write() -> None:
+    def condition(operand: int, result: int) -> dict:
+        return {
+            "operand": {"prediction": operand},
+            "result": {"prediction": result},
+        }
+
+    rows = [
+        {
+            "split": "test",
+            "saved_operand": 2,
+            "answer": 1,
+            "result_answer": 4,
+            "conditions": {
+                "baseline": condition(2, 5),
+                "valid": condition(1, 4),
+                "wrong_source": condition(3, 4),
+                "control_heads": condition(2, 4),
+            },
+        },
+        {
+            "split": "test",
+            "saved_operand": 1,
+            "answer": 1,
+            "result_answer": 4,
+            "conditions": {
+                "baseline": condition(1, 4),
+                "valid": condition(1, 4),
+                "wrong_source": condition(3, 4),
+                "control_heads": condition(1, 4),
+            },
+        },
+    ]
+    result = summarize_intermediate_steering(rows)
+    assert result["failed_read_repair"]["valid"] == {
+        "read": 1.0,
+        "next_write": 1.0,
+    }
+    assert result["failed_read_repair"]["wrong_source"]["next_write"] == 0.0
+    assert result["correct_read_preservation"] == {
+        "read": 1.0,
+        "next_write": 1.0,
+    }

@@ -19,6 +19,10 @@ cd "$repo_root"
 source "${FINEQCOMP_ROOT:-/lustre/fswork/projects/rech/fas/uul94gf/fineQComp}/scripts/jean_zay_env.sh"
 export PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}"
 mkdir -p slurm_logs
-exec "$PYTHON" scripts/experiments/state_routing_heads.py "${ACTION:?set ACTION}" \
+args=(scripts/experiments/state_routing_heads.py "${ACTION:?set ACTION}" \
   "${RUN_PATH:?set RUN_PATH}" --split "${SPLIT:-development}" \
-  --shard "${SLURM_ARRAY_TASK_ID:-0}" --shards "${SHARDS:-1}"
+  --shard "${SLURM_ARRAY_TASK_ID:-0}" --shards "${SHARDS:-1}")
+if [[ -n "${ALPHA:-}" ]]; then
+  args+=(--alpha "$ALPHA")
+fi
+exec "$PYTHON" "${args[@]}"
