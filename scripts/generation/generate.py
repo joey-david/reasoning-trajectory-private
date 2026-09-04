@@ -25,9 +25,19 @@ def main() -> int:
     parser.add_argument(
         "run_paths", nargs="+", help="Run folder(s), executed sequentially."
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Generate at most this many dataset rows per run.",
+    )
     args = parser.parse_args()
 
-    generate_runs([Path(run_path_arg) for run_path_arg in args.run_paths])
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be positive")
+    generate_runs(
+        [Path(run_path_arg) for run_path_arg in args.run_paths],
+        limit=args.limit,
+    )
     return 0
 
 

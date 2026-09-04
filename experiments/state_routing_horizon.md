@@ -224,6 +224,15 @@ cases with a matched counterfactual trace and a different donor answer. Natural
 data confirm scope; they do not select the circuit or rescue a failed controlled
 test.
 
+### Format pilot
+
+The frozen Qwen prompt passed a 12-case GSM-Symbolic pilot: 10 answers were
+correct, and 9 of those 10 traces contained a parser-verified result used in a
+later equation. The correct traces supplied 30 such dependency links. The
+prompt permits brief prose but requires plain-text `*` and `/`, so the existing
+verified arithmetic parser remains the sole update extractor. No natural trace
+selects heads, layers, intervention strength, or parser rules.
+
 ## Theory target
 
 If the valid source's attention logit exceeds every other token in the full

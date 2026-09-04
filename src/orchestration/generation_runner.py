@@ -9,31 +9,35 @@ from src.runtime.config import load_config
 from src.datasets.loaders import load_run_samples
 
 
-def generate_runs(run_paths: list[Path]) -> None:
+def generate_runs(run_paths: list[Path], *, limit: int | None = None) -> None:
     """Generate each configured run sequentially.
 
     Args:
         run_paths: Run directories to process.
+        limit: Optional maximum number of dataset rows per run.
 
     Returns:
         None.
     """
     for index, run_path in enumerate(run_paths, start=1):
         print(f"[{index}/{len(run_paths)}] generating {run_path}", flush=True)
-        generate_one_run(run_path)
+        generate_one_run(run_path, limit=limit)
 
 
-def generate_one_run(run_path: Path) -> None:
+def generate_one_run(run_path: Path, *, limit: int | None = None) -> None:
     """Generate one run locally or across configured replica devices.
 
     Args:
         run_path: Run directory containing the configuration and artifacts.
+        limit: Optional maximum number of dataset rows to generate.
 
     Returns:
         None.
     """
     config = load_config(run_path)
     samples = load_run_samples(run_path, config["dataset"])
+    if limit is not None:
+        samples = samples[:limit]
     devices = replica_devices(config["model"].get("device_map"))
     if len(devices) > 1:
         generate_parallel(run_path, config.raw, samples, devices)

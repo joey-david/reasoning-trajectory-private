@@ -1,0 +1,44 @@
+model:
+  name: /lustre/fsmisc/dataset/HuggingFace_Models/mistralai/Mistral-7B-Instruct-v0.3
+  backend: hf
+  device_map:
+    "": [0, 1, 2, 3]
+  dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: false
+
+dataset:
+  source: jsonl
+  path: runs/Mistral-7B-Instruct-v0.3/interventions/natural_state_routing/dataset.jsonl
+  adapter: plain_question
+
+generation:
+  max_new_tokens: 512
+  num_samples_per_item: 1
+  base_seed: 260530500
+  temperature: 0.0
+  forced_prefix: "Let's solve this with short explicit equations in plain text.\n"
+  stop_regex: '(?i)Answer\s*:\s*-?\d[\d,]*(?:\.\d+)?'
+
+capture:
+  enabled: false
+  layers: []
+  diagnostics: false
+
+prompt:
+  mode: chat
+  system: You are a careful mathematical reasoner.
+  instruction: |
+    Solve the problem with a short sequence of explicit arithmetic equations.
+    Use * and / in plain text rather than LaTeX. Brief prose is fine.
+    Reuse each intermediate result as written when a later equation needs it.
+    End with exactly: Answer: N
+
+analysis:
+  produced_answer_regex: '(?i)(?:\boxed\{|(?:Final\s+)?Answer\s*:\s*)(-?\d[\d,]*(?:\.\d+)?)'
+  gold_answer_regex: '####\s*(-?\d[\d,]*(?:\.\d+)?)'
+
+natural_state_routing:
+  frozen_heads: runs/Mistral-7B-Instruct-v0.3/interventions/state_routing_heads/evaluation/heads.json
+  alpha: 0.5
+  source_cases: 120
