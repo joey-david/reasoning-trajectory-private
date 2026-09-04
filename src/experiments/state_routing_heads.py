@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 import math
 import random
+import re
 from typing import Any
 
 import numpy as np
@@ -27,6 +28,8 @@ from src.models.introspection import get_decoder_layers, get_input_device
 
 
 LENGTHS = {"screen": (8,), "development": (4, 6, 8), "test": (12, 16, 20)}
+_NUMBER_RE = re.compile(r"-?\d+")
+_ANSWER_TOKEN_RE = re.compile(r"Answer\s*[:=]\s*(?P<answer>-?\d+)", re.IGNORECASE)
 
 
 def _render_trace(
@@ -184,6 +187,52 @@ def token_contract(tokenizer: Any, row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def parse_generated_writes(
+    text: str, expected_names: list[str]
+) -> list[dict[str, Any]]:
+    """Parse literal result values from numbered free-generation lines."""
+    aliases = {name: name[0] for name in NAMES}
+    rows = []
+    matches = list(re.finditer(r"(?m)^\s*(?P<step>\d+)[.)]\s*(?P<body>.*)$", text))
+    seen = set()
+    for match in matches:
+        event = int(match.group("step")) - 1
+        if event < 0 or event >= len(expected_names) or event in seen:
+            continue
+        body = match.group("body")
+        expected = expected_names[event]
+        if not re.search(rf"\b(?:{expected}|{aliases[expected]})\b", body, re.I):
+            continue
+        masked = body
+        comment = re.search(r"\s\((?!\\)", masked)
+        if comment:
+            masked = masked[: comment.start()]
+        masked = re.sub(
+            r"\\pmod\{10\}|\bmod(?:ulo)?\s*10\b",
+            lambda found: " " * len(found.group()),
+            masked,
+            flags=re.I,
+        )
+        numbers = list(_NUMBER_RE.finditer(masked))
+        if not numbers:
+            continue
+        number = numbers[-1]
+        raw = int(number.group())
+        start = match.start("body") + number.start()
+        rows.append(
+            {
+                "event": event,
+                "name": expected,
+                "raw_value": raw,
+                "value": raw % 10,
+                "literal_digit": len(number.group()) == 1 and 0 <= raw < 10,
+                "char_span": [start, start + len(number.group())],
+            }
+        )
+        seen.add(event)
+    return rows
+
+
 def screen_case(
     *, model: Any, tokenizer: Any, row: dict[str, Any], head_batch_size: int
 ) -> dict[str, Any]:
@@ -290,14 +339,14 @@ def select_heads(
     }
 
 
-def _attention_value_metrics(
+def _attention_metrics(
     model: Any,
     tokenizer: Any,
-    row: dict[str, Any],
+    text: str,
+    valid_position: int,
+    wrong_positions: list[int],
     heads: list[dict[str, int]],
 ) -> tuple[dict[str, float], np.ndarray]:
-    contract = token_contract(tokenizer, row)
-    text = str(row["clean"]["text"])
     encoded = tokenizer(text, add_special_tokens=False, return_tensors="pt")
     encoded = {key: value.to(get_input_device(model)) for key, value in encoded.items()}
     layers = get_decoder_layers(model)
@@ -325,20 +374,7 @@ def _attention_value_metrics(
             handle.remove()
     if output.attentions is None or any(value is None for value in values):
         raise RuntimeError("model did not expose eager attention and value outputs")
-    write_positions = [
-        int(contract["positions"][write["span_key"]][0])
-        for write in row["clean"]["writes"]
-    ]
-    valid_index = max(
-        i
-        for i, write in enumerate(row["clean"]["writes"])
-        if write["name"] == row["target"]
-    )
-    valid_position = write_positions[valid_index]
-    wrong_positions = [
-        position for i, position in enumerate(write_positions) if i != valid_index
-    ]
-    token_count = int(contract["token_count"])
+    token_count = int(encoded["input_ids"].shape[1])
     valid = 0.0
     wrong = np.zeros(len(wrong_positions), dtype=np.float64)
     support = 0.0
@@ -378,6 +414,32 @@ def _attention_value_metrics(
     return metrics, logits
 
 
+def _teacher_attention_value_metrics(
+    model: Any,
+    tokenizer: Any,
+    row: dict[str, Any],
+    heads: list[dict[str, int]],
+) -> tuple[dict[str, float], np.ndarray]:
+    contract = token_contract(tokenizer, row)
+    write_positions = [
+        int(contract["positions"][write["span_key"]][0])
+        for write in row["clean"]["writes"]
+    ]
+    valid_index = max(
+        i
+        for i, write in enumerate(row["clean"]["writes"])
+        if write["name"] == row["target"]
+    )
+    return _attention_metrics(
+        model,
+        tokenizer,
+        str(row["clean"]["text"]),
+        write_positions[valid_index],
+        [position for i, position in enumerate(write_positions) if i != valid_index],
+        heads,
+    )
+
+
 def measure_case(
     *,
     model: Any,
@@ -387,8 +449,10 @@ def measure_case(
     max_new_tokens: int,
 ) -> dict[str, Any]:
     selected, controls = head_spec["selected"], head_spec["layer_matched_controls"]
-    metrics, logits = _attention_value_metrics(model, tokenizer, row, selected)
-    control_metrics, _ = _attention_value_metrics(model, tokenizer, row, controls)
+    metrics, logits = _teacher_attention_value_metrics(model, tokenizer, row, selected)
+    control_metrics, _ = _teacher_attention_value_metrics(
+        model, tokenizer, row, controls
+    )
     contract = token_contract(tokenizer, row)
     candidate_logits = np.asarray(
         [logits[int(contract["candidate_ids"][digit])] for digit in range(10)]
@@ -412,6 +476,100 @@ def measure_case(
         "routing": metrics,
         "control_routing": control_metrics,
     }
+
+
+def measure_free_trace_case(
+    *,
+    model: Any,
+    tokenizer: Any,
+    row: dict[str, Any],
+    measurement: dict[str, Any],
+    head_spec: dict[str, Any],
+) -> dict[str, Any]:
+    """Measure the final read in the model's own generated trace."""
+    generated = str(measurement["generation"]["text"])
+    answer_match = _ANSWER_TOKEN_RE.search(generated)
+    expected_names = [str(write["name"]) for write in row["clean"]["writes"]]
+    writes = parse_generated_writes(generated, expected_names)
+    target_writes = [
+        write
+        for write in writes
+        if write["name"] == row["target"]
+        and (
+            answer_match is None
+            or int(write["char_span"][1]) <= answer_match.start("answer")
+        )
+    ]
+    result: dict[str, Any] = {
+        "schema_version": 1,
+        "id": row["id"],
+        "split": row["split"],
+        "event_count": row["event_count"],
+        "clean_answer": row["clean_answer"],
+        "generation_correct": measurement["generation_correct"],
+        "parsed_writes": writes,
+        "answer_marker_found": answer_match is not None,
+        "source_found": bool(target_writes),
+    }
+    if answer_match is None or not target_writes:
+        return result
+    source = target_writes[-1]
+    result.update(
+        {
+            "source_value": source["value"],
+            "source_literal_digit": source["literal_digit"],
+            "source_correct": source["value"] == int(row["clean_answer"]),
+        }
+    )
+    candidates = [
+        write
+        for write in writes
+        if write is not source
+        and write["literal_digit"]
+        and int(write["char_span"][1]) <= answer_match.start("answer")
+    ]
+    if not source["literal_digit"] or not candidates:
+        return result
+    prefix = generated[: answer_match.start("answer")]
+    context = str(row["question"]) + prefix
+    offset = len(str(row["question"]))
+    valid_position = _token_positions(
+        tokenizer,
+        context,
+        [offset + int(source["char_span"][0]), offset + int(source["char_span"][1])],
+    )[0]
+    wrong_positions = [
+        _token_positions(
+            tokenizer,
+            context,
+            [offset + int(write["char_span"][0]), offset + int(write["char_span"][1])],
+        )[0]
+        for write in candidates
+    ]
+    selected = head_spec["selected"]
+    controls = head_spec["layer_matched_controls"]
+    routing, logits = _attention_metrics(
+        model, tokenizer, context, valid_position, wrong_positions, selected
+    )
+    control_routing, _ = _attention_metrics(
+        model, tokenizer, context, valid_position, wrong_positions, controls
+    )
+    contract = token_contract(tokenizer, row)
+    answer = int(row["clean_answer"])
+    digit_logits = np.asarray(
+        [logits[int(contract["candidate_ids"][digit])] for digit in range(10)]
+    )
+    result.update(
+        {
+            "eligible_routing": bool(result["source_correct"]),
+            "routing": routing,
+            "control_routing": control_routing,
+            "answer_logit_margin": float(
+                digit_logits[answer] - np.max(np.delete(digit_logits, answer))
+            ),
+        }
+    )
+    return result
 
 
 def _fit_score(
@@ -503,6 +661,66 @@ def summarize_measurements(rows: list[dict[str, Any]]) -> dict[str, Any]:
             and routing["brier"] <= 0.18,
             "auc_advantage_at_least_007": auc_advantage is not None
             and auc_advantage >= 0.07,
+        },
+    }
+
+
+def summarize_free_trace(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Score final-read routing only when the model wrote the right source."""
+    eligible = [row for row in rows if row.get("eligible_routing")]
+    development = [row for row in eligible if row["split"] == "development"]
+    test = [row for row in eligible if row["split"] == "test"]
+    if not development or not test:
+        raise ValueError("free-trace routing needs eligible rows in both splits")
+    routing = _fit_score(
+        development, test, ("routing_margin", "valid_support_fraction")
+    )
+    baselines = {
+        "length": _fit_score(development, test, ("event_count",)),
+        "confidence": _fit_score(development, test, ("answer_logit_margin",)),
+        "entropy": _fit_score(development, test, ("attention_entropy",)),
+        "layer_matched_heads": _fit_score(
+            development,
+            test,
+            ("routing_margin", "valid_support_fraction"),
+            source="control_routing",
+        ),
+    }
+    baseline_aucs = [
+        float(row["roc_auc"])
+        for row in baselines.values()
+        if row["roc_auc"] is not None
+    ]
+    advantage = (
+        float(routing["roc_auc"]) - max(baseline_aucs)
+        if routing["roc_auc"] is not None and baseline_aucs
+        else None
+    )
+    return {
+        "schema_version": 1,
+        "case_count": len(rows),
+        "answer_marker_rate": sum(row["answer_marker_found"] for row in rows)
+        / len(rows),
+        "source_parse_rate": sum(row["source_found"] for row in rows) / len(rows),
+        "eligible_routing": {
+            "development": len(development),
+            "test": len(test),
+        },
+        "accuracy_given_correct_source": {
+            "development": sum(row["generation_correct"] for row in development)
+            / len(development),
+            "test": sum(row["generation_correct"] for row in test) / len(test),
+        },
+        "routing_predictor": routing,
+        "baselines": baselines,
+        "auc_advantage_over_best_baseline": advantage,
+        "gate": {
+            "test_reads_at_least_100": len(test) >= 100,
+            "auc_at_least_075": routing["roc_auc"] is not None
+            and routing["roc_auc"] >= 0.75,
+            "brier_at_most_018": routing["brier"] is not None
+            and routing["brier"] <= 0.18,
+            "auc_advantage_at_least_007": advantage is not None and advantage >= 0.07,
         },
     }
 

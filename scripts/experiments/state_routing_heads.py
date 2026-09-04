@@ -16,10 +16,12 @@ if str(ROOT) not in sys.path:
 from src.experiments.state_routing_heads import (  # noqa: E402
     build_head_cases,
     measure_case,
+    measure_free_trace_case,
     screen_case,
     select_heads,
     select_shard,
     summarize_measurements,
+    summarize_free_trace,
     token_contract,
     validate_head_cases,
 )
@@ -161,11 +163,63 @@ def reduce(run_path: Path) -> dict:
     return result
 
 
+def free_route(run_path: Path, *, split: str, shard: int, shards: int) -> dict:
+    model, tokenizer = _load_model(run_path)
+    path = run_path / "evaluation/free_routing.jsonl"
+    done = {str(row["id"]) for row in load_samples(path)} if path.exists() else set()
+    rows = select_shard(
+        load_samples(run_path / "dataset.jsonl"),
+        split=split,
+        shard=shard,
+        shards=shards,
+    )
+    measurements = {
+        str(row["id"]): row
+        for row in load_samples(run_path / "evaluation/measurements.jsonl")
+    }
+    head_spec = json.loads((run_path / "evaluation/heads.json").read_text())
+    written = 0
+    for row in rows:
+        if str(row["id"]) in done:
+            continue
+        append_jsonl(
+            path,
+            measure_free_trace_case(
+                model=model,
+                tokenizer=tokenizer,
+                row=row,
+                measurement=measurements[str(row["id"])],
+                head_spec=head_spec,
+            ),
+        )
+        written += 1
+    return {"split": split, "selected": len(rows), "written": written}
+
+
+def reduce_free(run_path: Path) -> dict:
+    rows = load_samples(run_path / "evaluation/free_routing.jsonl")
+    ids = [str(row["id"]) for row in rows]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate free-routing ids")
+    result = summarize_free_trace(rows)
+    write_json(run_path / "evaluation/free_routing_summary.json", result)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "action",
-        choices=("prepare", "validate-tokens", "screen", "select", "measure", "reduce"),
+        choices=(
+            "prepare",
+            "validate-tokens",
+            "screen",
+            "select",
+            "measure",
+            "reduce",
+            "free-route",
+            "reduce-free",
+        ),
     )
     parser.add_argument("run_path", type=Path)
     parser.add_argument("--split", choices=("development", "test"))
@@ -186,8 +240,16 @@ def main() -> int:
         result = measure(
             args.run_path, split=args.split, shard=args.shard, shards=args.shards
         )
-    else:
+    elif args.action == "reduce":
         result = reduce(args.run_path)
+    elif args.action == "free-route":
+        if args.split is None:
+            parser.error("free-route requires --split")
+        result = free_route(
+            args.run_path, split=args.split, shard=args.shard, shards=args.shards
+        )
+    else:
+        result = reduce_free(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

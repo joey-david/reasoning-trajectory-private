@@ -4,10 +4,32 @@ import numpy as np
 
 from src.experiments.state_routing_heads import (
     build_head_cases,
+    parse_generated_writes,
     select_heads,
     summarize_measurements,
     validate_head_cases,
 )
+
+
+def test_generated_write_parser_keeps_result_not_modulus_or_comment() -> None:
+    text = (
+        "1. Bela: 5 - 7 = 8 (Bela after subtracting 7)\n"
+        "2. Ada: \\(8 + 3 = 11 \\equiv 1 \\pmod{10}\\)\n"
+        "3. Bela: 8 mod 10 + 3 = 11 \\equiv 1 \\pmod{10}\n"
+    )
+    rows = parse_generated_writes(text, ["Bela", "Ada", "Bela"])
+    assert [row["value"] for row in rows] == [8, 1, 1]
+    assert [text[s:e] for s, e in (row["char_span"] for row in rows)] == [
+        "8",
+        "1",
+        "1",
+    ]
+
+
+def test_generated_write_parser_rejects_repeated_digit_as_literal() -> None:
+    [row] = parse_generated_writes("1. Ada: 0 + 0 = 00\n", ["Ada"])
+    assert row["value"] == 0
+    assert not row["literal_digit"]
 
 
 def test_head_cases_lock_short_fit_and_long_test() -> None:
