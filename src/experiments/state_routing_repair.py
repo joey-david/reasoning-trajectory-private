@@ -66,37 +66,12 @@ def trace_context(
     return context, position(writes[-1]), position(writes[-2])
 
 
-def _capture(
-    model: Any,
-    tokenizer: Any,
-    context: str,
-    layers: set[int],
-) -> tuple[dict[int, torch.Tensor], torch.Tensor]:
-    values: dict[int, torch.Tensor] = {}
-    handles = []
-    for layer_index in layers:
-        attention = get_decoder_layers(model)[layer_index].self_attn
-
-        def value_hook(
-            _module: Any,
-            _inputs: tuple[torch.Tensor, ...],
-            output: torch.Tensor,
-            *,
-            index: int = layer_index,
-        ) -> None:
-            values[index] = output[0].detach().clone()
-
-        handles.append(attention.v_proj.register_forward_hook(value_hook))
+def _forward(model: Any, tokenizer: Any, context: str) -> torch.Tensor:
     ids = tokenizer(context, add_special_tokens=False, return_tensors="pt")[
         "input_ids"
     ].to(get_input_device(model))
-    try:
-        with torch.inference_mode():
-            logits = model(input_ids=ids, use_cache=False).logits[0, -1].float()
-    finally:
-        for handle in handles:
-            handle.remove()
-    return values, logits
+    with torch.inference_mode():
+        return model(input_ids=ids, use_cache=False).logits[0, -1].float()
 
 
 def _steer(
@@ -104,7 +79,6 @@ def _steer(
     tokenizer: Any,
     context: str,
     source_position: int,
-    values: dict[int, torch.Tensor],
     heads: list[dict[str, int]],
     alpha: float,
 ) -> torch.Tensor:
@@ -114,10 +88,20 @@ def _steer(
     num_heads = int(model.config.num_attention_heads)
     num_kv_heads = int(getattr(model.config, "num_key_value_heads", num_heads))
     groups = num_heads // num_kv_heads
+    values: dict[int, torch.Tensor] = {}
     handles = []
     for layer_index, selected in by_layer.items():
-        projection = get_decoder_layers(model)[layer_index].self_attn.o_proj
-        width = projection.in_features // num_heads
+        attention = get_decoder_layers(model)[layer_index].self_attn
+        width = attention.o_proj.in_features // num_heads
+
+        def capture_value(
+            _module: Any,
+            _inputs: tuple[torch.Tensor, ...],
+            output: torch.Tensor,
+            *,
+            index: int = layer_index,
+        ) -> None:
+            values[index] = output[0]
 
         def patch(
             _module: Any,
@@ -138,7 +122,12 @@ def _steer(
                 result[0, -1, head_slice] = current.lerp(source, alpha)
             return (result, *inputs[1:])
 
-        handles.append(projection.register_forward_pre_hook(patch))
+        handles.extend(
+            (
+                attention.v_proj.register_forward_hook(capture_value),
+                attention.o_proj.register_forward_pre_hook(patch),
+            )
+        )
     ids = tokenizer(context, add_special_tokens=False, return_tensors="pt")[
         "input_ids"
     ].to(get_input_device(model))
@@ -174,9 +163,7 @@ def steering_case(
     context, valid, stale = trace_context(tokenizer, row, measurement, free_row)
     selected = head_spec["selected"]
     controls = head_spec["layer_matched_controls"]
-    layers = {int(spec["layer"]) for spec in selected}
-    values, baseline = _capture(model, tokenizer, context, layers)
-    logits = {"baseline": baseline}
+    logits = {"baseline": _forward(model, tokenizer, context)}
     for alpha in alphas:
         suffix = f"{alpha:g}"
         for name, position, heads in (
@@ -185,7 +172,7 @@ def steering_case(
             ("control", valid, controls),
         ):
             logits[f"{name}_{suffix}"] = _steer(
-                model, tokenizer, context, position, values, heads, alpha
+                model, tokenizer, context, position, heads, alpha
             )
     contract = token_contract(tokenizer, row)
     candidate_ids = [int(contract["candidate_ids"][digit]) for digit in range(10)]
