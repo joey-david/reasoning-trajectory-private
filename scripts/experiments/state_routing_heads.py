@@ -25,6 +25,11 @@ from src.experiments.state_routing_heads import (  # noqa: E402
     token_contract,
     validate_head_cases,
 )
+from src.experiments.state_routing_repair import (  # noqa: E402
+    repair_case,
+    select_donors,
+    summarize_repairs,
+)
 from src.models.hf_loader import (  # noqa: E402
     load_hf_model_and_tokenizer,
     load_hf_tokenizer,
@@ -206,6 +211,65 @@ def reduce_free(run_path: Path) -> dict:
     return result
 
 
+def repair(run_path: Path, *, shard: int, shards: int) -> dict:
+    model, tokenizer = _load_model(run_path)
+    path = run_path / "evaluation/repairs.jsonl"
+    done = {str(row["id"]) for row in load_samples(path)} if path.exists() else set()
+    dataset = {str(row["id"]): row for row in load_samples(run_path / "dataset.jsonl")}
+    measurements = {
+        str(row["id"]): row
+        for row in load_samples(run_path / "evaluation/measurements.jsonl")
+    }
+    free_rows = load_samples(run_path / "evaluation/free_routing.jsonl")
+    free_by_id = {str(row["id"]): row for row in free_rows}
+    targets = [
+        row
+        for row in free_rows
+        if row["split"] == "test" and row.get("eligible_routing")
+    ]
+    targets = [row for index, row in enumerate(targets) if index % shards == shard]
+    heads = json.loads((run_path / "evaluation/heads.json").read_text())
+    written = 0
+    for target in targets:
+        target_id = str(target["id"])
+        if target_id in done:
+            continue
+        donors = select_donors(target, free_rows, dataset)
+
+        def bundle(donor_id: str):
+            return (
+                dataset[donor_id],
+                measurements[donor_id],
+                free_by_id[donor_id],
+            )
+
+        append_jsonl(
+            path,
+            repair_case(
+                model=model,
+                tokenizer=tokenizer,
+                row=dataset[target_id],
+                measurement=measurements[target_id],
+                free_row=target,
+                successful=bundle(donors["successful"]),
+                failed=bundle(donors["failed"]),
+                head_spec=heads,
+            ),
+        )
+        written += 1
+    return {"selected": len(targets), "written": written}
+
+
+def reduce_repair(run_path: Path) -> dict:
+    rows = load_samples(run_path / "evaluation/repairs.jsonl")
+    ids = [str(row["id"]) for row in rows]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate repair ids")
+    result = summarize_repairs(rows)
+    write_json(run_path / "evaluation/repair_summary.json", result)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -219,6 +283,8 @@ def main() -> int:
             "reduce",
             "free-route",
             "reduce-free",
+            "repair",
+            "reduce-repair",
         ),
     )
     parser.add_argument("run_path", type=Path)
@@ -248,8 +314,12 @@ def main() -> int:
         result = free_route(
             args.run_path, split=args.split, shard=args.shard, shards=args.shards
         )
-    else:
+    elif args.action == "reduce-free":
         result = reduce_free(args.run_path)
+    elif args.action == "repair":
+        result = repair(args.run_path, shard=args.shard, shards=args.shards)
+    else:
+        result = reduce_repair(args.run_path)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
