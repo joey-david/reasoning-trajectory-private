@@ -101,6 +101,7 @@ def test_intermediate_summary_requires_read_and_next_write() -> None:
             "saved_operand": 2,
             "answer": 1,
             "result_answer": 4,
+            "wrong_source_value": 3,
             "conditions": {
                 "baseline": condition(2, 5),
                 "valid": condition(1, 4),
@@ -113,6 +114,7 @@ def test_intermediate_summary_requires_read_and_next_write() -> None:
             "saved_operand": 1,
             "answer": 1,
             "result_answer": 4,
+            "wrong_source_value": 3,
             "conditions": {
                 "baseline": condition(1, 4),
                 "valid": condition(1, 4),
@@ -127,7 +129,11 @@ def test_intermediate_summary_requires_read_and_next_write() -> None:
         "next_write": 1.0,
     }
     assert result["failed_read_repair"]["wrong_source"]["next_write"] == 0.0
-    assert result["correct_read_preservation"] == {
+    assert result["correct_read_outcomes"]["valid"] == {
         "read": 1.0,
         "next_write": 1.0,
+    }
+    assert result["wrong_source_follow"] == {
+        "failed_reads": 1.0,
+        "correct_reads": 1.0,
     }

@@ -247,6 +247,7 @@ def intermediate_read_sites(
         ]
         if not wrong_sources:
             continue
+        wrong_source = max(wrong_sources, key=lambda write: int(write["event"]))
         start = lines[event].start("body") + operand.start("value")
         sites.append(
             {
@@ -260,9 +261,8 @@ def intermediate_read_sites(
                 "operation": operation,
                 "amount": amount,
                 "source_span": source["char_span"],
-                "wrong_source_span": max(
-                    wrong_sources, key=lambda write: int(write["event"])
-                )["char_span"],
+                "wrong_source_span": wrong_source["char_span"],
+                "wrong_source_value": int(wrong_source["value"]),
             }
         )
     return sites
@@ -367,6 +367,15 @@ def summarize_intermediate_steering(rows: list[dict[str, Any]]) -> dict[str, Any
             "next_write": sum(a and b for a, b in zip(operand, result)) / len(subset),
         }
 
+    def wrong_source_follow(subset: list[dict[str, Any]]) -> float | None:
+        if not subset:
+            return None
+        return sum(
+            row["conditions"]["wrong_source"]["operand"]["prediction"]
+            == row["wrong_source_value"]
+            for row in subset
+        ) / len(subset)
+
     return {
         "schema_version": 1,
         "case_count": len(rows),
@@ -377,7 +386,13 @@ def summarize_intermediate_steering(rows: list[dict[str, Any]]) -> dict[str, Any
             name: rates(name, failed)
             for name in ("valid", "wrong_source", "control_heads")
         },
-        "correct_read_preservation": rates("valid", correct),
+        "correct_read_outcomes": {
+            name: rates(name, correct) for name in ("baseline", "valid")
+        },
+        "wrong_source_follow": {
+            "failed_reads": wrong_source_follow(failed),
+            "correct_reads": wrong_source_follow(correct),
+        },
     }
 
 
