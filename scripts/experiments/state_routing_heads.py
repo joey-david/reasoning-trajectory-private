@@ -26,9 +26,10 @@ from src.experiments.state_routing_heads import (  # noqa: E402
     validate_head_cases,
 )
 from src.experiments.state_routing_repair import (  # noqa: E402
-    repair_case,
-    select_donors,
-    summarize_repairs,
+    STEERING_ALPHAS,
+    steering_case,
+    steering_eligible,
+    summarize_steering,
 )
 from src.models.hf_loader import (  # noqa: E402
     load_hf_model_and_tokenizer,
@@ -211,9 +212,9 @@ def reduce_free(run_path: Path) -> dict:
     return result
 
 
-def repair(run_path: Path, *, shard: int, shards: int) -> dict:
+def steer(run_path: Path, *, shard: int, shards: int) -> dict:
     model, tokenizer = _load_model(run_path)
-    path = run_path / "evaluation/repairs.jsonl"
+    path = run_path / "evaluation/steering.jsonl"
     done = {str(row["id"]) for row in load_samples(path)} if path.exists() else set()
     dataset = {str(row["id"]): row for row in load_samples(run_path / "dataset.jsonl")}
     measurements = {
@@ -221,11 +222,14 @@ def repair(run_path: Path, *, shard: int, shards: int) -> dict:
         for row in load_samples(run_path / "evaluation/measurements.jsonl")
     }
     free_rows = load_samples(run_path / "evaluation/free_routing.jsonl")
-    free_by_id = {str(row["id"]): row for row in free_rows}
     targets = [
         row
         for row in free_rows
-        if row["split"] == "test" and row.get("eligible_routing")
+        if steering_eligible(
+            dataset[str(row["id"])],
+            measurements[str(row["id"])],
+            row,
+        )
     ]
     targets = [row for index, row in enumerate(targets) if index % shards == shard]
     heads = json.loads((run_path / "evaluation/heads.json").read_text())
@@ -234,39 +238,29 @@ def repair(run_path: Path, *, shard: int, shards: int) -> dict:
         target_id = str(target["id"])
         if target_id in done:
             continue
-        donors = select_donors(target, free_rows, dataset)
-
-        def bundle(donor_id: str):
-            return (
-                dataset[donor_id],
-                measurements[donor_id],
-                free_by_id[donor_id],
-            )
-
         append_jsonl(
             path,
-            repair_case(
+            steering_case(
                 model=model,
                 tokenizer=tokenizer,
                 row=dataset[target_id],
                 measurement=measurements[target_id],
                 free_row=target,
-                successful=bundle(donors["successful"]),
-                failed=bundle(donors["failed"]),
                 head_spec=heads,
+                alphas=list(STEERING_ALPHAS),
             ),
         )
         written += 1
     return {"selected": len(targets), "written": written}
 
 
-def reduce_repair(run_path: Path) -> dict:
-    rows = load_samples(run_path / "evaluation/repairs.jsonl")
+def reduce_steering(run_path: Path, *, alpha: float | None) -> dict:
+    rows = load_samples(run_path / "evaluation/steering.jsonl")
     ids = [str(row["id"]) for row in rows]
     if len(ids) != len(set(ids)):
-        raise ValueError("duplicate repair ids")
-    result = summarize_repairs(rows)
-    write_json(run_path / "evaluation/repair_summary.json", result)
+        raise ValueError("duplicate steering ids")
+    result = summarize_steering(rows, list(STEERING_ALPHAS), selected_alpha=alpha)
+    write_json(run_path / "evaluation/steering_summary.json", result)
     return result
 
 
@@ -283,14 +277,15 @@ def main() -> int:
             "reduce",
             "free-route",
             "reduce-free",
-            "repair",
-            "reduce-repair",
+            "steer",
+            "reduce-steering",
         ),
     )
     parser.add_argument("run_path", type=Path)
     parser.add_argument("--split", choices=("development", "test"))
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
+    parser.add_argument("--alpha", type=float)
     args = parser.parse_args()
     if args.action == "prepare":
         result = prepare(args.run_path)
@@ -316,10 +311,10 @@ def main() -> int:
         )
     elif args.action == "reduce-free":
         result = reduce_free(args.run_path)
-    elif args.action == "repair":
-        result = repair(args.run_path, shard=args.shard, shards=args.shards)
+    elif args.action == "steer":
+        result = steer(args.run_path, shard=args.shard, shards=args.shards)
     else:
-        result = reduce_repair(args.run_path)
+        result = reduce_steering(args.run_path, alpha=args.alpha)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

@@ -75,6 +75,25 @@ cases. Mistral fell from 0.84 to 0.27. The latter supplies long-run failures for
 the head test; Qwen tests whether the same measure separates errors without a
 mean length collapse.
 
+### Head and prediction result
+
+A 64-case screen found sparse late read heads. The frozen 16-head sets restored
+0.689 of Qwen's and 0.922 of Mistral's clean/corrupt answer margin; layer-matched
+heads restored -0.056 and -0.075. On the model's own trace, fit on 4--8 events
+and tested on 12--20, their value-weighted valid-write margin reached AUC 0.904
+(105 reads) and 0.901 (65 reads). Matched heads reached 0.609 and 0.627; length
+reached 0.594 and 0.497. Direct answer-token confidence reached about 0.999, so
+the pre-set best-baseline advantage gate failed. Gold-trace attention reached
+only 0.585 and 0.568 AUC, confirming that a different trace cannot stand in for
+the state the model actually wrote.
+
+Cross-context Q/K transfer also failed its controls. Successful-donor Q+K
+repaired 0.125 of aligned Qwen failures and 0.308 of Mistral failures, while
+preserving only 0.500 and 0.486 of correct reads; a failed donor repaired 0.196
+on Qwen. We therefore reject semantically stable donor Q/K as the repair
+interface. The next intervention uses only the target trace's own value vectors
+and tests valid-source steering against stale-source and matched-head steering.
+
 ## Experiment 1: controlled causal map
 
 Create ordinary word problems with several named quantities. Events read one

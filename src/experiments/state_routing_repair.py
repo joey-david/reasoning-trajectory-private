@@ -1,4 +1,4 @@
-"""Q/K-only repair of final reads in model-written reasoning traces."""
+"""Value-preserving steering of final state reads."""
 
 from __future__ import annotations
 
@@ -8,10 +8,32 @@ from typing import Any
 import numpy as np
 import torch
 
-from src.experiments.depth_relief.metrics import bootstrap_mean_ci
 from src.experiments.state_routing_heads import _ANSWER_TOKEN_RE, token_contract
 from src.experiments.state_routing_horizon import _token_positions
 from src.models.introspection import get_decoder_layers, get_input_device
+
+
+STEERING_ALPHAS = (0.1, 0.25, 0.5, 0.75)
+
+
+def steering_eligible(
+    row: dict[str, Any],
+    measurement: dict[str, Any],
+    free_row: dict[str, Any],
+) -> bool:
+    """Return whether the trace contains two usable pre-answer target writes."""
+    answer = _ANSWER_TOKEN_RE.search(str(measurement["generation"]["text"]))
+    if answer is None or not free_row.get("eligible_routing"):
+        return False
+    return (
+        sum(
+            write["name"] == row["target"]
+            and write["literal_digit"]
+            and int(write["char_span"][1]) <= answer.start("answer")
+            for write in free_row["parsed_writes"]
+        )
+        >= 2
+    )
 
 
 def trace_context(
@@ -19,81 +41,52 @@ def trace_context(
     row: dict[str, Any],
     measurement: dict[str, Any],
     free_row: dict[str, Any],
-) -> tuple[str, int]:
-    """Rebuild the exact pre-answer context and its last target-write token."""
+) -> tuple[str, int, int]:
+    """Rebuild a pre-answer context with its valid and stale target writes."""
     generated = str(measurement["generation"]["text"])
     answer = _ANSWER_TOKEN_RE.search(generated)
-    if answer is None:
-        raise ValueError("repair row has no answer marker")
-    target_writes = [
+    if answer is None or not steering_eligible(row, measurement, free_row):
+        raise ValueError("steering needs two literal pre-answer target writes")
+    writes = [
         write
         for write in free_row["parsed_writes"]
         if write["name"] == row["target"]
+        and write["literal_digit"]
         and int(write["char_span"][1]) <= answer.start("answer")
     ]
-    if not target_writes:
-        raise ValueError("repair row has no target write before its answer")
-    source = target_writes[-1]
-    prefix = generated[: answer.start("answer")]
     question = str(row["question"])
-    context = question + prefix
-    start, end = map(int, source["char_span"])
-    position = _token_positions(
-        tokenizer, context, [len(question) + start, len(question) + end]
-    )[0]
-    return context, position
+    context = question + generated[: answer.start("answer")]
+
+    def position(write: dict[str, Any]) -> int:
+        start, end = map(int, write["char_span"])
+        return _token_positions(
+            tokenizer, context, [len(question) + start, len(question) + end]
+        )[0]
+
+    return context, position(writes[-1]), position(writes[-2])
 
 
-def select_donors(
-    target: dict[str, Any],
-    free_rows: list[dict[str, Any]],
-    dataset: dict[str, dict[str, Any]],
-) -> dict[str, str]:
-    """Choose fixed short donors with the same variable and a different answer."""
-    pools: dict[str, list[str]] = defaultdict(list)
-    target_row = dataset[str(target["id"])]
-    for row in sorted(free_rows, key=lambda value: str(value["id"])):
-        source = dataset[str(row["id"])]
-        if (
-            row.get("eligible_routing")
-            and source["split"] == "development"
-            and source["target"] == target_row["target"]
-            and source["clean_answer"] != target_row["clean_answer"]
-        ):
-            pools["successful" if row["generation_correct"] else "failed"].append(
-                str(row["id"])
-            )
-    if not pools["successful"] or not pools["failed"]:
-        raise ValueError(f"no matched donors for {target['id']}")
-    return {name: values[0] for name, values in pools.items()}
-
-
-def _capture_qk(
+def _capture(
     model: Any,
     tokenizer: Any,
     context: str,
-    source_position: int,
     layers: set[int],
-) -> tuple[dict[int, dict[str, torch.Tensor]], torch.Tensor]:
-    captures: dict[int, dict[str, torch.Tensor]] = defaultdict(dict)
+) -> tuple[dict[int, torch.Tensor], torch.Tensor]:
+    values: dict[int, torch.Tensor] = {}
     handles = []
     for layer_index in layers:
         attention = get_decoder_layers(model)[layer_index].self_attn
-        for name in ("q_proj", "k_proj"):
-            projection = getattr(attention, name)
 
-            def capture(
-                _module: Any,
-                _inputs: tuple[torch.Tensor, ...],
-                output: torch.Tensor,
-                *,
-                index: int = layer_index,
-                key: str = name,
-            ) -> None:
-                position = -1 if key == "q_proj" else source_position
-                captures[index][key] = output[0, position].detach().clone()
+        def value_hook(
+            _module: Any,
+            _inputs: tuple[torch.Tensor, ...],
+            output: torch.Tensor,
+            *,
+            index: int = layer_index,
+        ) -> None:
+            values[index] = output[0].detach().clone()
 
-            handles.append(projection.register_forward_hook(capture))
+        handles.append(attention.v_proj.register_forward_hook(value_hook))
     ids = tokenizer(context, add_special_tokens=False, return_tensors="pt")[
         "input_ids"
     ].to(get_input_device(model))
@@ -103,19 +96,17 @@ def _capture_qk(
     finally:
         for handle in handles:
             handle.remove()
-    return dict(captures), logits
+    return values, logits
 
 
-def _patched_logits(
+def _steer(
     model: Any,
     tokenizer: Any,
     context: str,
     source_position: int,
-    donor: dict[int, dict[str, torch.Tensor]],
+    values: dict[int, torch.Tensor],
     heads: list[dict[str, int]],
-    *,
-    patch_q: bool,
-    patch_k: bool,
+    alpha: float,
 ) -> torch.Tensor:
     by_layer: dict[int, list[int]] = defaultdict(list)
     for spec in heads:
@@ -124,47 +115,30 @@ def _patched_logits(
     num_kv_heads = int(getattr(model.config, "num_key_value_heads", num_heads))
     groups = num_heads // num_kv_heads
     handles = []
-    for layer_index, layer_heads in by_layer.items():
-        attention = get_decoder_layers(model)[layer_index].self_attn
-        if patch_q:
-            q_width = attention.q_proj.out_features // num_heads
+    for layer_index, selected in by_layer.items():
+        projection = get_decoder_layers(model)[layer_index].self_attn.o_proj
+        width = projection.in_features // num_heads
 
-            def patch_query(
-                _module: Any,
-                _inputs: tuple[torch.Tensor, ...],
-                output: torch.Tensor,
-                *,
-                index: int = layer_index,
-                selected: tuple[int, ...] = tuple(layer_heads),
-                width: int = q_width,
-            ) -> torch.Tensor:
-                result = output.clone()
-                for head in selected:
-                    slc = slice(head * width, (head + 1) * width)
-                    result[0, -1, slc] = donor[index]["q_proj"][slc]
-                return result
+        def patch(
+            _module: Any,
+            inputs: tuple[torch.Tensor, ...],
+            *,
+            index: int = layer_index,
+            layer_heads: tuple[int, ...] = tuple(selected),
+            head_width: int = width,
+        ) -> tuple[torch.Tensor, ...]:
+            result = inputs[0].clone()
+            value_width = values[index].shape[-1] // num_kv_heads
+            for head in layer_heads:
+                head_slice = slice(head * head_width, (head + 1) * head_width)
+                kv_head = head // groups
+                value_slice = slice(kv_head * value_width, (kv_head + 1) * value_width)
+                current = result[0, -1, head_slice]
+                source = values[index][source_position, value_slice]
+                result[0, -1, head_slice] = current.lerp(source, alpha)
+            return (result, *inputs[1:])
 
-            handles.append(attention.q_proj.register_forward_hook(patch_query))
-        if patch_k:
-            k_width = attention.k_proj.out_features // num_kv_heads
-            kv_heads = tuple(sorted({head // groups for head in layer_heads}))
-
-            def patch_key(
-                _module: Any,
-                _inputs: tuple[torch.Tensor, ...],
-                output: torch.Tensor,
-                *,
-                index: int = layer_index,
-                selected: tuple[int, ...] = kv_heads,
-                width: int = k_width,
-            ) -> torch.Tensor:
-                result = output.clone()
-                for head in selected:
-                    slc = slice(head * width, (head + 1) * width)
-                    result[0, source_position, slc] = donor[index]["k_proj"][slc]
-                return result
-
-            handles.append(attention.k_proj.register_forward_hook(patch_key))
+        handles.append(projection.register_forward_pre_hook(patch))
     ids = tokenizer(context, add_special_tokens=False, return_tensors="pt")[
         "input_ids"
     ].to(get_input_device(model))
@@ -186,55 +160,33 @@ def _score(
     }
 
 
-def repair_case(
+def steering_case(
     *,
     model: Any,
     tokenizer: Any,
     row: dict[str, Any],
     measurement: dict[str, Any],
     free_row: dict[str, Any],
-    successful: tuple[dict[str, Any], dict[str, Any], dict[str, Any]],
-    failed: tuple[dict[str, Any], dict[str, Any], dict[str, Any]],
     head_spec: dict[str, Any],
+    alphas: list[float],
 ) -> dict[str, Any]:
-    """Patch only read-query and source-key vectors; keep target values fixed."""
-    context, source = trace_context(tokenizer, row, measurement, free_row)
+    """Steer fixed heads to the target's own value vector, never a donor value."""
+    context, valid, stale = trace_context(tokenizer, row, measurement, free_row)
     selected = head_spec["selected"]
     controls = head_spec["layer_matched_controls"]
     layers = {int(spec["layer"]) for spec in selected}
-
-    donor_captures = {}
-    donor_ids = {}
-    for name, (donor_row, donor_measurement, donor_free) in (
-        ("successful", successful),
-        ("failed", failed),
-    ):
-        donor_context, donor_source = trace_context(
-            tokenizer, donor_row, donor_measurement, donor_free
-        )
-        donor_captures[name], _ = _capture_qk(
-            model, tokenizer, donor_context, donor_source, layers
-        )
-        donor_ids[name] = donor_row["id"]
-    _, baseline = _capture_qk(model, tokenizer, context, source, layers)
-    conditions = {"baseline": baseline}
-    for name, patch_q, patch_k, heads, donor_name in (
-        ("successful_q", True, False, selected, "successful"),
-        ("successful_k", False, True, selected, "successful"),
-        ("successful_qk", True, True, selected, "successful"),
-        ("control_heads_qk", True, True, controls, "successful"),
-        ("failed_donor_qk", True, True, selected, "failed"),
-    ):
-        conditions[name] = _patched_logits(
-            model,
-            tokenizer,
-            context,
-            source,
-            donor_captures[donor_name],
-            heads,
-            patch_q=patch_q,
-            patch_k=patch_k,
-        )
+    values, baseline = _capture(model, tokenizer, context, layers)
+    logits = {"baseline": baseline}
+    for alpha in alphas:
+        suffix = f"{alpha:g}"
+        for name, position, heads in (
+            ("valid", valid, selected),
+            ("stale", stale, selected),
+            ("control", valid, controls),
+        ):
+            logits[f"{name}_{suffix}"] = _steer(
+                model, tokenizer, context, position, values, heads, alpha
+            )
     contract = token_contract(tokenizer, row)
     candidate_ids = [int(contract["candidate_ids"][digit]) for digit in range(10)]
     answer = int(row["clean_answer"])
@@ -246,23 +198,28 @@ def repair_case(
         "target_was_correct": bool(measurement["generation_correct"]),
         "saved_prediction": measurement["generation"]["answer"],
         "answer": answer,
-        "donors": donor_ids,
         "conditions": {
-            name: _score(logits, candidate_ids, answer)
-            for name, logits in conditions.items()
+            name: _score(value, candidate_ids, answer) for name, value in logits.items()
         },
     }
 
 
-def summarize_repairs(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Compare Q/K repair with equal-size head and failed-donor controls."""
+def summarize_steering(
+    rows: list[dict[str, Any]], alphas: list[float], selected_alpha: float | None = None
+) -> dict[str, Any]:
+    """Choose alpha on short traces, then score the fixed long-trace repair."""
     aligned = [
         row
         for row in rows
         if row["conditions"]["baseline"]["prediction"] == row["saved_prediction"]
     ]
-    failures = [row for row in aligned if not row["target_was_correct"]]
-    correct = [row for row in aligned if row["target_was_correct"]]
+
+    def split_rows(split: str, correct: bool) -> list[dict[str, Any]]:
+        return [
+            row
+            for row in aligned
+            if row["split"] == split and row["target_was_correct"] == correct
+        ]
 
     def accuracy(condition: str, subset: list[dict[str, Any]]) -> float | None:
         if not subset:
@@ -272,42 +229,53 @@ def summarize_repairs(rows: list[dict[str, Any]]) -> dict[str, Any]:
             for row in subset
         ) / len(subset)
 
-    def margin_change(condition: str) -> dict[str, Any]:
-        return bootstrap_mean_ci(
-            [
-                row["conditions"][condition]["correct_margin"]
-                - row["conditions"]["baseline"]["correct_margin"]
-                for row in failures
-            ],
-            seed=260530235,
+    development_failed = split_rows("development", False)
+    development_correct = split_rows("development", True)
+    development = []
+    for alpha in alphas:
+        key = f"valid_{alpha:g}"
+        development.append(
+            {
+                "alpha": alpha,
+                "repair": accuracy(key, development_failed),
+                "preservation": accuracy(key, development_correct),
+            }
         )
-
-    repair = {
-        name: accuracy(name, failures)
-        for name in (
-            "successful_q",
-            "successful_k",
-            "successful_qk",
-            "control_heads_qk",
-            "failed_donor_qk",
-        )
-    }
+    if selected_alpha is None:
+        safe = [row for row in development if (row["preservation"] or 0.0) >= 0.9]
+        selected_alpha = max(
+            safe or development,
+            key=lambda row: (row["repair"] or 0.0, row["preservation"] or 0.0),
+        )["alpha"]
+    if selected_alpha not in alphas:
+        raise ValueError(f"selected alpha {selected_alpha} was not run")
+    suffix = f"{selected_alpha:g}"
+    test_failed = split_rows("test", False)
+    test_correct = split_rows("test", True)
+    repair = accuracy(f"valid_{suffix}", test_failed)
+    control = accuracy(f"control_{suffix}", test_failed)
+    stale = accuracy(f"stale_{suffix}", test_failed)
+    preservation = accuracy(f"valid_{suffix}", test_correct)
     return {
         "schema_version": 1,
         "case_count": len(rows),
         "baseline_aligned": len(aligned),
-        "failed_reads": len(failures),
-        "correct_reads": len(correct),
-        "repair_accuracy": repair,
-        "margin_change": {
-            name: margin_change(name)
-            for name in (
-                "successful_q",
-                "successful_k",
-                "successful_qk",
-                "control_heads_qk",
-                "failed_donor_qk",
-            )
+        "development": development,
+        "selected_alpha": selected_alpha,
+        "test": {
+            "failed_reads": len(test_failed),
+            "correct_reads": len(test_correct),
+            "valid_repair": repair,
+            "matched_head_repair": control,
+            "stale_source_repair": stale,
+            "preservation": preservation,
         },
-        "preservation": accuracy("successful_qk", correct),
+        "gate": {
+            "repair_advantage_at_least_010": repair is not None
+            and control is not None
+            and stale is not None
+            and repair - max(control, stale) >= 0.1,
+            "preservation_at_least_090": preservation is not None
+            and preservation >= 0.9,
+        },
     }
