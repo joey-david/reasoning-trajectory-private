@@ -7,11 +7,11 @@ intermediate values it needs still occur in its context and activations?
 
 The working claim is:
 
-> Long-run consistency depends on how a query gathers the facts and prior
-> results it needs. A value-weighted routing margin, measured at the causal
-> source found by intervention, predicts the first free-generation error beyond
-> the lengths used to fit it. Routing-only repair can extend that horizon
-> without changing the values stored in the trace.
+> Long-run consistency depends on how each read gathers prior results. A
+> value-weighted routing margin predicts whether a model will reuse a correct
+> written value beyond the lengths used to fit it. The same sparse heads
+> causally select state at final and intermediate reads; redirecting them can
+> repair the read without changing the values stored in the trace.
 
 This splits failures into four testable types: the value is no longer carried
 by the write (**storage**); a new write is not made usable (**update**); the
@@ -111,7 +111,32 @@ a head output `y = sum_t a_t v_t`, the intervention
 `a'_t = (1-alpha)a_t + alpha 1[t=s]`. It therefore changes routing while
 holding the available value vectors fixed. The result supports a causal
 stored-but-misrouted failure class at the final read. It does not yet establish
-repair of an intermediate read or downstream trajectory.
+repair of a full free-running trajectory.
+
+### Intermediate-read result
+
+We then froze the same head sets and Qwen-selected strength and moved the
+intervention from the answer to repeated-variable operands inside held-out
+12--20-event traces. We retained every wrong read backed by a correct earlier
+model write and 100 fixed correct reads per model. Valid-source steering
+repaired 9/15 Qwen and 12/12 Mistral reads (pooled 21/27, 0.778; exact 95%
+interval 0.577--0.914). Layer-matched heads repaired 2/27. The paired read
+advantage was 20 versus 1 discordant cases (exact McNemar `p=2.1e-5`).
+
+The repaired operand was then placed in the same generated prefix and the
+unmodified model computed the next arithmetic result. Both the read and next
+write were correct in 6/15 Qwen and 8/12 Mistral failures (pooled 14/27,
+0.519; interval 0.319--0.713), versus 2/27 for matched heads (13 versus 1
+discordant cases, `p=0.0018`). Valid steering preserved 199/200 correct reads;
+ordinary read-plus-update accuracy changed from 165/200 to 164/200.
+
+For the semantic control, we redirected the causal heads to a correct stored
+value of another variable. This repaired 0/27 failures and made the model emit
+that wrong variable's exact value in 27/27. Thus the intervention does not just
+raise digit probability or disrupt the network: the selected source determines
+which stored state the model uses. This establishes causal one-step reuse and
+update closure on the controlled task. Full autoregressive closure and natural
+tasks remain open.
 
 ## Experiment 1: controlled causal map
 
