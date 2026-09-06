@@ -11,6 +11,8 @@ class GenerationRequest:
     """Hold all resolved inputs needed to generate and analyze one rollout."""
 
     prompt: str
+    add_special_tokens: bool
+    eos_token_id: int | list[int] | None
     sample_id: str
     seed: int
     temperature: float

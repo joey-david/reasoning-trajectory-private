@@ -178,6 +178,8 @@ def generate_task(
         tokenizer=tokenizer,
         request=GenerationRequest(
             prompt=build_prompt(sample, prompt_cfg, tokenizer),
+            add_special_tokens=prompt_cfg.get("mode", "plain") != "chat",
+            eos_token_id=generation_cfg.get("eos_token_id"),
             sample_id=sample_id,
             seed=seed,
             temperature=temperature,
@@ -260,7 +262,12 @@ def generate_one_twopass(
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    encoded = tokenizer(request.prompt, return_tensors="pt")
+    # Chat templates already include the model's special tokens.
+    encoded = tokenizer(
+        request.prompt,
+        return_tensors="pt",
+        add_special_tokens=request.add_special_tokens,
+    )
     encoded = {key: value.to(input_device) for key, value in encoded.items()}
 
     prompt_token_ids = encoded["input_ids"][0].detach().cpu().tolist()

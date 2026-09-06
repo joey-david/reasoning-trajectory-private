@@ -44,13 +44,18 @@ def generate_sequence(
         raise ValueError(
             "generation.forced_prefix must use fewer tokens than max_new_tokens"
         )
+    eos_token_id = request.eos_token_id
+    if eos_token_id is None:
+        eos_token_id = model.generation_config.eos_token_id
+    if eos_token_id is None:
+        eos_token_id = tokenizer.eos_token_id
     kwargs: dict[str, Any] = {
         **encoded_for_generation,
         "max_new_tokens": continuation_tokens,
         "do_sample": do_sample,
         "use_cache": True,
         "pad_token_id": tokenizer.pad_token_id,
-        "eos_token_id": tokenizer.eos_token_id,
+        "eos_token_id": eos_token_id,
     }
     if do_sample:
         kwargs["temperature"] = float(request.temperature)
@@ -97,7 +102,7 @@ def generate_sequence(
             do_sample=do_sample,
             use_cache=True,
             pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+            eos_token_id=eos_token_id,
             **{
                 key: kwargs[key]
                 for key in ("temperature", "top_p", "top_k")
