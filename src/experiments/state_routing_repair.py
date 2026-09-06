@@ -69,15 +69,19 @@ def trace_context(
     return context, position(writes[-1]), position(writes[-2])
 
 
-def _forward(model: Any, tokenizer: Any, context: str) -> torch.Tensor:
-    ids = tokenizer(context, add_special_tokens=False, return_tensors="pt")[
-        "input_ids"
-    ].to(get_input_device(model))
+def forward_logits(model: Any, tokenizer: Any, context: str) -> torch.Tensor:
+    ids = tokenizer(context, add_special_tokens=False)["input_ids"]
+    return forward_logits_ids(model, ids)
+
+
+def forward_logits_ids(model: Any, input_ids: list[int]) -> torch.Tensor:
+    """Score the next token from an exact saved token prefix."""
+    ids = torch.tensor([input_ids], device=get_input_device(model))
     with torch.inference_mode():
         return model(input_ids=ids, use_cache=False).logits[0, -1].float()
 
 
-def _steer(
+def steer_logits(
     model: Any,
     tokenizer: Any,
     context: str,
@@ -85,6 +89,18 @@ def _steer(
     heads: list[dict[str, int]],
     alpha: float,
 ) -> torch.Tensor:
+    ids = tokenizer(context, add_special_tokens=False)["input_ids"]
+    return steer_logits_ids(model, ids, source_position, heads, alpha)
+
+
+def steer_logits_ids(
+    model: Any,
+    input_ids: list[int],
+    source_position: int,
+    heads: list[dict[str, int]],
+    alpha: float,
+) -> torch.Tensor:
+    """Redirect fixed heads to one position in an exact saved token prefix."""
     by_layer: dict[int, list[int]] = defaultdict(list)
     for spec in heads:
         by_layer[int(spec["layer"])].append(int(spec["head"]))
@@ -131,9 +147,7 @@ def _steer(
                 attention.o_proj.register_forward_pre_hook(patch),
             )
         )
-    ids = tokenizer(context, add_special_tokens=False, return_tensors="pt")[
-        "input_ids"
-    ].to(get_input_device(model))
+    ids = torch.tensor([input_ids], device=get_input_device(model))
     try:
         with torch.inference_mode():
             return model(input_ids=ids, use_cache=False).logits[0, -1].float()
@@ -166,7 +180,7 @@ def steering_case(
     context, valid, stale = trace_context(tokenizer, row, measurement, free_row)
     selected = head_spec["selected"]
     controls = head_spec["layer_matched_controls"]
-    logits = {"baseline": _forward(model, tokenizer, context)}
+    logits = {"baseline": forward_logits(model, tokenizer, context)}
     for alpha in alphas:
         suffix = f"{alpha:g}"
         for name, position, heads in (
@@ -174,7 +188,7 @@ def steering_case(
             ("stale", stale, selected),
             ("control", valid, controls),
         ):
-            logits[f"{name}_{suffix}"] = _steer(
+            logits[f"{name}_{suffix}"] = steer_logits(
                 model, tokenizer, context, position, heads, alpha
             )
     contract = token_contract(tokenizer, row)
@@ -291,11 +305,11 @@ def intermediate_steering_case(
 
     selected = head_spec["selected"]
     operands = {
-        "baseline": _forward(model, tokenizer, context),
-        "valid": _steer(
+        "baseline": forward_logits(model, tokenizer, context),
+        "valid": steer_logits(
             model, tokenizer, context, position(site["source_span"]), selected, alpha
         ),
-        "wrong_source": _steer(
+        "wrong_source": steer_logits(
             model,
             tokenizer,
             context,
@@ -303,7 +317,7 @@ def intermediate_steering_case(
             selected,
             alpha,
         ),
-        "control_heads": _steer(
+        "control_heads": steer_logits(
             model,
             tokenizer,
             context,
@@ -325,7 +339,7 @@ def intermediate_steering_case(
             context + str(score["prediction"]) + f" {symbol} {site['amount']} mod 10 ="
         )
         result_scores[name] = _score(
-            _forward(model, tokenizer, result_context),
+            forward_logits(model, tokenizer, result_context),
             candidate_ids,
             int(site["result_answer"]),
         )

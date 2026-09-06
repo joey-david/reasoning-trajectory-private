@@ -1,0 +1,20 @@
+model:
+  name: /lustre/fsmisc/dataset/HuggingFace_Models/meta-llama/Meta-Llama-3-8B-Instruct
+  backend: hf
+  device_map:
+    ? ''
+    : 0
+  dtype: bfloat16
+  attn_implementation: eager
+  trust_remote_code: false
+generation:
+  max_new_tokens: 96
+  eos_token_id:
+  - 128001
+  - 128009
+computation_interference:
+  screen_count: 2
+  test_count: 2
+  seed: 26090610
+  head_count: 4
+  head_batch_size: 8
