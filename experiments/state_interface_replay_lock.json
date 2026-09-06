@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "locked_at": "2026-09-02T14:37:28+02:00",
+  "status": "prospective_seed1_initial_gate_repair",
+  "question": "Does matched post-training allocation to state transitions preserve or improve self-composition while endpoint-only allocation erases it?",
+  "prior_observed_pilot": {
+    "model": "Qwen2.5-7B-Instruct",
+    "seed_count": 1,
+    "transition_h16": 0.9708333333333333,
+    "endpoint_h16": 0.525,
+    "transition_minus_endpoint_h16": 0.44583333333333336,
+    "ci95": [0.37604166666666666, 0.5145833333333333]
+  },
+  "screen": {
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "jean_zay_model_path": "/lustre/fsmisc/dataset/HuggingFace_Models/Qwen/Qwen2.5-7B-Instruct",
+    "config_sha256": "7463bb0ea78315365e6c6b74de4e73bbcc8359dfb0c5a737584e077d42c0b03c",
+    "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+    "training_seed": 902311,
+    "continuation_seed": 902321,
+    "data_seed": 902301,
+    "condition": "redundant_4bit",
+    "state_count": 8,
+    "surface_code_count": 16,
+    "block_size_operations": 2,
+    "test_horizons_operations": [2, 4, 8, 16]
+  },
+  "arms": {
+    "initial": {
+      "run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed1_initial",
+      "treatment": "A fresh two-epoch 50/50 encoder-transition adapter, evaluated without continuation."
+    },
+    "transition": {
+      "run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed1_transition",
+      "treatment": "One matched epoch with transition producers and the same consumer targets."
+    },
+    "endpoint": {
+      "run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed1_endpoint",
+      "treatment": "One matched epoch with encoder producers and the same consumer targets."
+    },
+    "mixed": {
+      "run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed1_mixed",
+      "treatment": "One matched epoch with the same 50/50 producer mixture and consumer targets."
+    }
+  },
+  "matched_contract": [
+    "All continuation arms fork the exact initial adapter.",
+    "All continuation arms use the same semantic programs and held-out test bank.",
+    "All continuation arms use 20,000 forwards, 20,000 one-token targets, and 5,120,000 fixed-padding tokens.",
+    "All continuation arms share optimizer, learning rate, batch order seed, and update count.",
+    "Only the producer target allocation differs; consumer targets remain fixed."
+  ],
+  "prepared_data": {
+    "initial_train_sha256": "8a7481d32a3795594c2c2ebfa2f0d6bf82890fae3da6b20e663d93ad9227949f",
+    "initial_validation_sha256": "bb2320cb6b2cdd21a45c93225a7a0020eab74414ff92b8f14a825d4c3be48c88",
+    "train_sha256": "d16dce45b1411b0e31bfda563c985895507b7ec585a5bc3b5e4cfa1f5159e4bf",
+    "test_sha256": "9fd0be68fc14a406bafa26e9ac00042fa8b9fe6d884b38c27a2942f78a59ed9b",
+    "continuation_forward_passes": 20000,
+    "continuation_target_tokens": 20000,
+    "continuation_fixed_padding_tokens": 5120000,
+    "validation": "All four real program banks passed the existing tokenizer, code-alphabet, length, split, and compute checks."
+  },
+  "initial_gate_repair": {
+    "failed_job": "1669762",
+    "evaluation_job": "1669768",
+    "observed_h2_answer_accuracy": 0.5333333333333333,
+    "observed_h2_gold_code_answer_accuracy": 1.0,
+    "diagnosis": "The fresh initial arm used only two-step training cases, unlike the proven initial curriculum, and failed producer competence while retaining a perfect consumer.",
+    "repair": "Restore one- and two-step training and validation examples only in the initial arm. Continuation arms remain two-step-only, as in the prior pipeline.",
+    "unchanged": "The test bank, continuation data and compute, treatments, thresholds, causal diagnostics, and analysis unit remain locked. No continuation outcome existed when this repair was made.",
+    "independent_review": "Claude Opus 5: GO; changing all arms would dilute the two-step transition treatment, so scope the repair to the initial arm."
+  },
+  "primary_screen": {
+    "estimands": [
+      "At h16, transition minus mixed replay answer accuracy.",
+      "At h16, endpoint minus mixed replay answer accuracy."
+    ],
+    "analysis_unit": "Held-out program context; rows pair across exact test IDs.",
+    "interval": "10,000-draw paired program-context bootstrap.",
+    "short_horizon_parity": "At h2, absolute transition-minus-mixed and endpoint-minus-mixed gaps must each be at most 0.05.",
+    "go": "The hard-cut code chain is causally used, short-horizon parity passes, transition exceeds mixed at h16, and endpoint falls below mixed at h16.",
+    "stop": "Any consumer or h2 competence failure, no causal code following, or no h16 allocation effect."
+  },
+  "thresholds": {
+    "max_h2_absolute_gap": 0.05,
+    "min_transition_minus_mixed_h16": 0.10,
+    "max_endpoint_minus_mixed_h16": -0.10,
+    "min_gold_consumer_accuracy": 0.95,
+    "min_transition_support_accuracy": 0.95,
+    "min_forced_state_follow_accuracy": 0.90,
+    "max_original_answer_preservation": 0.20
+  },
+  "required_diagnostics": [
+    "Absolute accuracy for all four arms at every horizon.",
+    "Gold-code consumer accuracy and conditional semantic transition accuracy.",
+    "A valid mid-chain code intervention whose final answer follows the forced semantic state.",
+    "Exact surface-code accuracy beside semantic-state and final-answer accuracy.",
+    "Final train and validation loss for all continuation arms."
+  ],
+  "claim_boundary": {
+    "in_scope": "Allocation of matched post-training targets changes whether a learned finite update interface composes over unseen longer histories.",
+    "out_of_scope": "Novel transition supervision, unseen state-operation pairs, natural-language reasoning in general, or a universal law of reusable states."
+  },
+  "literature_boundary": [
+    "Supervised Memory Training already trains one-step memory dynamics in recurrent networks (Kumar and Isola, 2026).",
+    "Markovian Transformers already makes an intermediate text state causally necessary for answer prediction.",
+    "The target result is a controlled post-training preservation-and-erasure effect, not a new training method."
+  ],
+  "independent_review": "Claude Opus 5: GO for a fresh Qwen screening seed after adding mixed replay, short-horizon parity, a hard context cut, and a mid-chain valid-code intervention; unseen transition-pair generalization is a separate claim."
+}

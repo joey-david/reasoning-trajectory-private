@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "locked_at": "2026-09-03T00:19:56+02:00",
+  "status": "prospective_fresh_seed_confirmation",
+  "question": "Does retaining transition targets during matched continuation training preserve a public state interface for long recursive reasoning better than encoder-and-consumer targets alone?",
+  "exploratory_seed": {
+    "run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed1_initial",
+    "excluded_from_confirmation": true,
+    "original_screen_passed": false,
+    "failed_check": "transition minus mixed at horizon 16 was required to be at least 0.10 with a positive interval",
+    "observed_h16_accuracy": {
+      "transition": 0.9958333333333333,
+      "endpoint": 0.8229166666666666,
+      "mixed": 0.975
+    },
+    "observed_h16_differences": {
+      "mixed_minus_endpoint": 0.15208333333333332,
+      "mixed_minus_endpoint_ci95": [0.07916666666666666, 0.23125],
+      "transition_minus_mixed": 0.020833333333333332,
+      "transition_minus_mixed_ci95": [-0.004166666666666667, 0.0625]
+    }
+  },
+  "pre_run_audit": {
+    "loss_tokens": "Each continuation arm has 20,000 one-token targets: 10,000 producer targets and 10,000 consumer targets.",
+    "compute": "Each arm has 20,000 forwards and 5,120,000 fixed-padding tokens.",
+    "evaluation_harness": "All arms use the same encoder, transition, and consumer prompts with a hard context cut between blocks.",
+    "public_code_contract": "All arms receive the same fixed state-to-code map. Semantic accuracy scores either valid alias for a state; exact accuracy is reported separately.",
+    "cross_arm_substitution": {
+      "jobs": [1683765, 1683766],
+      "transition_producer_endpoint_consumer_accuracy": 0.9979166666666667,
+      "transition_source_self_accuracy": 0.9953125,
+      "endpoint_producer_transition_consumer_accuracy": 0.9041666666666667,
+      "endpoint_source_self_accuracy": 0.9052083333333333,
+      "conclusion": "Swapping consumers does not reduce accuracy, so seed 1 does not support a private-code explanation."
+    }
+  },
+  "independent_review": "Claude Opus 5 rejected direct replication of the saturated transition-versus-mixed contrast, requested a loss-token audit and cross-arm substitution, and recommended a fresh-seed presence-versus-absence test with transition-versus-mixed equivalence kept separate.",
+  "model": {
+    "name": "Qwen/Qwen2.5-7B-Instruct",
+    "revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+    "jean_zay_path": "/lustre/fsmisc/dataset/HuggingFace_Models/Qwen/Qwen2.5-7B-Instruct",
+    "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+  },
+  "fresh_seeds": [
+    {
+      "name": "seed2",
+      "data_seed": 903201,
+      "initial_training_seed": 903211,
+      "continuation_training_seed": 903221,
+      "initial_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed2_initial",
+      "transition_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed2_transition",
+      "endpoint_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed2_endpoint",
+      "mixed_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed2_mixed",
+      "config_sha256": {
+        "initial": "0680ecf015854cd0f73002c3ca66e106ba2a913d21c094d1a47479f146df3963",
+        "transition": "8dd65c1921e7e4860cd09add273c533454350b3a699f6fc51336a7e2ed97d954",
+        "endpoint": "103c98e4817d69ec2979b207002b3636993e9f091f40f386054d8c43fcb1bfab",
+        "mixed": "1f1ab9cfd16374397f913a6aa23374f533dc890663e6fd1af0b2aed0179eb1ba"
+      },
+      "data_sha256": {
+        "initial_train": "5aca4407244fb30dd0d13c5e7144809738f14ed889983a2dd133f6d80edbe75e",
+        "initial_validation": "35544ddbcc3e73954811780b3333734c840d66a603a02bb9b70836cc0bec6a15",
+        "continuation_train": "fcfb9252968869a381eeb6e55de81df53a89b072078126b2af177e10eca85a32",
+        "continuation_validation": "5c8b1c2bc4d74bd5679c8fd219ca3f8958f10c8825c36797ba5be5e1f897f715",
+        "test": "b5ae7a8ef2484fa8845c08a8ef7f9bde9d7bbada2b9871dc7b151e2b42af32e4"
+      }
+    },
+    {
+      "name": "seed3",
+      "data_seed": 903301,
+      "initial_training_seed": 903311,
+      "continuation_training_seed": 903321,
+      "initial_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed3_initial",
+      "transition_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed3_transition",
+      "endpoint_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed3_endpoint",
+      "mixed_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed3_mixed",
+      "config_sha256": {
+        "initial": "17d5f11916b98c736fc0d365fb3b35d3b4611405ef7bc04c2e4bff95974cd88c",
+        "transition": "8cd4f0ff1495f6fdb0f6aa1c514bbe37ff219460107653a3e10d6a0560ba2b01",
+        "endpoint": "9da8f800c248386653375e436fa64c32315ac47bb44768ff11fba7f4c2e16676",
+        "mixed": "76081efaaca6213b4ee3beca90f7588b1ddedc05efdc88bfd483c7d94581ff00"
+      },
+      "data_sha256": {
+        "initial_train": "62e7c4a06cafc3e8170c82d6bbf01335a4de3279616b24fceed551b332f3f134",
+        "initial_validation": "e476816062a39e7430fde1f39d0b191e0f0ea4a04ae03ab5a1aa975509fe5ca2",
+        "continuation_train": "c6717378a708338f9ce3fa9d5d078fb779acdda3a4f557a177a3e309cd54d8e2",
+        "continuation_validation": "e6bcb2a107831740ca9c64b6286754487a3a7d0c5608a427c467ad89d4b34593",
+        "test": "b65996fec17d45c63e2312608496c7ca47831ea3ab9ccdf6fe4f039a06b54afd"
+      }
+    },
+    {
+      "name": "seed4",
+      "data_seed": 903401,
+      "initial_training_seed": 903411,
+      "continuation_training_seed": 903421,
+      "initial_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed4_initial",
+      "transition_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed4_transition",
+      "endpoint_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed4_endpoint",
+      "mixed_run": "runs/Qwen2.5-7B-Instruct/interventions/state_interface_replay_seed4_mixed",
+      "config_sha256": {
+        "initial": "992e23b8762ca594beeec429f7f3a4863e290c422c9feee4c1c61d39537e181d",
+        "transition": "6d9a3afa6a9e15c897e445b05e3dc6cb55cafeb2e908ff9e4d16c8495197ac7d",
+        "endpoint": "08889c1d4b4b070eed0211cab92779ae2cd32a3fc21c8af4d8b78759b75cb7c0",
+        "mixed": "31e228e3e697bbdd35c860f3640cdf2fd170092b4bdf7d176edf65ee6c775150"
+      },
+      "data_sha256": {
+        "initial_train": "d747116ce7d221c80a4c11dd68e3b7c26dc73d52b41e65f1809b031ec6da03d0",
+        "initial_validation": "649a980ed0afe1e8ad8498547dc0a61e68f9af409fa2bfadd0bb3123b20bf922",
+        "continuation_train": "23eb1c110fe94fbd3e4ba782c25a1f08cb1266a806b11a0285123f518b198ca0",
+        "continuation_validation": "9a72c1535fe765c32c93fb11e0c2559cc03ab6a63cc51d228c2daad5e099a255",
+        "test": "a58c3b9029a5ff12fd1adab01074086f457b8687231ed53de4b986b4ba33ca75"
+      }
+    }
+  ],
+  "data_contract": {
+    "test_banks": "The three 1,920-case test banks have distinct hashes and zero shared IDs.",
+    "within_seed_pairing": "Initial, transition, endpoint, and mixed arms share the exact test bank within each seed.",
+    "continuation_pairing": "Transition, endpoint, and mixed arms share exact train and validation program files within each seed.",
+    "initial_curriculum": "Initial adapters use one- and two-operation producer cases for two epochs.",
+    "continuation_curriculum": "Continuation arms use two-operation producer cases for one epoch.",
+    "test_horizons": [2, 4, 8, 16],
+    "test_program_contexts": 30,
+    "test_paths_per_state": 2
+  },
+  "treatments": {
+    "transition": "Every producer target maps a public input code plus two operations to the next public code.",
+    "endpoint": "Every producer target maps a decimal start plus two operations to a public code; consumer targets stay unchanged.",
+    "mixed": "A deterministic near-50/50 mix of encoder and transition producer targets; consumer targets stay unchanged."
+  },
+  "primary": {
+    "estimand": "Across fresh seeds, horizon-16 closed-loop answer accuracy under mixed replay minus endpoint replay.",
+    "analysis": "Pair arms by exact item within a seed and cluster by the 30 held-out program contexts. Aggregate the three independent seed point estimates with a seed bootstrap and report every seed.",
+    "thresholds": {
+      "minimum_mean_gap": 0.1,
+      "aggregate_ci95_lower_strictly_above": 0.0,
+      "every_seed_gap_strictly_above": 0.0,
+      "minimum_h2_accuracy_every_arm": 0.95,
+      "minimum_gold_consumer_accuracy": 0.95
+    }
+  },
+  "mechanism": {
+    "estimand": "Mixed minus endpoint forced-state-follow accuracy after a valid counterfactual code is inserted after block zero.",
+    "thresholds": {
+      "minimum_mean_gap": 0.15,
+      "aggregate_ci95_lower_strictly_above": 0.0,
+      "minimum_mixed_exhaustive_semantic_transition_accuracy": 0.95
+    }
+  },
+  "saturation_secondary": {
+    "estimand": "Horizon-16 transition replay minus mixed replay accuracy.",
+    "equivalence_margin": 0.05,
+    "test": "The aggregate 95% seed-bootstrap interval must lie within [-0.05, 0.05].",
+    "not_part_of_primary_confirmation": true
+  },
+  "source_sha256": {
+    "analysis": "c34d3c4d9d301e11f38257b838b3431c99f9550a9ea49724ce63b04ce368b3f1",
+    "causality": "d62eebe19c6d3be634a412723cba353458c6575fc5accc1996e2fde47bde1a12",
+    "evaluation": "ffdcf9e357da805f318391bf959770c6f97f20ecda2e8e4671d6cf6a13b65071",
+    "training_data": "a8e0c9b7b93bb23e1e05b3d5ba9e3c0c611c7030d6fcb94a32c45f5312e4dab4",
+    "runner": "0b96c66e146f8e979fb4d099aa845e29f1793a2682a28d0f2f4bf7c1e69b9692",
+    "slurm": "055bc3dafb4faf1b9fe5fcedf9702d6af99a2120cfbb37618e435fe7eff74497"
+  },
+  "stopping_rule": "Evaluate initial competence first. Launch continuation arms only for fresh seeds whose initial horizon-2 answer accuracy and gold-code consumer accuracy are each at least 0.95. Do not add horizons, change thresholds, or replace failed seeds after observing confirmation outcomes.",
+  "claim_boundary": {
+    "in_scope": "For this finite public code task and pinned Qwen receiver, matched post-training target allocation changes whether a learned interface remains reliable under repeated updates.",
+    "out_of_scope": "A universal law, a new transition-training method, unseen state-operation support, latent neural states, or natural-language reasoning in general. MuSiQue supplies separate natural-task evidence about decodability and reuse."
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "locked_before_outputs": true,
+  "benchmark": {
+    "name": "MuSiQue answerable dev",
+    "source_commit": "922ac98f19a201998dbdae6d7f2887a5258dbdeb",
+    "eligible_cases": 2417,
+    "selection": "all eligible cases, deterministic ID shards"
+  },
+  "models": [
+    "Qwen/Qwen2.5-7B-Instruct",
+    "mistralai/Mistral-7B-Instruct-v0.3"
+  ],
+  "primary_tests": {
+    "relevant_information": "gold_canonical against gold_lossy, gold_empty, and gold_wrong",
+    "stable_representation": "gold_canonical against gold_alias and gold_history, with prompt-token counts",
+    "update_closure": "gold state against self-updated state within each representation",
+    "long_horizon": "cumulative prefix exactness at hops 1 through 4 on the same four-hop questions",
+    "decode_use_separation": "independent decode and continuation generations on the same supplied state"
+  },
+  "analysis_unit": "question; every uncertainty interval and contrast clusters by question",
+  "validity_gate": {
+    "direct_final_f1": ">= 0.30",
+    "gold_canonical_final_f1": ">= 0.40",
+    "canonical_minus_empty_final_f1": ">= 0.05",
+    "canonical_minus_wrong_final_f1": ">= 0.05"
+  },
+  "claim_boundary": "This assay concerns explicit textual states, not latent neural states. A failed competence or state-use gate permits no reuse claim."
+}

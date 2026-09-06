@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "completed_at": "2026-09-03T01:50:19+02:00",
+  "lock": "experiments/state_interface_replay_confirmation_lock.json",
+  "status": "failed",
+  "failure_reason": "Only two of three fresh initial adapters passed the fixed short-horizon competence gate, so the locked three-fresh-seed confirmation estimand is not available.",
+  "initial_gate": {
+    "thresholds": {
+      "minimum_h2_answer_accuracy": 0.95,
+      "minimum_h2_gold_consumer_accuracy": 0.95
+    },
+    "seeds": {
+      "seed2": {
+        "passed": true,
+        "h2_answer_accuracy": 1.0,
+        "h2_gold_consumer_accuracy": 1.0,
+        "h16_answer_accuracy": 1.0,
+        "training_job": 1684018,
+        "evaluation_job": 1684019
+      },
+      "seed3": {
+        "passed": false,
+        "h2_answer_accuracy": 0.8333333333333334,
+        "h2_gold_consumer_accuracy": 1.0,
+        "h16_answer_accuracy": 0.38958333333333334,
+        "final_training_state_loss": 0.43434839928522706,
+        "training_job": 1684023,
+        "evaluation_job": 1684024,
+        "continuations_launched": false
+      },
+      "seed4": {
+        "passed": true,
+        "h2_answer_accuracy": 0.9895833333333334,
+        "h2_gold_consumer_accuracy": 0.9979166666666667,
+        "h16_answer_accuracy": 0.5729166666666666,
+        "training_job": 1684026,
+        "evaluation_job": 1684027
+      }
+    }
+  },
+  "fresh_eligible_results": {
+    "seed2": {
+      "h16_accuracy": {
+        "initial": 1.0,
+        "transition": 1.0,
+        "endpoint": 1.0,
+        "mixed": 1.0
+      },
+      "mixed_minus_endpoint_h16": {
+        "mean": 0.0,
+        "ci95": [0.0, 0.0]
+      },
+      "forced_follow_accuracy": {
+        "transition": 1.0,
+        "endpoint": 1.0,
+        "mixed": 1.0
+      },
+      "mixed_minus_endpoint_forced_follow": {
+        "mean": 0.0,
+        "ci95": [0.0, 0.0]
+      },
+      "semantic_transition_support": {
+        "transition": 1.0,
+        "endpoint": 1.0,
+        "mixed": 1.0
+      },
+      "comparison_sha256": "0f2da0628c66cecb866dd00e01268c55a1dd38add0a876da0f258eadd6268a21"
+    },
+    "seed4": {
+      "h16_accuracy": {
+        "initial": 0.5729166666666666,
+        "transition": 0.89375,
+        "endpoint": 0.6520833333333333,
+        "mixed": 0.9270833333333334
+      },
+      "mixed_minus_endpoint_h16": {
+        "mean": 0.275,
+        "ci95": [0.18125, 0.3729166666666667]
+      },
+      "forced_follow_accuracy": {
+        "transition": 0.9333333333333333,
+        "endpoint": 0.5708333333333333,
+        "mixed": 0.95
+      },
+      "mixed_minus_endpoint_forced_follow": {
+        "mean": 0.37916666666666665,
+        "paired_context_bootstrap_ci95": [0.2791666666666667, 0.4791666666666667]
+      },
+      "semantic_transition_support": {
+        "transition": 0.9111328125,
+        "endpoint": 0.7431640625,
+        "mixed": 0.931640625
+      },
+      "mechanism_threshold_passed": false,
+      "comparison_sha256": "229661ae59db5b899ef9b683f8cbd61d7a903555c2269e8640b3d42da0fdc081"
+    }
+  },
+  "exploratory_seed1": {
+    "h16_accuracy": {
+      "initial": 0.9395833333333333,
+      "transition": 0.9958333333333333,
+      "endpoint": 0.8229166666666666,
+      "mixed": 0.975
+    },
+    "mixed_minus_endpoint_h16": {
+      "mean": 0.15208333333333332,
+      "ci95": [0.07916666666666666, 0.23125]
+    },
+    "mixed_minus_endpoint_forced_follow": {
+      "mean": 0.22916666666666666,
+      "paired_context_bootstrap_ci95": [0.14583333333333334, 0.3125]
+    },
+    "comparison_sha256": "7a5fb111f44909c104255eeb57dfdd0b036e558c6a13d35b3513385825089e1c"
+  },
+  "cross_arm_substitution": {
+    "transition_producer_endpoint_consumer": {
+      "accuracy": 0.9979166666666667,
+      "source_self_accuracy": 0.9953125,
+      "paired_difference": 0.0026041666666666665,
+      "job": 1683765
+    },
+    "endpoint_producer_transition_consumer": {
+      "accuracy": 0.9041666666666667,
+      "source_self_accuracy": 0.9052083333333333,
+      "paired_difference": -0.0010416666666666667,
+      "job": 1683766
+    },
+    "interpretation": "The public code remains interoperable across arms; the observed gap is not caused by a private decoder convention."
+  },
+  "continuation_jobs": {
+    "seed2": [1684498, 1684499, 1684500, 1684501, 1684502, 1684503, 1684504, 1684505, 1684506],
+    "seed4": [1684507, 1684508, 1684509, 1684510, 1684511, 1684512, 1684513, 1684514, 1684515],
+    "all_completed_cleanly": true,
+    "scheduler_note": "Job 1684511 was released unchanged after Jean-Zay held it for a user-environment retrieval error; it then completed normally."
+  },
+  "evidence_status": {
+    "established": [
+      "The treatment has no effect when the initial adapter is already perfect on this test bank.",
+      "On seed4, mixed replay beats endpoint replay on closed-loop horizon-16 answers and forced counterfactual-state following.",
+      "Cross-arm consumers do not explain the seed1 effect."
+    ],
+    "suggestive": [
+      "Across seed1, seed2, and seed4, replay benefit appears larger when the initial adapter has more long-horizon error.",
+      "Half transition replay is close to full transition replay in all three observed continuation panels."
+    ],
+    "not_supported": [
+      "A uniform transition-replay benefit across fresh seeds.",
+      "Universal endpoint-only erasure: endpoint continuation improves seed4 over its initial adapter and leaves seed2 perfect.",
+      "The locked three-fresh-seed confirmatory claim."
+    ]
+  },
+  "post_result_review": {
+    "reviewer": "Claude Opus 5",
+    "main_flaw_found": "The apparent initial-error moderator can arise from headroom and larger variance in weak starts; item bootstraps do not estimate run-level variance.",
+    "proposed_follow_up": "A separate study with at least three continuation seeds per cell, fixed pre-treatment checkpoint strength, and a scrambled-transition control.",
+    "decision": "not_launched",
+    "reason": "That is a new post-hoc conditional study, not a repair of this lock. It also needs a fresh literature check, competence-qualified checkpoint levels, and a new data/control implementation before GPU use."
+  }
+}
