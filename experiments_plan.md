@@ -64,6 +64,18 @@ Seed-26090611 pilots: **1817248** [Qwen](runs/Qwen2.5-7B-Instruct/interventions/
 and **1817249** [Llama](runs/Meta-Llama-3-8B-Instruct/interventions/computation_interference_pilot/).
 Each uses one H100, a one-hour limit, eight screen families, and 16 test families
 (256 full continuations). Source and dataset hashes are fixed in each manifest.
+Both completed: Qwen in 5m23s, Llama in 4m08s. Pulled all 512 continuations;
+verified completeness, hashes, EOS, zero caps, and zero attention on blocked edges.
+In the operator-lure arm, Qwen remains 11/16 numerically correct under every
+intervention. Llama improves 15/16 to 16/16 only with targeted source blocking;
+both controls remain 15/16. Case `test-0015` copied 770 from `625 + 145` when
+asked for `625 - 145`; blocking the selected source fixes the full calculation.
+This is one controlled repair, not a robust or cross-model mechanism result.
+Separate [Qwen](runs/Qwen2.5-7B-Instruct/interventions/computation_interference_pilot/evaluation/numerical_audit.json)
+and [Llama](runs/Meta-Llama-3-8B-Instruct/interventions/computation_interference_pilot/evaluation/numerical_audit.json)
+manual audits retain the original strict scores: many Llama outputs finish the
+calculation correctly but omit the exact `Answer:` label. No inference was rerun.
+
 Initialize the login shell with `source /etc/profile.d/z_modules.sh` before
 `sbatch`; set the reasoning repo's `repo_root` before sourcing the shared GPU env.
 
