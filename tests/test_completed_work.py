@@ -20,5 +20,8 @@ def test_distractor_horizon_never_updates_target():
     late = next(r for r in rows if r['arm'] == 'target_late')
     text = prefill(None, late)
     # Event 2 can feed distractor descendants and must remain before them.
-    assert text.index('2. ') < text.index('4. ')
-    assert text.index('\n1. ') > text.index('\n35. ')
+    lines = text.splitlines()
+    original = prefix.splitlines()
+    assert lines[0].split('. ', 1)[1] == original[1].split('. ', 1)[1]
+    assert lines[-3].split('. ', 1)[1] == original[0].split('. ', 1)[1]
+    assert lines[-2].split('. ', 1)[1] == original[2].split('. ', 1)[1]
