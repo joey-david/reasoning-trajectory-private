@@ -1,0 +1,28 @@
+{
+  "models": [
+    "Qwen2.5-7B-Instruct",
+    "Mistral-7B-Instruct-v0.3"
+  ],
+  "prefixes_per_model": 64,
+  "shards": 8,
+  "seed": 26090801,
+  "max_new_tokens": 1536,
+  "experiments": [
+    {
+      "id": "R1",
+      "claim": "Intervening computation harms later access beyond token distance",
+      "primary": "paired accuracy difference native/oracle/filler at fixed target depth and matched supplied-prefix length"
+    },
+    {
+      "id": "R2",
+      "claim": "Order of independent work changes use of the completed target",
+      "primary": "target-early versus target-late with identical work; keep the independent event before its descendants"
+    },
+    {
+      "id": "R3",
+      "claim": "Target selection and value repair are distinct",
+      "primary": "name reminder versus neutral and correct/incorrect value controls, tokenizer-matched length"
+    }
+  ],
+  "analysis": "Freeze contrasts before inference. Pair by source problem/template, never by output. Missing and capped outputs remain explicit. Original and strict scores stay separate. No receiver-specific fit on test data."
+}
