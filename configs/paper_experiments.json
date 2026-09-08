@@ -3,7 +3,7 @@
     "Qwen2.5-7B-Instruct",
     "Mistral-7B-Instruct-v0.3"
   ],
-  "prefixes_per_model": 64,
+  "prefixes_per_model": {"Qwen2.5-7B-Instruct": 64, "Mistral-7B-Instruct-v0.3": 32},
   "shards": 8,
   "seed": 26090801,
   "max_new_tokens": 1536,

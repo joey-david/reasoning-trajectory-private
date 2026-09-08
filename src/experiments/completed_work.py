@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 import hashlib
+import fcntl
 import json
 from pathlib import Path
 import random
@@ -32,6 +33,11 @@ def verified_prefix(case, generation):
     text = generation['generation']['text']
     names = [x['name'] for x in case['clean']['writes']]
     writes = parse_generated_writes(text, names)
+    for event in range(3):
+        start, end = case['clean']['spans'][f'write_{event}']
+        expected = int(case['clean']['text'][start:end])
+        if not any(w['event'] == event and w['literal_digit'] and w['raw_value'] == expected for w in writes):
+            return None
     source = next((w for w in writes if w['event'] == 2 and w['literal_digit']), None)
     if source is None or source['raw_value'] != case['clean_answer']:
         return None
@@ -93,7 +99,8 @@ def variants(case, prefix, seed):
         if horizon == 32:
             for order in ('target_early', 'target_late'):
                 result.append(dict(common, experiment='R2_independent_order', arm=order,
-                                   prefix_mode=order, reminder='none'))
+                                   prefix_mode=order, reminder='none',
+                                   question=question.replace('Work through all events in order.', 'Events for different players may be evaluated in either order.')))
             for reminder in ('neutral', 'target', 'correct_value', 'wrong_value'):
                 result.append(dict(common, experiment='R3_target_selection', arm=reminder,
                                    prefix_mode='oracle_history', reminder=reminder))
@@ -104,7 +111,7 @@ def prepare(config, source, out):
     cells = []
     counts = {}
     for model in config['models']:
-        sources, available = source_cases(source, model, config['prefixes_per_model'])
+        sources, available = source_cases(source, model, config['prefixes_per_model'][model])
         counts[model] = {'eligible': available, 'selected': len(sources), 'screened': 480}
         for shard in range(config['shards']):
             rows = []
@@ -118,10 +125,13 @@ def prepare(config, source, out):
     lock = {'config': config, 'counts': counts, 'cells': cells,
             'source_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
     path = out / 'lock.json'
-    if path.exists() and json.loads(path.read_text()) != lock:
-        raise ValueError('locked design changed')
-    if not path.exists():
-        write_json(path, lock)
+    out.mkdir(parents=True, exist_ok=True)
+    with (out / '.prepare.lock').open('a') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        if path.exists() and json.loads(path.read_text()) != lock:
+            raise ValueError('locked design changed')
+        if not path.exists():
+            write_json(path, lock)
     return lock
 
 
@@ -149,6 +159,8 @@ def prefill(tokenizer, row):
             raise ValueError('filler does not match the complete prefix length')
     else:
         text = own + history
+    if mode in ('target_early', 'target_late'):
+        text = '\n'.join(f"{i + 1}. " + re.sub(r'^\d+[.)]\s*', '', line) for i, line in enumerate(text.splitlines())) + '\n'
     reminder = row['reminder']
     if reminder != 'none':
         value = row['expected'][0]
@@ -176,10 +188,13 @@ def reduce_cell(root, rows):
     measurements = []
     for generation in generations(root):
         row = lookup[generation['sample_id']]
-        parsed = parse_result(generation['produced_text'])
+        strict = parse_result(generation['produced_text'])
+        match = re.search(r'\bAnswer:\s*(?:\[(\d)\]|(\d))\s*$', generation['produced_text'])
+        parsed = [int(match[1] or match[2])] if match else None
         item = {'id': row['id'], 'source_id': row['source_id'], 'experiment': row['experiment'],
                 'horizon': row['horizon'], 'arm': row['arm'], 'prediction': parsed,
                 'correct': parsed == row['expected'], 'parsed': parsed is not None,
+                'strict_list_correct': strict == row['expected'],
                 'tokens': len(generation['generated_token_ids'])}
         measurements.append(item)
         groups[(row['experiment'], row['horizon'], row['arm'])].append(item)
@@ -195,7 +210,7 @@ def run(config, source, out, index, smoke=False):
     rows = cell['rows']
     if smoke:
         ids = list(dict.fromkeys(r['source_id'] for r in rows))[:2]
-        rows = [r for r in rows if r['source_id'] in ids and r['horizon'] in (0, 8)]
+        rows = [r for r in rows if r['source_id'] in ids and (r['horizon'] in (0, 8) or r['experiment'] != 'R1_intervening_work')]
     root = out / ('smoke' if smoke else 'cells') / cell['model'] / f"shard{cell['shard']}"
     old = yaml.safe_load((source / 'runs' / cell['model'] / 'design_2026_09_07/R12_dependency_revision/config.yaml').read_text())
     cfg = {'model': old['model'], 'generation': {'max_new_tokens': config['max_new_tokens'],
