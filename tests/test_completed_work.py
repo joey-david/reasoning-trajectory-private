@@ -1,4 +1,4 @@
-from src.experiments.completed_work import variants, verified_prefix, prefill
+from src.experiments.completed_work import variants, verified_prefix, prefill, answer_digit
 from src.experiments.state_routing_heads import build_head_cases
 
 
@@ -25,3 +25,21 @@ def test_distractor_horizon_never_updates_target():
     assert lines[0].split('. ', 1)[1] == original[1].split('. ', 1)[1]
     assert lines[-3].split('. ', 1)[1] == original[0].split('. ', 1)[1]
     assert lines[-2].split('. ', 1)[1] == original[2].split('. ', 1)[1]
+
+
+def test_answer_annotations_are_distinct_from_intermediate_values():
+    assert answer_digit("Answer: 6 (Cora's final score)") == [6]
+    assert answer_digit('Answer: 6.') == [6]
+    assert answer_digit('Answer: [6]') == [6]
+    assert answer_digit('Cora has 6.') is None
+    assert answer_digit('Answer: 6 + 1 = 7') is None
+
+
+def test_last_distractor_agreement_is_controlled_before_generation():
+    case = build_head_cases(screen_count=0, development_count=0, test_count=1, seed=4)[0]
+    prefix = '\n'.join(case['clean']['text'].split('Solution:\n')[1].splitlines()[:3]) + '\n'
+    for agrees in (False, True):
+        for row in variants(case, prefix, 123, agrees):
+            if row['horizon']:
+                value = int(row['oracle_history'].splitlines()[-1].rsplit(' = ', 1)[1].strip('.'))
+                assert (value == row['expected'][0]) == agrees

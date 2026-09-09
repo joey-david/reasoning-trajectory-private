@@ -72,7 +72,7 @@ def source_cases(source, model, count):
     return eligible[:count], len(eligible)
 
 
-def variants(case, prefix, seed):
+def variants(case, prefix, seed, last_agrees=None):
     initial = {name: int(value) for name, value in re.findall(r'(Ada|Bela|Cora|Dani) has (\d)', case['question'].split('Events, in order:')[0])}
     events = [{'name': name, 'operation': op, 'amount': int(amount)} for name, op, amount in re.findall(r'\d+\. (Ada|Bela|Cora|Dani) must (add|subtract) (\d)\.', case['question'])][:3]
     if len(initial) != 4 or len(events) != 3:
@@ -82,7 +82,15 @@ def variants(case, prefix, seed):
     tail = [{'name': rng.choice(others), 'operation': rng.choice(['add', 'subtract']), 'amount': rng.randint(1, 8)} for _ in range(64)]
     result = []
     for horizon in (0, 8, 32, 64):
-        teacher, gold = _render_trace(initial=initial, events=events + tail[:horizon], target=case['target'])
+        following = [dict(e) for e in tail[:horizon]]
+        if horizon and last_agrees is not None:
+            values = dict(initial)
+            for event in events + following[:-1]:
+                sign = 1 if event['operation'] == 'add' else -1
+                values[event['name']] = (values[event['name']] + sign * event['amount']) % 10
+            desired = (case['clean_answer'] + (0 if last_agrees else 1)) % 10
+            following[-1].update(operation='add', amount=(desired - values[following[-1]['name']]) % 10)
+        teacher, gold = _render_trace(initial=initial, events=events + following, target=case['target'])
         assert gold == case['clean_answer']
         question, working = teacher['text'].split('Solution:\n')
         question = question.replace('Use one short line per event, then end with Answer=<one digit>.',
@@ -90,7 +98,8 @@ def variants(case, prefix, seed):
         history = '\n'.join(working.splitlines()[3:-2]) + '\n' if horizon else ''
         common = {'source_id': case['id'], 'target': case['target'], 'horizon': horizon,
                   'expected': [gold], 'question': question, 'own_prefix': prefix,
-                  'oracle_history': history}
+                  'oracle_history': history, 'last_agrees': last_agrees,
+                  'last_amount': following[-1]['amount'] if following else None}
         for mode in ('native_compute', 'oracle_history', 'matched_filler'):
             if horizon == 0 and mode != 'oracle_history':
                 continue
@@ -118,9 +127,12 @@ def prepare(config, source, out):
             for index, (case, prefix) in enumerate(sources):
                 if index % config['shards'] != shard:
                     continue
-                for row in variants(case, prefix, config['seed']):
-                    row['id'] = f"{case['id']}:{row['experiment']}:{row['horizon']}:{row['arm']}"
-                    rows.append(row)
+                for agrees in (False, True):
+                    for row in variants(case, prefix, config['seed'], agrees):
+                        if agrees and row['horizon'] == 0:
+                            continue
+                        row['id'] = f"{case['id']}:{row['experiment']}:{row['horizon']}:{row['arm']}:agree{int(agrees)}"
+                        rows.append(row)
             cells.append({'model': model, 'shard': shard, 'rows': rows})
     lock = {'config': config, 'counts': counts, 'cells': cells,
             'source_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
@@ -182,6 +194,11 @@ def prefill(tokenizer, row):
     return text + 'Answer: '
 
 
+def answer_digit(text):
+    match = re.search(r'\bAnswer\s*[:=]\s*(?:\[(\d)\]|(\d))(?!\d)(?:\s*\([^\n)]*\))?\.?\s*$', text)
+    return [int(match[1] or match[2])] if match else None
+
+
 def reduce_cell(root, rows):
     lookup = {r['id']: r for r in rows}
     groups = defaultdict(list)
@@ -189,17 +206,17 @@ def reduce_cell(root, rows):
     for generation in generations(root):
         row = lookup[generation['sample_id']]
         strict = parse_result(generation['produced_text'])
-        match = re.search(r'\bAnswer:\s*(?:\[(\d)\]|(\d))\s*$', generation['produced_text'])
-        parsed = [int(match[1] or match[2])] if match else None
+        parsed = answer_digit(generation['produced_text'])
         item = {'id': row['id'], 'source_id': row['source_id'], 'experiment': row['experiment'],
                 'horizon': row['horizon'], 'arm': row['arm'], 'prediction': parsed,
                 'correct': parsed == row['expected'], 'parsed': parsed is not None,
                 'strict_list_correct': strict == row['expected'],
+                'last_agrees': row['last_agrees'], 'last_amount': row['last_amount'],
                 'tokens': len(generation['generated_token_ids'])}
         measurements.append(item)
-        groups[(row['experiment'], row['horizon'], row['arm'])].append(item)
+        groups[(row['experiment'], row['horizon'], row['arm'], row['last_agrees'])].append(item)
     summary = {'expected': len(rows), 'observed': len(measurements), 'measurements': measurements,
-        'groups': [{'experiment': k[0], 'horizon': k[1], 'arm': k[2], 'n': len(v),
+        'groups': [{'experiment': k[0], 'horizon': k[1], 'arm': k[2], 'last_agrees': k[3], 'n': len(v),
                     'correct': sum(x['correct'] for x in v), 'parsed': sum(x['parsed'] for x in v)} for k, v in groups.items()]}
     write_json(root / 'evaluation/summary.json', summary)
     return summary

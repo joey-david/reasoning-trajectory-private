@@ -3,7 +3,10 @@
     "Qwen2.5-7B-Instruct",
     "Mistral-7B-Instruct-v0.3"
   ],
-  "prefixes_per_model": {"Qwen2.5-7B-Instruct": 64, "Mistral-7B-Instruct-v0.3": 32},
+  "prefixes_per_model": {
+    "Qwen2.5-7B-Instruct": 64,
+    "Mistral-7B-Instruct-v0.3": 32
+  },
   "shards": 8,
   "seed": 26090801,
   "max_new_tokens": 1536,
@@ -24,5 +27,5 @@
       "primary": "name reminder versus neutral and correct/incorrect value controls, tokenizer-matched length"
     }
   ],
-  "analysis": "Freeze contrasts before inference. Pair by source problem/template, never by output. Missing and capped outputs remain explicit. Original and strict scores stay separate. No receiver-specific fit on test data."
+  "analysis": "Freeze contrasts before inference. Pair by source problem/template, never by output. Missing and capped outputs remain explicit. Original and strict scores stay separate. No receiver-specific fit on test data. Every source problem is crossed with last-distractor agreement/disagreement at each nonzero horizon, fixed by the final add modulo 10. Zero increments remain included and flagged; report their sensitivity separately. Model prefix samples differ, so family comparisons use matched oracle strata rather than unpaired aggregate accuracy. Explicit final digits with punctuation or a parenthetical annotation are scored separately from strict list formatting."
 }
