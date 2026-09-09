@@ -18,6 +18,6 @@ source /lustre/fswork/projects/rech/fas/uul94gf/fineQComp/scripts/jean_zay_env.s
 export PYTHONUNBUFFERED=1
 export SLURM_EXPORT_ENV=ALL
 export PYTHONPATH="$repo_root:$repo_root/src:${PYTHONPATH:+:$PYTHONPATH}"
-exec "$PYTHON" -m src.experiments.completed_work --config configs/paper_experiments.json \
+exec "$PYTHON" -m src.experiments.executable_work --config configs/executable_work.json \
   --source-root /lustre/fswork/projects/rech/fas/uul94gf/reasoning-trajectory-private \
   --out outputs/main_results_v1 --phase "${PHASE:?set phase}" --cell "${CELL:-${SLURM_ARRAY_TASK_ID:-0}}"

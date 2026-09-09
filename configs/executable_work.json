@@ -1,0 +1,10 @@
+{
+  "models": ["Qwen2.5-7B-Instruct", "Mistral-7B-Instruct-v0.3", "Meta-Llama-3-8B-Instruct"],
+  "model_configs": {
+    "Qwen2.5-7B-Instruct": "runs/Qwen2.5-7B-Instruct/design_2026_09_07/R12_dependency_revision/config.yaml",
+    "Mistral-7B-Instruct-v0.3": "runs/Mistral-7B-Instruct-v0.3/design_2026_09_07/R12_dependency_revision/config.yaml",
+    "Meta-Llama-3-8B-Instruct": "runs/Meta-Llama-3-8B-Instruct/interventions/dependency_revision_pilot/config.yaml"
+  },
+  "problems": 48, "distractors": [2, 8, 32], "shards": 8, "seed": 260910,
+  "analysis": "Registered before inference. Primary: paired early-versus-late and early-versus-token-matched-filler effects on the first requested result, stratified by last-distractor agreement. Secondary: source selection versus arithmetic consistency in the three-value consumer; final distractor label/value ablations and name-only cue. Retain all programs, unknown/capped outputs and native-computation failures. Filler keeps both required branches. Supplied traces are canonical oracle work, not model-generated reasoning or latent interventions. Last-name/value redactions are not token-matched, so interpret them only with the matched filler and order controls. Cluster intervals by program across widths and arms. Llama is the reserved family for this intervention. Distinguish controlled repeated use of computed facts from the positional retrieval effect in https://arxiv.org/abs/2307.03172; neither establishes a continuous/discrete ontology."
+}
