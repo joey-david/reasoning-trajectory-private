@@ -83,13 +83,14 @@ def prefill(tokenizer, row):
     if row['arm'] == 'native':
         return ''
     text = row['work']
+    ending = f"Return exactly {len(row['expected'])} integers.\nAnswer: ["
     if row['arm'] == 'filler':
-        full_count = len(tokenizer.encode(row['work'] + 'Answer: [', add_special_tokens=False))
+        full_count = len(tokenizer.encode(row['work'] + ending, add_special_tokens=False))
         budget = len(tokenizer.encode(row['irrelevant'], add_special_tokens=False))
         token = tokenizer.encode(' note', add_special_tokens=False)[-1]
         for _ in range(8):
             text = row['kept'] + tokenizer.decode([token] * budget) + '\n'
-            difference = full_count - len(tokenizer.encode(text + 'Answer: [', add_special_tokens=False))
+            difference = full_count - len(tokenizer.encode(text + ending, add_special_tokens=False))
             if difference == 0:
                 break
             budget += difference
@@ -97,7 +98,7 @@ def prefill(tokenizer, row):
             raise ValueError('token-matched filler failed')
     if row['arm'] == 'name_cue':
         text += 'Use v00_2 for the first requested value.\n'
-    return text + 'Answer: ['
+    return text + ending
 
 
 def generations(root):
@@ -137,7 +138,9 @@ def run(config, source, out, index, smoke):
     root = out / ('smoke' if smoke else 'cells') / cell['model'] / f"shard{cell['shard']}"
     model_config = yaml.safe_load((source / config['model_configs'][cell['model']]).read_text())['model']
     cfg = {'model': model_config, 'generation': {'max_new_tokens': 512, 'temperature': 0.,
-        'num_samples_per_item': 1, 'base_seed': config['seed'], 'stop_regex': r'Answer:\s*\[[\d,\s-]+\]'},
+        # The shared stopper waits for text after the match. Look ahead for
+        # the closing bracket so it stops there, before another chat turn.
+        'num_samples_per_item': 1, 'base_seed': config['seed'], 'stop_regex': r'Answer:\s*\[[\d,\s-]+(?=\])'},
         'capture': {'enabled': False}, 'prompt': {'mode': 'chat',
         'instruction': 'Use the supplied work if present. End with one line: Answer: [integers in result, in order]. Use integers, not expressions, in that final list.'}}
     write_json(root / 'config.json', cfg)
