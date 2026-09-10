@@ -34,8 +34,9 @@ def cases(config):
                              f'{name}_2 = {name}_1 + {second}'])
         for width in config['distractors']:
             lines = [line for branch in branches[:width + 1] for line in branch]
-            for consumer in ('lookup', 'combine'):
-                expression = '(v00_2,)' if consumer == 'lookup' else '(v00_2, v01_2, v00_2 + v01_2)'
+            for consumer in config.get('consumers', ('lookup', 'combine')):
+                expression = {'lookup': '(v00_2,)', 'copy': '(v00_2, v01_2, 0)',
+                              'combine': '(v00_2, v01_2, v00_2 + v01_2)'}[consumer]
                 code = '\n'.join(lines + ['result = ' + expression])
                 facts = program_facts(code)['values']
                 trace = [f"{line.split(' = ')[0]} = {facts[line.split(' = ')[0]]}" for line in lines]
@@ -45,10 +46,14 @@ def cases(config):
                         'last_value': facts[f'v{width:02d}_2'],
                         'last_agrees': facts[f'v{width:02d}_2'] == facts['v00_2'],
                         'question': 'Compute result for this Python program. Independent branches may be evaluated in either order.\n```python\n' + code + '\n```'}
-                for arm in ('native', 'early', 'late', 'filler', 'name_cue', 'last_value_hidden', 'last_name_hidden'):
+                for arm in config.get('arms', ('native', 'early', 'late', 'filler', 'name_cue', 'last_value_hidden', 'last_name_hidden')):
                     work = list(trace)
-                    if arm == 'late':
+                    if arm in ('late', 'forced_late'):
                         work = trace[3:] + trace[:3]
+                    if arm == 'both_late':
+                        work = trace[6:] + trace[:6]
+                    if arm == 'arithmetic_only':
+                        work = [trace[2], trace[5]]
                     if arm == 'last_value_hidden':
                         work[-1] = work[-1].split(' = ')[0] + ' = [omitted]'
                     if arm == 'last_name_hidden':
@@ -79,25 +84,36 @@ def prepare(config, out):
     return lock
 
 
+def matched_padding(tokenizer, head, tail, target):
+    token = tokenizer.encode(' note', add_special_tokens=False)[-1]
+    budget = target - len(tokenizer.encode(head + tail, add_special_tokens=False))
+    for _ in range(8):
+        text = head + tokenizer.decode([token] * max(0, budget)) + tail
+        difference = target - len(tokenizer.encode(text, add_special_tokens=False))
+        if difference == 0:
+            return text
+        budget += difference
+    raise ValueError('token-matched padding failed')
+
+
 def prefill(tokenizer, row):
     if row['arm'] == 'native':
         return ''
     text = row['work']
     ending = f"Return exactly {len(row['expected'])} integers.\nAnswer: ["
-    if row['arm'] == 'filler':
+    if row['arm'] in ('forced_prerequisites', 'forced_late', 'filler_forced'):
+        ending += f"{row['target_value']}, {row['other_required']}, "
+    if row['arm'] in ('filler', 'filler_forced'):
         full_count = len(tokenizer.encode(row['work'] + ending, add_special_tokens=False))
-        budget = len(tokenizer.encode(row['irrelevant'], add_special_tokens=False))
-        token = tokenizer.encode(' note', add_special_tokens=False)[-1]
-        for _ in range(8):
-            text = row['kept'] + tokenizer.decode([token] * budget) + '\n'
-            difference = full_count - len(tokenizer.encode(text + ending, add_special_tokens=False))
-            if difference == 0:
-                break
-            budget += difference
-        else:
-            raise ValueError('token-matched filler failed')
+        return matched_padding(tokenizer, row['kept'], '\n' + ending, full_count)
     if row['arm'] == 'name_cue':
         text += 'Use v00_2 for the first requested value.\n'
+    cue = 'Use v00_2 first and v01_2 second, in the requested order.\n'
+    if row['arm'] == 'ordered_cue':
+        text += cue
+    if row['arm'] == 'neutral_cue':
+        target = len(tokenizer.encode(text + cue + ending, add_special_tokens=False))
+        return matched_padding(tokenizer, text, '\n' + ending, target)
     return text + ending
 
 
@@ -115,9 +131,14 @@ def reduce_cell(root, rows):
         valid = prediction is not None and len(prediction) == len(row['expected'])
         item = {k: row[k] for k in ('id', 'problem', 'horizon', 'consumer', 'arm', 'last_agrees', 'last_value', 'target_value')}
         item.update(prediction=prediction, parsed=valid, correct=prediction == row['expected'],
+            output_arity=None if prediction is None else len(prediction),
+            first_value_correct=prediction is not None and len(prediction) > 0 and prediction[0] == row['expected'][0],
+            second_value_correct=prediction is not None and len(prediction) > 1 and prediction[1] == row['other_required'],
+            second_is_first=valid and len(prediction) > 1 and prediction[1] == row['target_value'],
+            forced_inputs=row['arm'] in ('forced_prerequisites', 'forced_late', 'filler_forced'),
             first_correct=valid and prediction[0] == row['expected'][0],
             first_is_last=valid and prediction[0] == row['last_value'],
-            prerequisites_correct=valid and prediction[:2] == row['expected'][:2] if row['consumer'] == 'combine' else None,
+            prerequisites_correct=valid and prediction[:2] == row['expected'][:2] if row['consumer'] in ('combine', 'copy') else None,
             internally_consistent=valid and prediction[2] == prediction[0] + prediction[1] if row['consumer'] == 'combine' else None,
             tokens=len(generation['generated_token_ids']))
         measurements.append(item)
@@ -164,7 +185,8 @@ def run(config, source, out, index, smoke):
         raise ValueError('missing generations')
     # This checks that the supplied-work interface works on easy programs. All
     # full-run cases remain in the analysis regardless of individual success.
-    controls = [r for r in result['measurements'] if r['consumer'] == 'lookup' and r['arm'] == 'late']
+    control = ('copy', 'forced_prerequisites') if 'copy' in config.get('consumers', ()) else ('lookup', 'late')
+    controls = [r for r in result['measurements'] if (r['consumer'], r['arm']) == control]
     ready = not smoke or (controls and all(r['parsed'] for r in controls) and sum(r['correct'] for r in controls) >= len(controls) * .5)
     write_json(root / 'complete.json', {'complete': True, 'ready': bool(ready), 'smoke': smoke})
     if not ready:
@@ -184,7 +206,7 @@ def main():
     elif a.phase in ('smoke', 'run'):
         run(config, a.source_root, a.out, a.cell, a.phase == 'smoke')
     else:
-        for cell in prepare(config, a.out)['cells']:
+        for cell in json.loads((a.out / 'lock.json').read_text())['cells']:
             reduce_cell(a.out / 'cells' / cell['model'] / f"shard{cell['shard']}", cell['rows'])
 
 

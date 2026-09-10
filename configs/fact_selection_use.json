@@ -1,0 +1,37 @@
+{
+  "models": [
+    "Qwen2.5-7B-Instruct",
+    "Mistral-7B-Instruct-v0.3",
+    "Meta-Llama-3-8B-Instruct"
+  ],
+  "model_configs": {
+    "Qwen2.5-7B-Instruct": "runs/Qwen2.5-7B-Instruct/design_2026_09_07/R12_dependency_revision/config.yaml",
+    "Mistral-7B-Instruct-v0.3": "runs/Mistral-7B-Instruct-v0.3/design_2026_09_07/R12_dependency_revision/config.yaml",
+    "Meta-Llama-3-8B-Instruct": "runs/Meta-Llama-3-8B-Instruct/interventions/dependency_revision_pilot/config.yaml"
+  },
+  "problems": 64,
+  "distractors": [
+    2,
+    8,
+    32
+  ],
+  "shards": 8,
+  "seed": 260911,
+  "analysis": "Registered 10 September before inference. All outputs have three integers. Primary: paired ordered-cue versus token-matched neutral-cue source accuracy, and forced-correct-prerequisite versus free-operand sum accuracy, across three families. Both-late versus first-late tests whether recency changes which input is selected. Copy returns [x,y,0]; combine returns [x,y,x+y]. Arithmetic-only supplies the two final facts, retaining the full original question. Filler replaces only irrelevant computed records. Forced operands are supplied, not model-generated competence. Preserve strict arity and a separately named first-value audit. Cluster by program across widths, consumers and arms. No model, seed or program is removed for failure. H100 smoke controls test copy/forced-prefix plumbing only. This tests source selection and use of visible work, not a claim that latent reasoning is discrete or continuous.",
+  "consumers": [
+    "copy",
+    "combine"
+  ],
+  "arms": [
+    "early",
+    "late",
+    "both_late",
+    "filler",
+    "ordered_cue",
+    "neutral_cue",
+    "forced_prerequisites",
+    "forced_late",
+    "filler_forced",
+    "arithmetic_only"
+  ]
+}
