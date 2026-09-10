@@ -114,6 +114,12 @@ def prefill(tokenizer, row):
     if row['arm'] == 'neutral_cue':
         target = len(tokenizer.encode(text + cue + ending, add_special_tokens=False))
         return matched_padding(tokenizer, text, '\n' + ending, target)
+    goal = 'The requested expression is ' + row['code'].splitlines()[-1] + '.\n'
+    if row['arm'] == 'goal_cue':
+        text += goal
+    if row['arm'] == 'goal_neutral':
+        target = len(tokenizer.encode(text + goal + ending, add_special_tokens=False))
+        return matched_padding(tokenizer, text, '\n' + ending, target)
     return text + ending
 
 
@@ -183,11 +189,13 @@ def run(config, source, out, index, smoke):
     result = reduce_cell(root, rows)
     if result['observed'] != len(rows):
         raise ValueError('missing generations')
-    # This checks that the supplied-work interface works on easy programs. All
-    # full-run cases remain in the analysis regardless of individual success.
+    # Check parsing and preservation of supplied inputs. A wrong third value
+    # is an experimental outcome, including when the requested value is zero.
     control = ('copy', 'forced_prerequisites') if 'copy' in config.get('consumers', ()) else ('lookup', 'late')
     controls = [r for r in result['measurements'] if (r['consumer'], r['arm']) == control]
-    ready = not smoke or (controls and all(r['parsed'] for r in controls) and sum(r['correct'] for r in controls) >= len(controls) * .5)
+    ready = not smoke or (controls and all(r['parsed'] for r in controls) and
+        (all(r['prerequisites_correct'] for r in controls) if control[0] == 'copy' else
+         sum(r['correct'] for r in controls) >= len(controls) * .5))
     write_json(root / 'complete.json', {'complete': True, 'ready': bool(ready), 'smoke': smoke})
     if not ready:
         raise RuntimeError('easy program interface failed')

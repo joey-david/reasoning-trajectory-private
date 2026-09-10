@@ -53,3 +53,16 @@ def test_forced_inputs_and_padding_do_not_change_the_requested_result():
     assert len(prefixes['forced_prerequisites']) == len(prefixes['filler_forced'])
     for arm in ('forced_prerequisites', 'filler_forced'):
         assert prefixes[arm].endswith(f"Answer: [{rows[0]['target_value']}, {rows[0]['other_required']}, ")
+
+
+def test_goal_cue_repeats_only_the_public_expression_with_a_matched_control():
+    from src.experiments.executable_work import prefill
+    class CharTokenizer:
+        def encode(self, text, add_special_tokens=False): return list(map(ord, text))
+        def decode(self, tokens): return ''.join(map(chr, tokens))
+    for consumer in ('copy', 'combine'):
+        rows = cases(dict(seed=9, problems=1, distractors=[8], consumers=[consumer], arms=['goal_cue','goal_neutral']))
+        actual, neutral = [prefill(CharTokenizer(), r) for r in rows]
+        assert len(actual) == len(neutral)
+        assert rows[0]['code'].splitlines()[-1] in actual
+        assert rows[0]['code'].splitlines()[-1] not in neutral

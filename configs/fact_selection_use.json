@@ -17,7 +17,7 @@
   ],
   "shards": 8,
   "seed": 260911,
-  "analysis": "Registered 10 September before inference. All outputs have three integers. Primary: paired ordered-cue versus token-matched neutral-cue source accuracy, and forced-correct-prerequisite versus free-operand sum accuracy, across three families. Both-late versus first-late tests whether recency changes which input is selected. Copy returns [x,y,0]; combine returns [x,y,x+y]. Arithmetic-only supplies the two final facts, retaining the full original question. Filler replaces only irrelevant computed records. Forced operands are supplied, not model-generated competence. Preserve strict arity and a separately named first-value audit. Cluster by program across widths, consumers and arms. No model, seed or program is removed for failure. H100 smoke controls test copy/forced-prefix plumbing only. This tests source selection and use of visible work, not a claim that latent reasoning is discrete or continuous.",
+  "analysis": "Registered 10 September before inference. All outputs have three integers. Primary: paired ordered-cue versus token-matched neutral-cue source accuracy, and forced-correct-prerequisite versus free-operand sum accuracy, across three families. Both-late versus first-late tests whether recency changes which input is selected. Copy returns [x,y,0]; combine returns [x,y,x+y]. Arithmetic-only supplies the two final facts, retaining the full original question. Filler replaces only irrelevant computed records. Forced operands are supplied, not model-generated competence. Preserve strict arity and a separately named first-value audit. Cluster by program across widths, consumers and arms. No model, seed or program is removed for failure. H100 smoke controls test copy/forced-prefix plumbing only. This tests source selection and use of visible work, not a claim that latent reasoning is discrete or continuous. Smoke amendment: Mistral kept the two forced inputs but returned an irrelevant third fact instead of literal zero. Preserve this outcome; the smoke gate now tests format and forced-input preservation, not third-slot correctness. Add a pair that repeats the original result expression versus token-matched padding, to test goal retention. This change follows the two-program pilot and precedes the full run; it is development, not prospective family validation.",
   "consumers": [
     "copy",
     "combine"
@@ -32,6 +32,8 @@
     "forced_prerequisites",
     "forced_late",
     "filler_forced",
-    "arithmetic_only"
+    "arithmetic_only",
+    "goal_cue",
+    "goal_neutral"
   ]
 }
